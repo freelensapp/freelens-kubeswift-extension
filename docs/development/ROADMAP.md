@@ -17,7 +17,7 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 ### M1 — Read-only core workload views
 
 | Feature | Spec | Status |
-|---|---|---|
+| --- | --- | --- |
 | SwiftGuest list + detail | [SPEC-0001](../specs/SPEC-0001-swiftguest-read-only-views.md) | Implemented on held branch `add-swiftguest-views`, to be rebased |
 | SwiftGuestClass list + detail | — | Planned |
 | SwiftGuestPool list + detail (replicas, rollout) | — | Planned |
@@ -28,7 +28,7 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 ### M2 — Snapshots and migrations (read-only)
 
 | Feature | Spec | Status |
-|---|---|---|
+| --- | --- | --- |
 | SwiftSnapshot list + detail | — | Planned |
 | SwiftRestore list + detail | — | Planned |
 | SwiftSnapshotSchedule list + detail | — | Planned |
@@ -37,14 +37,14 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 ### M3 — GPU views (read-only)
 
 | Feature | Spec | Status |
-|---|---|---|
+| --- | --- | --- |
 | SwiftGPUProfile list + detail | — | Planned |
 | SwiftGPUNode list + detail (per-node inventory) | — | Planned |
 
 ### M4 — Sandbox views (read-only)
 
 | Feature | Spec | Status |
-|---|---|---|
+| --- | --- | --- |
 | SwiftSandbox list + detail | — | Planned |
 | SwiftSandboxPool list + detail | — | Planned |
 | Sandbox logs | — | Planned (feasibility: read via launcher pod) |
@@ -52,7 +52,7 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 ### M5 — Fleet view (read-only)
 
 | Feature | Spec | Status |
-|---|---|---|
+| --- | --- | --- |
 | Cluster (fleet.kubeswift.io) list + detail | — | Planned |
 
 ### M6 — Actions and creation forms
@@ -61,7 +61,7 @@ kubeswift-ui offers create wizards and action dialogs. For the extension this
 means (each item needs its own spec before implementation):
 
 | Feature | Spec | Status |
-|---|---|---|
+| --- | --- | --- |
 | Guest actions: start/stop (runPolicy), delete | — | Planned |
 | Create SwiftGuest (form) | — | Planned |
 | Create SwiftGuestClass / Pool / Image / Kernel / SeedProfile (forms) | — | Planned |
@@ -72,14 +72,14 @@ means (each item needs its own spec before implementation):
 ### M7 — Console and exec
 
 | Feature | Spec | Status |
-|---|---|---|
+| --- | --- | --- |
 | VM serial console | — | Planned (feasibility: via launcher pod, no gateway) |
 | Sandbox exec | — | Planned (feasibility study required) |
 
 ### Cross-cutting
 
 | Item | Status |
-|---|---|
+| --- | --- |
 | E2E test infrastructure (kind + CRDs + simulated statuses + Playwright) | Planned, prerequisite for M1 completion (see [TESTING.md](TESTING.md)) |
 | Overview/dashboard page (counts, phases) | Planned, after M2 |
 

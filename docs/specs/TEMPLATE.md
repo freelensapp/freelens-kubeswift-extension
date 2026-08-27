@@ -1,8 +1,8 @@
 # SPEC-NNNN: Title
 
 - **Status:** Draft | Approved | Implemented | Verified | Superseded
-- **Milestone:** M<n> (see [ROADMAP.md](../development/ROADMAP.md))
-- **KubeSwift version reviewed:** v<x.y.z>
+- **Milestone:** `M<n>` (see [ROADMAP.md](../development/ROADMAP.md))
+- **KubeSwift version reviewed:** `v<x.y.z>`
 - **Author / date:**
 
 ## Goal
@@ -28,9 +28,9 @@ What is included. What is explicitly excluded (and where it goes instead).
 
 ## Tests (non-regression list)
 
-- Unit: <test file>: <cases>
-- Integration: <what the harness asserts>
-- E2E: <Playwright scenario>
+- Unit: `<test file>`: `<cases>`
+- Integration: `<what the harness asserts>`
+- E2E: `<Playwright scenario>`
 - Manual verification (if any): exact steps, expected outcome, and the
   recorded result (date, tester).
 
