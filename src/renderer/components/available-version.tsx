@@ -21,17 +21,17 @@ interface VersionVariant<T extends AvailableVersionPageProps> {
  * Tries versions in order and renders the first available one.
  * Shows a helpful message if no versions are available (CRD not installed).
  *
- * @param resourceName - Human-readable resource name (e.g., "OCI Repositories")
+ * @param resourceName - Human-readable resource name (e.g., "SwiftGuests")
  * @param variants - Array of version variants, ordered by preference
  * @returns A page component that auto-detects a valid API version if present
  *
  * @example
  * ```tsx
  * createAvailableVersionPage(
- *   "Examples",
+ *   "SwiftGuests",
  *   [
- *     { kubeObjectClass: ExamplesV1alpha2, PageComponent: ExamplesV1alpha2, version: "v1alpha2" },
- *     { kubeObjectClass: ExamplesV1alpha1, PageComponent: ExamplesV1alpha1, version: "v1alpha1" },
+ *     { kubeObjectClass: SwiftGuestV1alpha2, PageComponent: SwiftGuestsPageV1alpha2, version: "v1alpha2" },
+ *     { kubeObjectClass: SwiftGuestV1alpha1, PageComponent: SwiftGuestsPageV1alpha1, version: "v1alpha1" },
  *   ]
  * );
  * ```

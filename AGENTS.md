@@ -10,8 +10,8 @@ This repository contains the official Freelens extension for KubeSwift
 (github.com/kubeswift-io), which shows KubeSwift virtual machine resources
 (SwiftGuest, SwiftGuestPool, SwiftSnapshot, SwiftMigration, and the other
 CRDs) inside Freelens. It was scaffolded from freelens-example-extension;
-example content still present is being replaced as the KubeSwift views are
-implemented.
+the example content has been removed and the KubeSwift views are being
+implemented milestone by milestone (see `docs/development/ROADMAP.md`).
 
 - **Language**: TypeScript 5.9.3
 - **Runtime**: Node.js >= 22.0.0, Freelens >= 1.10.3
@@ -65,20 +65,35 @@ pnpm clean:dts            # Remove generated *.d.scss.ts files
 pnpm clean:all            # Clean everything (dts, node_modules, out, tgz)
 ```
 
+## Development process (binding)
+
+This repository is developed spec-first. Before implementing anything, read:
+
+- `docs/development/PROCESS.md` — the spec-driven workflow (spec before
+  code, docs updated in the same PR, manual-testing escalation to Roberto)
+- `docs/development/ROADMAP.md` — scope and progress toward v1.0.0
+- `docs/development/ARCHITECTURE.md` — CRD-native architecture, licensing
+  boundary, reference repositories
+- `docs/development/TESTING.md` — required test layers (unit, integration,
+  Playwright E2E, agent-driven checks via Playwright MCP) and the
+  non-regression policy
+- `docs/specs/` — one spec per feature; no feature PR without one
+
 ## Architecture
 
 ```text
 src/
   main/index.ts            # Extension entry point (main process, CJS)
   renderer/index.tsx       # Extension entry point (renderer process, CJS)
-  renderer/api/gateway-api/ # K8s object model classes (one file per CRD)
-  renderer/details/gateway-api/ # Detail view components for CRDs
-  renderer/pages/gateway-api/  # Cluster page components
-  renderer/components/      # Shared components
-  renderer/icons/           # SVG icons
-  renderer/observer.ts      # MobX observer helper
-  renderer/utils.ts         # Utility functions (e.g., createHash)
-  common/utils.ts           # Common utilities (e.g., maybe)
+  renderer/api/<group>/    # K8s object model classes (one file per CRD),
+                           # e.g. renderer/api/kubeswift/
+  renderer/details/        # Detail view components for CRDs
+  renderer/pages/          # Cluster page components
+  renderer/components/     # Shared components
+  renderer/icons/          # SVG icons (original, never copied)
+  renderer/observer.ts     # MobX observer helper
+  renderer/utils.ts        # Utility functions (e.g., createHash)
+  common/utils.ts          # Common utilities (e.g., maybe)
 ```
 
 Build output goes to `out/`.
