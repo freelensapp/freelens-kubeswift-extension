@@ -10,8 +10,8 @@ This repository contains the official Freelens extension for KubeSwift
 (github.com/kubeswift-io), which shows KubeSwift virtual machine resources
 (SwiftGuest, SwiftGuestPool, SwiftSnapshot, SwiftMigration, and the other
 CRDs) inside Freelens. It was scaffolded from freelens-example-extension;
-example content still present is being replaced as the KubeSwift views are
-implemented.
+the example content has been removed and the KubeSwift views are being
+implemented milestone by milestone (see `docs/development/ROADMAP.md`).
 
 - **Language**: TypeScript 5.9.3
 - **Runtime**: Node.js >= 22.0.0, Freelens >= 1.10.3

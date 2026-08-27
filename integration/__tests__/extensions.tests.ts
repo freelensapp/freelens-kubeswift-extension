@@ -8,7 +8,12 @@ import * as utils from "../helpers/utils";
 
 import type { ConsoleMessage, ElectronApplication, Page } from "playwright";
 
-describe("extensions page tests", () => {
+// Smoke test for the packed extension: Freelens starts and renders, the
+// tarball built from this repository installs, the extension is listed as
+// enabled, and neither the renderer console nor the process output reports an
+// error while it activates. Assertions on the KubeSwift resource views are
+// added together with the views themselves (see docs/development/TESTING.md).
+describe("kubeswift extension", () => {
   let window: Page;
   let cleanup: undefined | (() => Promise<void>);
   const errorLogs: string[] = [];
@@ -129,7 +134,7 @@ describe("extensions page tests", () => {
   );
 
   it(
-    "installs an extension",
+    "installs and activates without errors",
     async () => {
       expect([...errorLogs, ...processErrorLogs]).toEqual([]);
     },
