@@ -27,38 +27,13 @@ KubeSwift Custom Resource Definitions (SwiftGuest, SwiftGuestPool,
 SwiftSnapshot, SwiftMigration, and more), reading the resources directly from
 the Kubernetes API.
 
-> Status: early development. The first milestone targets read-only views.
-> This repository was scaffolded from
-> [freelens-example-extension](https://github.com/freelensapp/freelens-example-extension);
-> parts of the example content are still present and will be replaced as the
-> KubeSwift views are implemented.
-
-Notable patterns demonstrated in this repository:
-
-- **Multiple API versions of the same CRD** -- the `Example` resource is
-  implemented for both `v1alpha1` and `v1alpha2`, each with separate typed
-  interfaces, detail views, list pages, and context menu items. The
-  v1alpha1 to v1alpha2 migration also illustrates a field rename with
-  inverted semantics (`active` to `suspended`).
-
-- **Auto-detection of the available API version** -- the
-  `createAvailableVersionPage` helper tries each registered version in
-  priority order at runtime, renders the page for the first version whose
-  store is available in the cluster, and shows a friendly message if the
-  CRD is not installed.
-
-- **Static methods instead of instance methods** -- Freelens creates plain
-  object copies of Kubernetes resources rather than class instances, so all
-  per-object logic is implemented as `static` methods on the KubeObject
-  subclass (e.g. `Example.getActive(object)`).
-
-- **Error boundary with `withErrorPage`** -- every component render is
-  wrapped in a `withErrorPage(props, fn)` helper that catches errors, logs
-  them, and renders a graceful error UI instead of crashing the panel.
-
-- **Persisted preferences with MobX** -- `ExamplePreferencesStore` shows
-  how to persist extension settings across restarts using
-  `Common.Store.ExtensionStore` with MobX `@observable` fields.
+Design, workflow, and test strategy are documented under
+[docs/development/](docs/development/):
+[ARCHITECTURE.md](docs/development/ARCHITECTURE.md) describes the CRD-native
+design and the licensing boundary with the KubeSwift repositories,
+[PROCESS.md](docs/development/PROCESS.md) the spec-driven development process,
+and [TESTING.md](docs/development/TESTING.md) the test layers every feature
+ships with.
 
 Visit the wiki page about [creating
 extensions](https://github.com/freelensapp/freelens/wiki/Creating-extensions)
@@ -67,35 +42,14 @@ for more information.
 ## Requirements
 
 - Kubernetes >= 1.24
-- Freelens >= 1.8.0
+- Freelens >= 1.10.3
 
 ## Supported APIs
 
-### example.freelens.app
-
-<!-- markdownlint-disable MD013 -->
-
-| API Version | Kind | Scope | Description |
-| --- | --- | --- | --- |
-| v1alpha1 | `Example` | Namespaced | Example custom resource (v1alpha1) |
-| v1alpha2 | `Example` | Namespaced | Example custom resource (v1alpha2) |
-
-<!-- markdownlint-enable MD013 -->
-
-To install Custom Resource Definitions for this example run:
-
-```sh
-kubectl apply -k examples/v1alpha1/crds
-kubectl apply -k examples/v1alpha2/crds
-```
-
-Example resources for testing:
-
-```sh
-kubectl apply -k examples/v1alpha2/test
-# or
-kubectl apply -k examples/v1alpha1/test
-```
+The views for the KubeSwift custom resources are being implemented milestone
+by milestone. The kinds covered by each milestone, and the ones still to
+come, are tracked in the [roadmap](docs/development/ROADMAP.md); this section
+lists the supported API versions as the views land.
 
 ## Install
 
