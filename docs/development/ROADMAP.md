@@ -18,7 +18,7 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| SwiftGuest list + detail | [SPEC-0001](../specs/SPEC-0001-swiftguest-read-only-views.md) | Implemented on held branch `add-swiftguest-views`, to be rebased |
+| SwiftGuest list + detail | [SPEC-0001](../specs/SPEC-0001-swiftguest-read-only-views.md) | In PR |
 | SwiftGuestClass list + detail | — | Planned |
 | SwiftGuestPool list + detail (replicas, rollout) | — | Planned |
 | SwiftImage list + detail | — | Planned |

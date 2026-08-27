@@ -1,8 +1,6 @@
 # SPEC-0001: SwiftGuest read-only list and detail views
 
-- **Status:** Implemented (on held branch `add-swiftguest-views`, to be
-  rebased onto main after the v1 bootstrap; written retroactively as the
-  first spec)
+- **Status:** Implemented (this PR)
 - **Milestone:** M1
 - **KubeSwift version reviewed:** v0.13.12
 - **Author / date:** Claude with Roberto, 2026-08-27
@@ -54,8 +52,10 @@ addition for `kubectl get sg -o wide` parity).
   (construction from fixture, phase/node/IP/restart helpers, boot source
   resolution with empty-string refs, osType default, GPU partition
   sentinel).
-- Integration: to be added when this branch is rebased (page opens, list
-  renders).
+- Integration: `integration/__tests__/extensions.tests.ts` — the packed
+  extension installs, is listed as enabled, and activates without renderer
+  or process errors. Asserting that the KubeSwift page opens and the guest
+  list renders is a follow-up on top of this harness.
 - E2E: planned with the M1 E2E infrastructure (kind + fixture guests).
 - Manual verification: none required for read-only views against the
   fixture cluster; behavior against a real KVM cluster is a known
@@ -63,6 +63,8 @@ addition for `kubectl get sg -o wide` parity).
 
 ## Notes and deviations
 
+- This spec is the first one of the repository and was written after the
+  implementation, from the code that is being merged with it.
 - The scaffold's AGENTS.md described `renderer/api/gateway-api/` paths that
   do not exist; the implementation followed the real repo layout
   (`renderer/api/<group>/`, flat `pages/`, flat `details/`).
