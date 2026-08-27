@@ -1,0 +1,20 @@
+@use "../vars";
+
+// Read-only rendering of a cloud-init document. The content is shown in full
+// (no truncation) and stays selectable, but it is never logged and never
+// reaches a table cell: it may embed credentials.
+.codeBlock {
+  margin: vars.$margin 0;
+  padding: vars.$padding;
+  max-height: 400px;
+  overflow: auto;
+  background-color: var(--contentColor);
+  border-radius: 3px;
+  color: var(--textColorPrimary);
+  font-family: monospace;
+  font-size: 0.9em;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}

@@ -1,0 +1,19 @@
+.page {
+  :global(.TableCell) {
+    &.source {
+      flex-grow: 1.5;
+    }
+
+    &.phase {
+      flex-grow: 0.5;
+    }
+
+    &.size {
+      flex-grow: 0.4;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

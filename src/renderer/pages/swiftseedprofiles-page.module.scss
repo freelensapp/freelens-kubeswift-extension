@@ -1,0 +1,15 @@
+.page {
+  :global(.TableCell) {
+    &.datasource {
+      flex-grow: 0.5;
+    }
+
+    &.userData {
+      flex-grow: 0.5;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

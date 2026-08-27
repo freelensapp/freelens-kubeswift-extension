@@ -7,6 +7,22 @@ import { Renderer } from "@freelensapp/extensions";
  * type is imported or derived from the KubeSwift sources themselves.
  */
 
+/**
+ * Kubernetes `resource.Quantity`, for example `2Gi`.
+ *
+ * The CRD schemas declare quantities as `x-kubernetes-int-or-string`, so a bare
+ * number is as valid on the wire as the usual string form.
+ */
+export type Quantity = number | string;
+
+/**
+ * Renders a quantity for display. Keeps `0` (a meaningful value) and maps an
+ * unset quantity to `undefined`, so callers can apply their own fallback.
+ */
+export function formatQuantity(value?: Quantity): string | undefined {
+  return value === undefined ? undefined : String(value);
+}
+
 /** Reference to another KubeSwift object living in the same namespace. */
 export interface LocalObjectReference {
   name?: string;

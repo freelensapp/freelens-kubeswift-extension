@@ -1,0 +1,27 @@
+.page {
+  :global(.TableCell) {
+    &.desired {
+      flex-grow: 0.3;
+    }
+
+    &.ready {
+      flex-grow: 0.3;
+    }
+
+    &.updated {
+      flex-grow: 0.3;
+    }
+
+    &.available {
+      flex-grow: 0.3;
+    }
+
+    &.failed {
+      flex-grow: 0.3;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

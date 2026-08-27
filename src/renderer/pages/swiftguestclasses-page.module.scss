@@ -1,0 +1,19 @@
+.page {
+  :global(.TableCell) {
+    &.cpu {
+      flex-grow: 0.3;
+    }
+
+    &.memory {
+      flex-grow: 0.4;
+    }
+
+    &.disk {
+      flex-grow: 0.4;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

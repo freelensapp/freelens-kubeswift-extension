@@ -1,0 +1,23 @@
+.page {
+  :global(.TableCell) {
+    &.artifact {
+      flex-grow: 1.5;
+    }
+
+    &.profile {
+      flex-grow: 0.5;
+    }
+
+    &.phase {
+      flex-grow: 0.5;
+    }
+
+    &.nodes {
+      flex-grow: 0.3;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

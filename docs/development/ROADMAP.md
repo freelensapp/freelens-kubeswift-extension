@@ -19,11 +19,11 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 | Feature | Spec | Status |
 | --- | --- | --- |
 | SwiftGuest list + detail | [SPEC-0001](../specs/SPEC-0001-swiftguest-read-only-views.md) | In PR |
-| SwiftGuestClass list + detail | — | Planned |
-| SwiftGuestPool list + detail (replicas, rollout) | — | Planned |
-| SwiftImage list + detail | — | Planned |
-| SwiftSeedProfile list + detail | — | Planned |
-| SwiftKernel list + detail | — | Planned |
+| SwiftGuestClass list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
+| SwiftGuestPool list + detail (replicas, rollout) | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
+| SwiftImage list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
+| SwiftSeedProfile list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
+| SwiftKernel list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
 
 ### M2 — Snapshots and migrations (read-only)
 
