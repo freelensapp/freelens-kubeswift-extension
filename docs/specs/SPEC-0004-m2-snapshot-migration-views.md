@@ -1,6 +1,7 @@
 # SPEC-0004: Read-only snapshot and migration views (M2)
 
-- **Status:** Implemented (this PR; formal review in the implementation PR)
+- **Status:** Verified (merged; the non-regression suites run green in CI on
+  main, E2E included)
 - **Milestone:** M2
 - **KubeSwift version reviewed:** v0.13.12
 - **Author / date:** Claude with Roberto, 2026-08-27

@@ -25,6 +25,14 @@ agent). Agents discover it via [AGENTS.md](../../AGENTS.md) and
 6. **Verification.** After merge, the spec status moves to Verified only
    when the non-regression tests run green in CI on main, plus a manual
    check when the spec requires one.
+7. **Post-merge closure (do not skip).** Merging a feature PR is not the
+   end of the loop: whoever merges immediately checks the CI runs on main
+   and then lands a small follow-up (PR or docs commit) that moves the
+   ROADMAP rows from "In PR" to "Done" and the spec Status to Verified.
+   A milestone is closed only when the docs on main say so. An
+   implementation PR can only write "In PR" about itself, so this step
+   can never be folded into the feature PR; it exists precisely because
+   it is otherwise the easiest thing to forget.
 
 ## Spec statuses
 

@@ -29,10 +29,10 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| SwiftSnapshot list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | In PR |
-| SwiftRestore list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | In PR |
-| SwiftSnapshotSchedule list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | In PR |
-| SwiftMigration list + detail (status, progress) | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | In PR |
+| SwiftSnapshot list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done |
+| SwiftRestore list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done |
+| SwiftSnapshotSchedule list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done |
+| SwiftMigration list + detail (status, progress) | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done |
 
 ### M3 — GPU views (read-only)
 
