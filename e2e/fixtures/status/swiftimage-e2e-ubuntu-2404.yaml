@@ -1,0 +1,24 @@
+# Merge patch applied to the status subresource of swiftimage/e2e-ubuntu-2404.
+# A prepared image: imported as qcow2, converted to raw, ready to clone.
+status:
+  phase: Ready
+  sourceFormat: qcow2
+  preparedFormat: raw
+  preparedArtifact:
+    format: raw
+    size: 10Gi
+    pvcRef:
+      name: e2e-ubuntu-2404-prepared
+      namespace: kubeswift-e2e
+  cloneSeed:
+    kind: VolumeSnapshot
+    name: e2e-ubuntu-2404-seed
+    namespace: kubeswift-e2e
+    sourceSizeBytes: 10737418240
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ArtifactPrepared
+      message: The prepared artifact is available.
+      lastTransitionTime: "2026-08-27T08:29:00Z"
+      observedGeneration: 1

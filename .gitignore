@@ -18,6 +18,12 @@
 
 /freelens/
 
+# Kubeconfig and state of the disposable E2E cluster (e2e/scripts/lib.sh)
+/.e2e/
+
+# Screenshots taken when an E2E assertion fails
+/e2e-artifacts/
+
 .turbo
 
 /coverage/

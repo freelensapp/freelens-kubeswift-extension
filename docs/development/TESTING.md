@@ -16,25 +16,87 @@ without its non-regression tests is not done (see
 
 ### 2. Integration tests (existing harness, `integration/`)
 
-The scaffold's harness downloads a real Freelens, installs the built
-extension, and drives it. Keep it green on every PR; extend it when a
-feature adds a new page (page opens, list renders).
+The harness downloads a real Freelens, installs the built extension, and
+drives it (`integration/__tests__/extensions.tests.ts`: the extension
+installs, is listed as enabled, and activates without errors). Keep it green
+on every PR.
+
+Both this suite and the E2E one run **inside a checkout of
+`freelensapp/freelens`**: their files are copied next to the Freelens ones,
+under `integration/__tests__` and `integration/helpers`, and are run by the
+Freelens `test:integration` script, which owns the Playwright/Electron launch
+helpers (`../helpers/utils`). That is why relative imports of `../helpers/*`
+resolve when the tests run but not inside this repository, and why
+`integration/` is outside the `tsconfig.json` include list.
+
+`integration/helpers/` holds what the two suites share: the error collector,
+the extension install flow, and the cluster, sidebar and table helpers.
 
 ### 3. E2E tests (Playwright, against a kind cluster)
 
-Planned infrastructure (prerequisite for completing M1):
+A disposable `kind` cluster with the KubeSwift CRDs applied and **fake
+resources with simulated statuses** written by our fixtures (no KVM, no real
+VMs), driven through a real Freelens by Playwright's Electron API.
 
-- A `kind` cluster with the KubeSwift CRDs applied and **fake resources
-  with simulated statuses** written by our fixtures (no KVM, no real VMs).
-  The CRDs are applied from the upstream repo at a pinned version at test
-  runtime; the YAML is not vendored into this repository.
-  Hypothesis to confirm: statuses are fully simulable
-  because the CRDs do not prune unknown status fields (initial check on
-  SwiftGuest suggests yes; verify per CRD).
-- Playwright drives the real Freelens (Electron) with the extension
-  installed against that cluster: navigation, list contents, detail
-  panels, actions (from M6 on).
-- Runs in CI on Linux runners; also runnable locally.
+#### Prerequisites
+
+- A running Docker daemon, plus `kind` and `kubectl` on `PATH`.
+- A checkout of `freelensapp/freelens` in `./freelens` (gitignored), with the
+  app already built (`pnpm build` and the electron-builder step, as in
+  `.github/workflows/e2e-tests.yaml`). Point `FREELENS_DIR` elsewhere to use
+  another checkout.
+
+#### Commands
+
+| Command | What it does |
+| --- | --- |
+| `pnpm e2e:cluster:up` | Creates the cluster, applies the CRDs, the fixtures and their statuses |
+| `pnpm e2e:cluster:down` | Deletes the cluster and its kubeconfig |
+| `pnpm e2e` | Cluster up, run the suite, cluster down |
+
+`E2E_KEEP_CLUSTER=1 pnpm e2e` leaves the cluster running for inspection.
+`pnpm e2e:cluster:up` is idempotent, so it doubles as "re-apply the fixtures".
+
+#### Layout
+
+- `e2e/scripts/` — cluster lifecycle. `lib.sh` is the single place where the
+  KubeSwift version, the kind and Kubernetes versions, the cluster name and
+  the kubeconfig path are pinned.
+- `e2e/fixtures/` — hand-written custom resources for the six M1 CRDs.
+  `fixtures/status/` holds the merge patches applied to the status
+  subresources with `kubectl patch --subresource=status`, since no KubeSwift
+  controller runs in the cluster.
+- `e2e/__tests__/kubeswift-e2e.tests.ts` — the suite: it installs the packed
+  extension, connects the cluster, points the namespace filter at the fixture
+  namespace, then opens every KubeSwift page and asserts the fixture rows and
+  one detail panel per CRD.
+
+A freshly connected cluster shows the `default` namespace only, not all of
+them, so the suite moves the namespace filter once after connecting.
+Otherwise every namespaced list looks empty while cluster-scoped ones (the
+SwiftGuestClasses page) still fill, which is the signature of that mistake.
+
+When an assertion fails the suite screenshots the window into
+`e2e-artifacts/` and reports the rows, or the sidebar test ids, it did find.
+CI uploads that directory as an artifact when the job fails.
+
+The CRDs are fetched from `kubeswift-io/kubeswift` at the pinned tag when the
+cluster is created. Nothing from KubeSwift is vendored into this repository
+(it is AGPL-3.0, this extension is MIT — see
+[ARCHITECTURE.md](ARCHITECTURE.md)).
+
+#### What the suite never touches
+
+- The developer's `~/.kube/config`: `kind` writes to a dedicated kubeconfig
+  under `.e2e/`, and the suite copies it into the sandboxed Freelens user data
+  directory (`<FREELENS_INTEGRATION_TESTING_DIR>/Freelens/kubeconfigs`), which
+  Freelens always watches. Freelens resolves `~/.kube` through
+  `os.userInfo().homedir`, which ignores `$HOME`, so a sandboxed HOME would
+  not have been enough.
+- The Freelens checkout's own tests: our files are copied in under their own
+  names and selected by name when the runner starts.
+
+Runs in CI on every PR through `.github/workflows/e2e-tests.yaml`.
 
 ### 4. Agent-driven testing during development (Playwright MCP)
 

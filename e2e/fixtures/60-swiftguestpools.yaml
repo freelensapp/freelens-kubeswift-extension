@@ -1,0 +1,35 @@
+# Pool of three replicas. Its injected status reports two ready and one failed,
+# so the list shows a desired count that differs from the ready one.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuestPool
+metadata:
+  name: e2e-pool
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  replicas: 3
+  spreadPolicy: Spread
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  service:
+    type: ClusterIP
+    ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+        protocol: TCP
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: e2e-pool
+    spec:
+      guestClassRef:
+        name: e2e-small
+      imageRef:
+        name: e2e-ubuntu-2404
+      osType: linux
+      runPolicy: Running

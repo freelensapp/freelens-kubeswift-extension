@@ -68,7 +68,16 @@ Guest Classes, Guest Pools, Images, Seed Profiles, Kernels.
   empty/missing status). Target: comparable coverage per CRD.
 - Integration: harness keeps asserting install + activation (extending to
   page assertions is tracked as an M1 follow-up together with SPEC-0001).
-- E2E: covered by the M1 E2E infrastructure spec once it lands.
+- E2E: `e2e/__tests__/kubeswift-e2e.tests.ts`, one case per CRD, each
+  asserting the fixture rows and one detail panel: "lists the
+  SwiftGuestClasses with their sizing" (CPU, memory, root disk), "lists the
+  SwiftGuestPools with desired and ready replicas" (a pool mid-rollout,
+  desired 3 and ready 2), "lists the SwiftImages with their source and
+  phase" (OCI reference, `Ready`, prepared size), "lists the
+  SwiftSeedProfiles without leaking their content" (datasource and
+  `Inline`, never the user data itself) and "lists the SwiftKernels with
+  their artifact and node progress" (artifact, profile, `Ready`, `1/1`).
+  Fixtures: `e2e/fixtures/`.
 - Manual verification: none for fixture-based rendering; real-cluster
   behavior stays in the known manual-only areas (TESTING.md).
 

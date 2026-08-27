@@ -10,7 +10,14 @@
   ],
   "project": ["*.{js,mjs,ts}", "out/**/*.js!", "src/**/*.{ts,tsx}"],
 
-  "ignoreBinaries": ["electron-rebuild", "yq"],
+  // The E2E scripts are run from the pnpm scripts by path, not as installed binaries
+  "ignoreBinaries": [
+    "electron-rebuild",
+    "yq",
+    "e2e/scripts/cluster-down.sh",
+    "e2e/scripts/cluster-up.sh",
+    "e2e/scripts/e2e.sh"
+  ],
   "ignoreDependencies": [
     // used as vite plugin
     "@babel/plugin-proposal-decorators"

@@ -3,132 +3,44 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-import { expect } from "@jest/globals";
+import * as kubeswift from "../helpers/kubeswift-extension";
 import * as utils from "../helpers/utils";
 
-import type { ConsoleMessage, ElectronApplication, Page } from "playwright";
+import type { ElectronApplication, Page } from "playwright";
 
 // Smoke test for the packed extension: Freelens starts and renders, the
 // tarball built from this repository installs, the extension is listed as
 // enabled, and neither the renderer console nor the process output reports an
-// error while it activates. Assertions on the KubeSwift resource views are
-// added together with the views themselves (see docs/development/TESTING.md).
+// error while it activates. The assertions on the KubeSwift resource views
+// live in the E2E suite, which needs a cluster with the CRDs and the fixtures
+// (see `e2e/` and docs/development/TESTING.md).
 describe("kubeswift extension", () => {
+  let app: ElectronApplication;
   let window: Page;
   let cleanup: undefined | (() => Promise<void>);
-  const errorLogs: string[] = [];
-  const processErrorLogs: string[] = [];
-  const outputErrorPattern = /\[out\]\s*error:/i;
-  const ansiEscapePattern = /\u001b\[[0-9;]*m/g;
-  let processOutputBuffer = "";
-  let restoreProcessOutputHooks: undefined | (() => void);
 
-  const collectOutputErrors = (chunk: string | Uint8Array) => {
-    const text = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-    processOutputBuffer += text;
-
-    // Keep buffer bounded while preserving enough tail to match split patterns across chunks.
-    if (processOutputBuffer.length > 200_000) {
-      processOutputBuffer = processOutputBuffer.slice(-20_000);
-    }
-
-    const normalizedOutput = processOutputBuffer.replaceAll(ansiEscapePattern, "");
-
-    if (outputErrorPattern.test(normalizedOutput)) {
-      processErrorLogs.push(normalizedOutput.trim());
-      processOutputBuffer = "";
-    }
-  };
-
-  const logger = (msg: ConsoleMessage) => {
-    const text = msg.text();
-    const normalizedText = text.replaceAll(ansiEscapePattern, "");
-
-    console.log(text);
-
-    // Some app logs are emitted as "log" messages, so inspect both console type and message content.
-    if (msg.type() === "error" || outputErrorPattern.test(normalizedText)) {
-      errorLogs.push(`[${msg.type()}] ${normalizedText}`);
-    }
-  };
+  const errorCollector = kubeswift.createErrorCollector();
 
   beforeAll(async () => {
-    let app: ElectronApplication;
+    // Hook the process output before the app starts, so that failures during
+    // its startup are captured too.
+    errorCollector.start();
 
-    const originalStdoutWrite = process.stdout.write.bind(process.stdout);
-    const originalStderrWrite = process.stderr.write.bind(process.stderr);
+    ({ app, window, cleanup } = await utils.start());
+    errorCollector.watch(window);
 
-    process.stdout.write = ((chunk, encoding, cb) => {
-      collectOutputErrors(chunk);
-
-      return originalStdoutWrite(chunk, encoding as never, cb as never);
-    }) as typeof process.stdout.write;
-
-    process.stderr.write = ((chunk, encoding, cb) => {
-      collectOutputErrors(chunk);
-
-      return originalStderrWrite(chunk, encoding as never, cb as never);
-    }) as typeof process.stderr.write;
-
-    restoreProcessOutputHooks = () => {
-      process.stdout.write = originalStdoutWrite;
-      process.stderr.write = originalStderrWrite;
-    };
-
-    ({ window, cleanup, app } = await utils.start());
-    window.on("console", logger);
-    console.log("await utils.clickWelcomeButton");
     await utils.clickWelcomeButton(window);
-
-    // Navigate to extensions page
-    console.log("await app.evaluate");
-    await app.evaluate(async ({ app }) => {
-      await app.applicationMenu
-        ?.getMenuItemById(process.platform === "darwin" ? "mac" : "file")
-        ?.submenu?.getMenuItemById("navigate-to-extensions")
-        ?.click();
-    });
-
-    // Trigger extension install
-    const textbox = window.getByPlaceholder("Name or file path or URL");
-    console.log("await textbox.fill");
-    await textbox.fill(process.env.EXTENSION_PATH || "@freelensapp/kubeswift-extension");
-    const install_button_selector = 'button[class*="Button install-module__button--"]';
-    console.log("await window.click [data-waiting=false]");
-    await window.click(install_button_selector.concat("[data-waiting=false]"));
-
-    // Expect extension to be listed in installed list and enabled
-    console.log('await window.waitForSelector div[class*="installed-extensions-module__extensionName--"]');
-    const installedExtensionName = await (
-      await window.waitForSelector('div[class*="installed-extensions-module__extensionName--"]')
-    ).textContent();
-    expect(installedExtensionName).toBe("@freelensapp/kubeswift-extension");
-    const installedExtensionState = await (
-      await window.waitForSelector('div[class*="installed-extensions-module__enabled--"]')
-    ).textContent();
-    expect(installedExtensionState).toBe("Enabled");
-    // Dismiss any notifications so a notification still in its enter animation
-    // does not intercept pointer events on the elements behind it.
-    console.log("dismiss notifications");
-    const notificationCloseSelector =
-      'i[data-testid*="close-notification-for-notification_"], div[class*="close-button-module__closeButton--"][aria-label="Close"]';
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const closeButtons = await window.$$(notificationCloseSelector);
-      if (closeButtons.length === 0) break;
-      for (const closeButton of closeButtons) {
-        await closeButton.click({ force: true }).catch(() => {});
-      }
-      await window.waitForTimeout(200);
-    }
+    await kubeswift.installExtension(app, window);
+    await kubeswift.dismissNotifications(window);
   }, 120 * 1000);
 
   afterAll(
     async () => {
-      // Keep listeners active through cleanup to catch late shutdown errors in CI logs.
+      // Keep the listeners active through cleanup, so that late shutdown errors
+      // still reach the CI logs.
       await cleanup?.();
-      window.off("console", logger);
-      restoreProcessOutputHooks?.();
-      expect([...errorLogs, ...processErrorLogs]).toEqual([]);
+      errorCollector.stop(window);
+      assertNoErrors();
     },
     10 * 60 * 1000,
   );
@@ -136,8 +48,16 @@ describe("kubeswift extension", () => {
   it(
     "installs and activates without errors",
     async () => {
-      expect([...errorLogs, ...processErrorLogs]).toEqual([]);
+      assertNoErrors();
     },
     100 * 60 * 1000,
   );
+
+  function assertNoErrors() {
+    const errors = errorCollector.errors();
+
+    if (errors.length > 0) {
+      throw new Error(`Freelens reported errors while the extension was active:\n${errors.join("\n")}`);
+    }
+  }
 });

@@ -80,7 +80,7 @@ means (each item needs its own spec before implementation):
 
 | Item | Status |
 | --- | --- |
-| E2E test infrastructure (kind + CRDs + simulated statuses + Playwright) | Planned, prerequisite for M1 completion (see [TESTING.md](TESTING.md)) |
+| E2E test infrastructure (kind + CRDs + simulated statuses + Playwright) | [SPEC-0003](../specs/SPEC-0003-e2e-infrastructure.md) — In PR (see [TESTING.md](TESTING.md)) |
 | Overview/dashboard page (counts, phases) | Planned, after M2 |
 
 ## Out of scope for v1

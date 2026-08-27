@@ -1,0 +1,48 @@
+# Disk-boot guest, the one the suite checks in detail. Its status is injected by
+# cluster-up.sh: phase Running, a node, an IP and a non-zero restart count.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-running
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  seedProfileRef:
+    name: e2e-seed-basic
+  osType: linux
+  runPolicy: Running
+  network:
+    binding: nat
+    ports:
+      - name: ssh
+        port: 22
+        targetPort: 22
+        protocol: TCP
+        expose: ClusterIP
+  storage:
+    accessMode: ReadWriteOnce
+    volumeMode: Block
+---
+# Kernel-boot guest left without any status, the way a guest looks between
+# creation and the first reconciliation. The list renders its phase and IP as
+# "N/A" and its restart count as 0.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-pending
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-large
+  kernelRef:
+    name: e2e-kernel-6-12
+  kernelCmdline: console=ttyS0 root=/dev/vda1
+  osType: linux
+  runPolicy: Running

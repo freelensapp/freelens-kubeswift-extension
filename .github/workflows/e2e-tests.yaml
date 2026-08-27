@@ -1,4 +1,4 @@
-name: Integration tests
+name: E2E tests
 
 on:
   push:
@@ -12,13 +12,9 @@ on:
 permissions:
   contents: read
 
-env:
-  kind_version: 0.32.0 # datasource=github-releases depName=kubernetes-sigs/kind
-  kubernetes_version: 1.36.1 # datasource=docker depName=kindest/node
-
 jobs:
-  test-integration:
-    name: "integration tests with Freelens ${{ matrix.freelens_version }}"
+  test-e2e:
+    name: "E2E tests with Freelens ${{ matrix.freelens_version }}"
 
     strategy:
       fail-fast: false
@@ -26,8 +22,11 @@ jobs:
         include:
           - freelens_version: v1.10.3
 
+    # Same runner as the integration workflow: kind needs a Docker daemon, and
+    # that workflow already provisions a kind cluster here, so both Docker and
+    # the arm64 Freelens build are known to work on this image.
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     env:
       DO_NOT_TRACK: "1"
@@ -89,7 +88,27 @@ jobs:
         run: pnpm pack
 
       - name: Get extension path
-        run: echo "EXTENSION_PATH=$(find $(pwd) -name '*.tgz')" >> ${GITHUB_ENV}
+        run: echo "EXTENSION_PATH=$(find $(pwd) -maxdepth 1 -name '*.tgz')" >> ${GITHUB_ENV}
+
+      # kind and kubectl are installed from the versions pinned in
+      # e2e/scripts/lib.sh, so the workflow and a developer machine agree.
+      - name: Install kind and kubectl
+        run: |
+          set -euo pipefail
+          # shellcheck source=e2e/scripts/lib.sh
+          source e2e/scripts/lib.sh
+          case "$(uname -m)" in
+            aarch64 | arm64) arch=arm64 ;;
+            *) arch=amd64 ;;
+          esac
+          curl -sSfL -o /tmp/kind "https://kind.sigs.k8s.io/dl/v${KIND_VERSION}/kind-linux-${arch}"
+          sudo install -m 0755 /tmp/kind /usr/local/bin/kind
+          if ! command -v kubectl >/dev/null 2>&1; then
+            curl -sSfL -o /tmp/kubectl "https://dl.k8s.io/release/v${KUBERNETES_VERSION}/bin/linux/${arch}/kubectl"
+            sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+          fi
+          kind version
+          kubectl version --client
 
       - name: Checkout app
         if: matrix.freelens_version != 'latest'
@@ -154,15 +173,10 @@ jobs:
           restore-keys: |
             ubuntu-24.04-arm-turborepo-
 
-      # The packaged Electron app does not depend on the extension under test
-      # (the extension .tgz is installed at runtime by the integration tests),
-      # so the build output is deterministic for a given Freelens version and
-      # Electron/electron-builder version. Restore it to skip the expensive app
-      # build, native rebuild, prod node_modules deploy and electron-builder run
-      # on a cache hit. The cache key is exact (no restore-keys) so a partial
-      # match never produces a stale or incomplete dist directory. The matching
-      # save step runs only after a successful build, so a failed build never
-      # poisons the cache with an incomplete dist.
+      # The packaged app does not depend on the extension under test, so its
+      # build output is deterministic for a given Freelens and Electron version.
+      # The key matches the one of the integration workflow on purpose: both
+      # workflows build the same app and share the cache entry.
       - name: Restore Electron build cache
         id: electron-build-cache
         uses: actions/cache/restore@v6
@@ -213,23 +227,6 @@ jobs:
         working-directory: freelens
         run: pnpm --color=always --stream build
 
-      # The helpers are shared with the E2E suite and keep their own names, so
-      # they land next to the Freelens ones instead of replacing them.
-      - name: Copy tests from plugin to app
-        run: |
-          rm -f freelens/freelens/integration/__tests__/*
-          cp integration/__tests__/* freelens/freelens/integration/__tests__
-          cp integration/helpers/* freelens/freelens/integration/helpers
-
-      - name: Start KinD cluster (Linux)
-        if: runner.os == 'Linux'
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: freelens
-          version: v${{ env.kind_version }}
-          node_image: kindest/node:v${{ env.kubernetes_version }}
-          wait: 5m
-
       - name: Build extra resources
         id: build-resources
         if: steps.electron-build-cache.outputs.cache-hit != 'true'
@@ -279,9 +276,6 @@ jobs:
           DEBUG: electron-builder,electron-builder:*
           npm_config_user_agent: pnpm
 
-      # Save only after a successful build (this step is not reached if the
-      # electron-builder run above failed), so the cache never holds a partial
-      # dist directory.
       - name: Save Electron build cache
         if: steps.electron-build-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -296,23 +290,42 @@ jobs:
           rm -rf freelens/node_modules
           mv freelens/node_modules_dev freelens/node_modules
 
-      - name: Run integration tests
-        id: integration-tests-linux
-        working-directory: freelens
+      # Creates the kind cluster, applies the KubeSwift CRDs at the pinned
+      # version and the fixtures, and injects their statuses.
+      - name: Start the KubeSwift fixture cluster
+        run: pnpm e2e:cluster:up
+
+      - name: Run E2E tests
+        id: e2e-tests
         run: |
-          sudo chown root:root freelens/dist/linux*-unpacked/chrome-sandbox
-          sudo chmod 4755 freelens/dist/linux*-unpacked/chrome-sandbox
-          timeout 600 xvfb-run -a pnpm --color=always test:integration
+          sudo chown root:root freelens/freelens/dist/linux*-unpacked/chrome-sandbox
+          sudo chmod 4755 freelens/freelens/dist/linux*-unpacked/chrome-sandbox
+          timeout 1200 ./e2e/scripts/run-suite.sh
         env:
           DEBUG: pw:browser
         continue-on-error: true
 
-      - name: Run integration tests (retry)
-        if: steps.integration-tests-linux.outcome == 'failure'
-        working-directory: freelens
-        run: |
-          sudo chown root:root freelens/dist/linux*-unpacked/chrome-sandbox
-          sudo chmod 4755 freelens/dist/linux*-unpacked/chrome-sandbox
-          timeout 600 xvfb-run -a pnpm --color=always test:integration
+      - name: Run E2E tests (retry)
+        if: steps.e2e-tests.outcome == 'failure'
+        run: timeout 1200 ./e2e/scripts/run-suite.sh
         env:
           DEBUG: pw:browser
+
+      - name: Upload the E2E screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-screenshots-${{ matrix.freelens_version }}
+          path: e2e-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Dump the cluster state
+        if: failure()
+        run: |
+          kubectl --kubeconfig .e2e/kubeconfig --context kind-kubeswift-e2e get all,swiftguests,swiftguestclasses,swiftguestpools,swiftimages,swiftseedprofiles,swiftkernels --all-namespaces --output wide || true
+          kubectl --kubeconfig .e2e/kubeconfig --context kind-kubeswift-e2e get swiftguests,swiftguestpools,swiftimages,swiftkernels --namespace kubeswift-e2e --output yaml || true
+
+      - name: Delete the KubeSwift fixture cluster
+        if: always()
+        run: pnpm e2e:cluster:down

@@ -1,0 +1,45 @@
+# Merge patch applied to the status subresource of swiftguest/e2e-guest-running.
+# No KubeSwift controller runs in the E2E cluster, so the status a real
+# controller would write is injected here instead.
+status:
+  phase: Running
+  nodeName: kubeswift-e2e-control-plane
+  restartCount: 2
+  lastRestartTime: "2026-08-27T08:30:00Z"
+  network:
+    primaryIP: 10.244.1.21
+    ready: true
+    interface: eth0
+    interfaces:
+      - name: eth0
+        ip: 10.244.1.21
+        # Quoted: unquoted, YAML reads a MAC address as a sexagesimal integer.
+        mac: "52:54:00:12:34:56"
+    exposedPorts:
+      - name: ssh
+        port: 22
+        targetPort: 22
+        protocol: TCP
+    serviceRef:
+      name: e2e-guest-running
+  runtime:
+    hypervisor: cloud-hypervisor
+    pid: 4242
+  storage:
+    accessMode: ReadWriteOnce
+    storageClassName: standard
+    volumeMode: Block
+  podRef:
+    apiVersion: v1
+    kind: Pod
+    name: e2e-guest-running-launcher
+    namespace: kubeswift-e2e
+  console:
+    serialSocket: /var/run/kubeswift/e2e-guest-running/serial.sock
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: GuestRunning
+      message: The guest is running.
+      lastTransitionTime: "2026-08-27T08:30:00Z"
+      observedGeneration: 1

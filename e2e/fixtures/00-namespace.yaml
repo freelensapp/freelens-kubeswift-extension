@@ -1,0 +1,8 @@
+# Namespace of every namespaced E2E fixture. The name is fixed: the fixture
+# manifests declare it explicitly so that they stay valid when applied by hand.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e

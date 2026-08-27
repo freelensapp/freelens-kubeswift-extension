@@ -1,0 +1,34 @@
+# SwiftGuestClass is cluster-scoped and its CRD declares no status subresource,
+# so these fixtures are spec-only: the list shows CPU, memory and root disk
+# straight from the spec.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuestClass
+metadata:
+  name: e2e-small
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  cpu: 2
+  memory: 4Gi
+  rootDisk:
+    format: qcow2
+    size: 20Gi
+  # Quoted: unquoted `off` is a YAML boolean.
+  coreScheduling: "off"
+---
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuestClass
+metadata:
+  name: e2e-large
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  cpu: 8
+  memory: 16Gi
+  rootDisk:
+    format: raw
+    size: 100Gi
+  coreScheduling: vm
+  storage:
+    accessMode: ReadWriteOnce
+    volumeMode: Block

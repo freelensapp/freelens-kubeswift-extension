@@ -1,0 +1,17 @@
+# Merge patch applied to the status subresource of swiftguestpool/e2e-pool.
+# Three desired replicas, two of them ready: the list must show both numbers.
+status:
+  replicas: 3
+  readyReplicas: 2
+  updatedReplicas: 3
+  availableReplicas: 2
+  failedReplicas: 1
+  serviceRef: e2e-pool
+  currentTemplateHash: 7c4f9a2b
+  conditions:
+    - type: Progressing
+      status: "True"
+      reason: RollingUpdate
+      message: One replica is still being replaced.
+      lastTransitionTime: "2026-08-27T08:31:00Z"
+      observedGeneration: 1

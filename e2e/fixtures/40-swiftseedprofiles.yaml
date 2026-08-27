@@ -1,0 +1,21 @@
+# Cloud-init NoCloud profile with inline documents. The content is deliberately
+# trivial and carries no credentials: the detail panel renders it verbatim, and
+# these fixtures end up in CI logs and screenshots.
+apiVersion: seed.kubeswift.io/v1alpha1
+kind: SwiftSeedProfile
+metadata:
+  name: e2e-seed-basic
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  datasource: NoCloud
+  metaData: |
+    instance-id: e2e-guest-running
+    local-hostname: e2e-guest-running
+  userData: |-
+    #cloud-config
+    hostname: e2e-guest-running
+    package_update: false
+    runcmd:
+      - [sh, -c, "echo freelens kubeswift e2e fixture > /etc/motd"]

@@ -1,0 +1,20 @@
+# Guest disk image imported from an OCI repository. The registry reference is
+# fictional: nothing is pulled, the status is injected by cluster-up.sh.
+apiVersion: image.kubeswift.io/v1alpha1
+kind: SwiftImage
+metadata:
+  name: e2e-ubuntu-2404
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  format: qcow2
+  osType: linux
+  cloneStrategy: snapshot
+  source:
+    oci:
+      repository: ghcr.io/freelensapp/kubeswift-e2e/ubuntu
+      # Quoted: unquoted 24.04 is a YAML float.
+      tag: "24.04"
+  rootDisk:
+    size: 10Gi

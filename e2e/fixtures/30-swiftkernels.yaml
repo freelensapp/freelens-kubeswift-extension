@@ -1,0 +1,15 @@
+# Kernel and initramfs OCI artifact for the kernel-boot guest. The registry
+# reference is fictional: nothing is pulled, the status is injected by
+# cluster-up.sh.
+apiVersion: kernel.kubeswift.io/v1alpha1
+kind: SwiftKernel
+metadata:
+  name: e2e-kernel-6-12
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  ociRef:
+    image: ghcr.io/freelensapp/kubeswift-e2e/kernel:6.12
+  profile: e2e-linux-6.12
+  kernelCmdline: console=ttyS0 reboot=k panic=1

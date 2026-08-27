@@ -1,0 +1,17 @@
+# Merge patch applied to the status subresource of swiftkernel/e2e-kernel-6-12.
+# The artifact is pulled on the single node of the kind cluster, so the list
+# shows one node ready out of one.
+status:
+  phase: Ready
+  kernelDigest: sha256:9b2c8f0e3a7d41c5b6e8d90a2f14c7b38e5a6d0c9f3b1e7a4d2c8b5f6a0e9d31
+  initramfsDigest: sha256:1d5e7c3b8a0f24d69e1c7b5a3f8d2016c4e9b7a5d3f1c8e6b0a4d2f7c9e5b3a18
+  nodeStatuses:
+    - nodeName: kubeswift-e2e-control-plane
+      phase: Ready
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ArtifactPulled
+      message: The kernel artifact is available on every candidate node.
+      lastTransitionTime: "2026-08-27T08:28:00Z"
+      observedGeneration: 1
