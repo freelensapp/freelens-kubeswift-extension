@@ -1,5 +1,10 @@
 # @freelensapp/kubeswift-extension
 
+> [!WARNING]
+> **Work in progress.** This extension is under active development toward its
+> first release, v1.0.0, and is not ready for use yet. Scope and progress are
+> tracked in the [roadmap](docs/development/ROADMAP.md).
+
 <!-- markdownlint-disable MD013 -->
 
 [![Home](https://img.shields.io/badge/%F0%9F%8F%A0-freelens.app-02a7a0)](https://freelens.app)
