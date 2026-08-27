@@ -1,7 +1,7 @@
 # SPEC-0002: Read-only views for the remaining M1 core CRDs
 
-- **Status:** Approved (Roberto gave the go-ahead for the M1 read-only
-  slice on 2026-08-27; formal review happens in the implementation PR)
+- **Status:** Verified (merged; the non-regression suites run green in CI on
+  main)
 - **Milestone:** M1
 - **KubeSwift version reviewed:** v0.13.12
 - **Author / date:** Claude with Roberto, 2026-08-27

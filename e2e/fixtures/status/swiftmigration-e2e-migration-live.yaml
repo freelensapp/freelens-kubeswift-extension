@@ -1,0 +1,26 @@
+# Merge patch applied to the status subresource of
+# swiftmigration/e2e-migration-live. Mid pre-copy: the progress estimate is the
+# heuristic the schema describes, and it is the cell the list shows as "64%".
+status:
+  phase: StopAndCopy
+  mode: live
+  phaseDetail: streaming guest memory to the destination
+  sourceNode: kubeswift-e2e-worker
+  destinationNode: kubeswift-e2e-control-plane
+  sourcePodRef:
+    name: e2e-guest-pending-launcher
+  destinationPodRef:
+    name: e2e-guest-pending-launcher-dst
+  startedAt: "2026-08-27T08:40:00Z"
+  preparingStartedAt: "2026-08-27T08:40:06Z"
+  transferProgress: 64
+  appliedDowntimeMs: 500
+  sendAttempts: 1
+  recvAttempts: 1
+  conditions:
+    - type: Compatible
+      status: "True"
+      reason: EligibleForLiveMigration
+      message: The guest can be live-migrated to the destination node.
+      lastTransitionTime: "2026-08-27T08:40:04Z"
+      observedGeneration: 1

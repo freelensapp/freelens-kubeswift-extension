@@ -1,0 +1,15 @@
+# Merge patch applied to the status subresource of
+# swiftsnapshotschedule/e2e-schedule-nightly. The schedule has fired, the last
+# run succeeded, and one snapshot is still in flight.
+status:
+  lastScheduleTime: "2026-08-27T02:00:00Z"
+  lastSuccessfulTime: "2026-08-26T02:04:12Z"
+  active:
+    - e2e-schedule-nightly-28160520
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ScheduleActive
+      message: The schedule is active and its last run succeeded.
+      lastTransitionTime: "2026-08-27T02:00:00Z"
+      observedGeneration: 1

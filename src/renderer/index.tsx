@@ -9,20 +9,32 @@ import { SwiftGuestClass as SwiftGuestClassV1alpha1 } from "./api/kubeswift/swif
 import { SwiftGuestPool as SwiftGuestPoolV1alpha1 } from "./api/kubeswift/swiftguestpool-v1alpha1";
 import { SwiftImage as SwiftImageV1alpha1 } from "./api/kubeswift/swiftimage-v1alpha1";
 import { SwiftKernel as SwiftKernelV1alpha1 } from "./api/kubeswift/swiftkernel-v1alpha1";
+import { SwiftMigration as SwiftMigrationV1alpha1 } from "./api/kubeswift/swiftmigration-v1alpha1";
+import { SwiftRestore as SwiftRestoreV1alpha1 } from "./api/kubeswift/swiftrestore-v1alpha1";
 import { SwiftSeedProfile as SwiftSeedProfileV1alpha1 } from "./api/kubeswift/swiftseedprofile-v1alpha1";
+import { SwiftSnapshot as SwiftSnapshotV1alpha1 } from "./api/kubeswift/swiftsnapshot-v1alpha1";
+import { SwiftSnapshotSchedule as SwiftSnapshotScheduleV1alpha1 } from "./api/kubeswift/swiftsnapshotschedule-v1alpha1";
 import { SwiftGuestDetails as SwiftGuestDetailsV1alpha1 } from "./details/swiftguest-details-v1alpha1";
 import { SwiftGuestClassDetails as SwiftGuestClassDetailsV1alpha1 } from "./details/swiftguestclass-details-v1alpha1";
 import { SwiftGuestPoolDetails as SwiftGuestPoolDetailsV1alpha1 } from "./details/swiftguestpool-details-v1alpha1";
 import { SwiftImageDetails as SwiftImageDetailsV1alpha1 } from "./details/swiftimage-details-v1alpha1";
 import { SwiftKernelDetails as SwiftKernelDetailsV1alpha1 } from "./details/swiftkernel-details-v1alpha1";
+import { SwiftMigrationDetails as SwiftMigrationDetailsV1alpha1 } from "./details/swiftmigration-details-v1alpha1";
+import { SwiftRestoreDetails as SwiftRestoreDetailsV1alpha1 } from "./details/swiftrestore-details-v1alpha1";
 import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./details/swiftseedprofile-details-v1alpha1";
+import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
+import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
 import { KubeSwiftIcon } from "./icons/kubeswift";
 import { SwiftGuestClassesPage as SwiftGuestClassesPageV1alpha1 } from "./pages/swiftguestclasses-page-v1alpha1";
 import { SwiftGuestPoolsPage as SwiftGuestPoolsPageV1alpha1 } from "./pages/swiftguestpools-page-v1alpha1";
 import { SwiftGuestsPage as SwiftGuestsPageV1alpha1 } from "./pages/swiftguests-page-v1alpha1";
 import { SwiftImagesPage as SwiftImagesPageV1alpha1 } from "./pages/swiftimages-page-v1alpha1";
 import { SwiftKernelsPage as SwiftKernelsPageV1alpha1 } from "./pages/swiftkernels-page-v1alpha1";
+import { SwiftMigrationsPage as SwiftMigrationsPageV1alpha1 } from "./pages/swiftmigrations-page-v1alpha1";
+import { SwiftRestoresPage as SwiftRestoresPageV1alpha1 } from "./pages/swiftrestores-page-v1alpha1";
 import { SwiftSeedProfilesPage as SwiftSeedProfilesPageV1alpha1 } from "./pages/swiftseedprofiles-page-v1alpha1";
+import { SwiftSnapshotsPage as SwiftSnapshotsPageV1alpha1 } from "./pages/swiftsnapshots-page-v1alpha1";
+import { SwiftSnapshotSchedulesPage as SwiftSnapshotSchedulesPageV1alpha1 } from "./pages/swiftsnapshotschedules-page-v1alpha1";
 
 /**
  * Renderer-process entry point of the extension.
@@ -93,6 +105,46 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         ),
       },
     },
+    {
+      kind: SwiftSnapshotV1alpha1.kind,
+      apiVersions: SwiftSnapshotV1alpha1.crd.apiVersions,
+      priority: 10,
+      components: {
+        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
+          <SwiftSnapshotDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    {
+      kind: SwiftRestoreV1alpha1.kind,
+      apiVersions: SwiftRestoreV1alpha1.crd.apiVersions,
+      priority: 10,
+      components: {
+        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
+          <SwiftRestoreDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    {
+      kind: SwiftSnapshotScheduleV1alpha1.kind,
+      apiVersions: SwiftSnapshotScheduleV1alpha1.crd.apiVersions,
+      priority: 10,
+      components: {
+        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
+          <SwiftSnapshotScheduleDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    {
+      kind: SwiftMigrationV1alpha1.kind,
+      apiVersions: SwiftMigrationV1alpha1.crd.apiVersions,
+      priority: 10,
+      components: {
+        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
+          <SwiftMigrationDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
   ];
 
   clusterPages = [
@@ -130,6 +182,30 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       id: "swiftkernels",
       components: {
         Page: () => <SwiftKernelsPageV1alpha1 extension={this} />,
+      },
+    },
+    {
+      id: "swiftsnapshots",
+      components: {
+        Page: () => <SwiftSnapshotsPageV1alpha1 extension={this} />,
+      },
+    },
+    {
+      id: "swiftrestores",
+      components: {
+        Page: () => <SwiftRestoresPageV1alpha1 extension={this} />,
+      },
+    },
+    {
+      id: "swiftsnapshotschedules",
+      components: {
+        Page: () => <SwiftSnapshotSchedulesPageV1alpha1 extension={this} />,
+      },
+    },
+    {
+      id: "swiftmigrations",
+      components: {
+        Page: () => <SwiftMigrationsPageV1alpha1 extension={this} />,
       },
     },
   ];
@@ -183,6 +259,34 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       parentId: "kubeswift",
       title: SwiftKernelV1alpha1.crd.title,
       target: { pageId: "swiftkernels" },
+      components: {},
+    },
+    {
+      id: "swiftsnapshots",
+      parentId: "kubeswift",
+      title: SwiftSnapshotV1alpha1.crd.title,
+      target: { pageId: "swiftsnapshots" },
+      components: {},
+    },
+    {
+      id: "swiftrestores",
+      parentId: "kubeswift",
+      title: SwiftRestoreV1alpha1.crd.title,
+      target: { pageId: "swiftrestores" },
+      components: {},
+    },
+    {
+      id: "swiftsnapshotschedules",
+      parentId: "kubeswift",
+      title: SwiftSnapshotScheduleV1alpha1.crd.title,
+      target: { pageId: "swiftsnapshotschedules" },
+      components: {},
+    },
+    {
+      id: "swiftmigrations",
+      parentId: "kubeswift",
+      title: SwiftMigrationV1alpha1.crd.title,
+      target: { pageId: "swiftmigrations" },
       components: {},
     },
   ];

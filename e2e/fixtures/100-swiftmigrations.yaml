@@ -1,0 +1,39 @@
+# Finished offline migration, the one the suite checks in detail. Its status is
+# injected by cluster-up.sh: phase Completed, the mode the controller resolved
+# out of "auto", and the nodes the guest moved between. An offline migration has
+# no memory stream, so it reports no transfer progress.
+apiVersion: migration.kubeswift.io/v1alpha1
+kind: SwiftMigration
+metadata:
+  name: e2e-migration-completed
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-running
+  target:
+    nodeName: kubeswift-e2e-control-plane
+  mode: auto
+  reason: node maintenance
+  ttl: 24h
+---
+# Live migration still streaming memory: the list must show its resolved mode,
+# the StopAndCopy phase and a pre-copy progress percentage.
+apiVersion: migration.kubeswift.io/v1alpha1
+kind: SwiftMigration
+metadata:
+  name: e2e-migration-live
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-pending
+  target:
+    nodeName: kubeswift-e2e-control-plane
+  mode: live
+  allowIPChange: true
+  downtimeTarget: 500ms
+  parallelConnections: 4
+  timeout: 15m0s

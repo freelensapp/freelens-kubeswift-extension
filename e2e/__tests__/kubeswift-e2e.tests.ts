@@ -182,6 +182,107 @@ describe("KubeSwift views against the fixture cluster", () => {
   );
 
   it(
+    "lists the SwiftSnapshots with their backend, contents and size",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "SwiftSnapshots");
+
+      // Guest, backend, contents, phase and size, in column order. The CSI
+      // backend is disk-only whatever the snapshot asks for.
+      await cluster.expectRow(frame, "e2e-snapshot-ready", "e2e-guest-running csi-volume-snapshot Disk Ready 21Gi");
+
+      // The OCI capture takes memory along with the disk, and has no total
+      // size while the push is still running.
+      await cluster.expectRow(frame, "e2e-snapshot-uploading", "oci Memory + disk Uploading N/A");
+
+      await cluster.expectDetails(
+        frame,
+        "e2e-snapshot-ready",
+        "SwiftSnapshot: e2e-snapshot-ready",
+        "Retain",
+        "cloud-hypervisor",
+        "e2e-ubuntu-2404",
+        "20Gi",
+      );
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "lists the SwiftRestores with their snapshot and target",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftrestores", "SwiftRestores");
+
+      await cluster.expectRow(frame, "e2e-restore-clone", "e2e-snapshot-ready e2e-guest-restored Ready");
+
+      // The restore without a status: no phase to show.
+      await cluster.expectRow(frame, "e2e-restore-in-place", "e2e-guest-running N/A");
+
+      // The clone leaves the source guest alone, and regenerates the identity
+      // attributes the spec lists.
+      await cluster.expectDetails(
+        frame,
+        "e2e-restore-clone",
+        "SwiftRestore: e2e-restore-clone",
+        "Clone",
+        "ondemand",
+        "hostname",
+      );
+
+      // overwriteExisting is what makes a restore land on the existing guest.
+      await cluster.expectDetails(frame, "e2e-restore-in-place", "SwiftRestore: e2e-restore-in-place", "In-place");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "lists the SwiftSnapshotSchedules with their cron, retention and last tick",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshotschedules", "SwiftSnapshotSchedules");
+
+      // Cron, guest, retention budget and suspended flag, in column order.
+      await cluster.expectRow(frame, "e2e-schedule-nightly", "0 2 * * * e2e-guest-running 7 false");
+
+      // No retention budget keeps every snapshot, and the schedule has never
+      // fired, so it has no last tick either.
+      await cluster.expectRow(frame, "e2e-schedule-suspended", "e2e-guest-pending All true N/A");
+
+      await cluster.expectDetails(
+        frame,
+        "e2e-schedule-nightly",
+        "SwiftSnapshotSchedule: e2e-schedule-nightly",
+        "0 2 * * *",
+        "Forbid",
+        "e2e-schedule-nightly-28160520",
+      );
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "lists the SwiftMigrations with their resolved mode, phase and progress",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftmigrations", "SwiftMigrations");
+
+      // The controller resolved spec.mode "auto" to "offline", and an offline
+      // migration has no memory stream to report progress through.
+      await cluster.expectRow(frame, "e2e-migration-completed", "e2e-guest-running offline Completed N/A");
+
+      // The live one is mid pre-copy.
+      await cluster.expectRow(frame, "e2e-migration-live", "e2e-guest-pending live StopAndCopy 64%");
+
+      await cluster.expectDetails(
+        frame,
+        "e2e-migration-completed",
+        "SwiftMigration: e2e-migration-completed",
+        "offline (requested: auto)",
+        "kubeswift-e2e-control-plane",
+        "48s",
+      );
+    },
+    TIMEOUT,
+  );
+
+  it(
     "activates the extension without renderer or process errors",
     async () => {
       const errors = errorCollector.errors();

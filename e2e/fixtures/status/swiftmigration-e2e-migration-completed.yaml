@@ -1,0 +1,24 @@
+# Merge patch applied to the status subresource of
+# swiftmigration/e2e-migration-completed. The controller resolved spec.mode
+# "auto" to "offline", which is what the views must show; an offline migration
+# populates neither transferProgress nor observedTransferDuration.
+status:
+  phase: Completed
+  mode: offline
+  sourceNode: kubeswift-e2e-worker
+  destinationNode: kubeswift-e2e-control-plane
+  sourcePodRef:
+    name: e2e-guest-running-launcher
+  destinationPodRef:
+    name: e2e-guest-running-launcher
+  startedAt: "2026-08-27T07:50:00Z"
+  completedAt: "2026-08-27T07:51:12Z"
+  terminalAt: "2026-08-27T07:51:12Z"
+  observedDowntime: 48s
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: MigrationCompleted
+      message: The guest is running on the destination node.
+      lastTransitionTime: "2026-08-27T07:51:12Z"
+      observedGeneration: 1

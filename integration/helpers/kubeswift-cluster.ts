@@ -82,25 +82,38 @@ export function kubeconfigPath(): string {
   return value;
 }
 
-/** True when the cluster is up and the fixtures have been applied to it. */
+/**
+ * True when the cluster is up and the fixtures have been applied to it.
+ *
+ * One fixture per milestone is probed, so that a cluster left over from an
+ * older checkout is reported as not ready instead of failing later as a page
+ * full of missing rows.
+ */
 export function fixturesReady(): boolean {
-  const { status } = spawnSync(
-    "kubectl",
-    [
-      "--kubeconfig",
-      kubeconfigPath(),
-      "--context",
-      E2E_KUBE_CONTEXT,
-      "--namespace",
-      E2E_NAMESPACE,
-      "get",
-      "swiftguests.swift.kubeswift.io",
-      "e2e-guest-running",
-    ],
-    { stdio: "ignore" },
-  );
+  const probes: [resource: string, name: string][] = [
+    ["swiftguests.swift.kubeswift.io", "e2e-guest-running"],
+    ["swiftmigrations.migration.kubeswift.io", "e2e-migration-completed"],
+  ];
 
-  return status === 0;
+  return probes.every(([resource, name]) => {
+    const { status } = spawnSync(
+      "kubectl",
+      [
+        "--kubeconfig",
+        kubeconfigPath(),
+        "--context",
+        E2E_KUBE_CONTEXT,
+        "--namespace",
+        E2E_NAMESPACE,
+        "get",
+        resource,
+        name,
+      ],
+      { stdio: "ignore" },
+    );
+
+    return status === 0;
+  });
 }
 
 /**

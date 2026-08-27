@@ -48,7 +48,7 @@ KUBESWIFT_CRD_BASE_URL="https://raw.githubusercontent.com/kubeswift-io/kubeswift
 
 # The 15 CRDs KubeSwift ships, across its 9 API groups. All of them are applied
 # so that the cluster matches a real KubeSwift installation, even though only
-# the six M1 CRDs carry fixtures today.
+# the six M1 and the four M2 CRDs carry fixtures today.
 KUBESWIFT_CRD_FILES=(
   fleet.kubeswift.io_clusters.yaml
   gpu.kubeswift.io_swiftgpunodes.yaml
@@ -68,9 +68,10 @@ KUBESWIFT_CRD_FILES=(
 )
 
 # Statuses of the fixtures, injected with `kubectl patch --subresource=status`
-# because no KubeSwift controller runs in the cluster. Only the four M1 CRDs
-# that declare a status subresource appear here: SwiftGuestClass and
-# SwiftSeedProfile have no status at all in their schemas.
+# because no KubeSwift controller runs in the cluster. Only the CRDs that
+# declare a status subresource appear here: of the M1 six, SwiftGuestClass and
+# SwiftSeedProfile have no status at all in their schemas, while all four M2
+# CRDs do declare one.
 #
 # Format: <resource>/<name>=<patch file, relative to fixtures/status>
 E2E_STATUS_PATCHES=(
@@ -78,6 +79,12 @@ E2E_STATUS_PATCHES=(
   "swiftguestpools.swift.kubeswift.io/e2e-pool=swiftguestpool-e2e-pool.yaml"
   "swiftimages.image.kubeswift.io/e2e-ubuntu-2404=swiftimage-e2e-ubuntu-2404.yaml"
   "swiftkernels.kernel.kubeswift.io/e2e-kernel-6-12=swiftkernel-e2e-kernel-6-12.yaml"
+  "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready=swiftsnapshot-e2e-snapshot-ready.yaml"
+  "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-uploading=swiftsnapshot-e2e-snapshot-uploading.yaml"
+  "swiftrestores.snapshot.kubeswift.io/e2e-restore-clone=swiftrestore-e2e-restore-clone.yaml"
+  "swiftsnapshotschedules.snapshot.kubeswift.io/e2e-schedule-nightly=swiftsnapshotschedule-e2e-schedule-nightly.yaml"
+  "swiftmigrations.migration.kubeswift.io/e2e-migration-completed=swiftmigration-e2e-migration-completed.yaml"
+  "swiftmigrations.migration.kubeswift.io/e2e-migration-live=swiftmigration-e2e-migration-live.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -90,6 +97,12 @@ E2E_STATUS_ASSERTIONS=(
   "swiftguestpools.swift.kubeswift.io/e2e-pool={.status.readyReplicas}=2"
   "swiftimages.image.kubeswift.io/e2e-ubuntu-2404={.status.phase}=Ready"
   "swiftkernels.kernel.kubeswift.io/e2e-kernel-6-12={.status.kernelDigest}=sha256:9b2c8f0e3a7d41c5b6e8d90a2f14c7b38e5a6d0c9f3b1e7a4d2c8b5f6a0e9d31"
+  "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready={.status.phase}=Ready"
+  "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready={.status.totalSizeBytes}=22548578304"
+  "swiftrestores.snapshot.kubeswift.io/e2e-restore-clone={.status.guestRef.name}=e2e-guest-restored"
+  "swiftsnapshotschedules.snapshot.kubeswift.io/e2e-schedule-nightly={.status.lastScheduleTime}=2026-08-27T02:00:00Z"
+  "swiftmigrations.migration.kubeswift.io/e2e-migration-completed={.status.mode}=offline"
+  "swiftmigrations.migration.kubeswift.io/e2e-migration-live={.status.transferProgress}=64"
 )
 
 log() {

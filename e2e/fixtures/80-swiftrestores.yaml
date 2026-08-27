@@ -1,0 +1,38 @@
+# Restore of the Ready snapshot into a new guest: no overwriteExisting, so the
+# views must present it as a clone. Its status is injected by cluster-up.sh.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftRestore
+metadata:
+  name: e2e-restore-clone
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  snapshotRef:
+    name: e2e-snapshot-ready
+  targetGuest:
+    name: e2e-guest-restored
+  memoryRestoreMode: ondemand
+  identity:
+    regenerate:
+      - hostname
+      - machineId
+---
+# Restore over the guest the snapshot was taken from, left without any status:
+# the way a restore looks between creation and the first reconciliation, so the
+# list renders its phase as "N/A". overwriteExisting is what makes it in-place,
+# which the detail panel reports; the list has no column for it.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftRestore
+metadata:
+  name: e2e-restore-in-place
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  snapshotRef:
+    name: e2e-snapshot-ready
+  targetGuest:
+    name: e2e-guest-running
+    overwriteExisting: true
+  resumeAfterRestore: false

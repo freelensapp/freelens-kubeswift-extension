@@ -1,0 +1,16 @@
+# Merge patch applied to the status subresource of
+# swiftrestore/e2e-restore-clone. A finished clone: the guest it produced is
+# recorded in status.guestRef, which is what the detail panel shows.
+status:
+  phase: Ready
+  startedAt: "2026-08-27T08:20:00Z"
+  completedAt: "2026-08-27T08:23:41Z"
+  guestRef:
+    name: e2e-guest-restored
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: RestoreCompleted
+      message: The guest was restored from the snapshot.
+      lastTransitionTime: "2026-08-27T08:23:41Z"
+      observedGeneration: 1

@@ -62,10 +62,13 @@ VMs), driven through a real Freelens by Playwright's Electron API.
 - `e2e/scripts/` — cluster lifecycle. `lib.sh` is the single place where the
   KubeSwift version, the kind and Kubernetes versions, the cluster name and
   the kubeconfig path are pinned.
-- `e2e/fixtures/` — hand-written custom resources for the six M1 CRDs.
-  `fixtures/status/` holds the merge patches applied to the status
-  subresources with `kubectl patch --subresource=status`, since no KubeSwift
-  controller runs in the cluster.
+- `e2e/fixtures/` — hand-written custom resources for the six M1 and the four
+  M2 CRDs, in numbered files applied together. `fixtures/status/` holds the
+  merge patches applied to the status subresources with `kubectl patch
+  --subresource=status`, since no KubeSwift controller runs in the cluster.
+  Each pair of fixtures is chosen to cover a state its views distinguish, so
+  the suite can assert both branches (a Ready snapshot and an uploading one, a
+  finished migration and one mid transfer, and so on).
 - `e2e/__tests__/kubeswift-e2e.tests.ts` — the suite: it installs the packed
   extension, connects the cluster, points the namespace filter at the fixture
   namespace, then opens every KubeSwift page and asserts the fixture rows and

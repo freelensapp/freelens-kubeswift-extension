@@ -23,6 +23,38 @@ export function formatQuantity(value?: Quantity): string | undefined {
   return value === undefined ? undefined : String(value);
 }
 
+const byteUnits = ["Ki", "Mi", "Gi", "Ti", "Pi"];
+
+/**
+ * Renders a byte count the way Kubernetes writes quantities, for example
+ * `1.5Gi`. The snapshot and migration statuses report sizes as plain `int64`
+ * byte counts rather than as quantities, which are unreadable as such in a
+ * table cell.
+ *
+ * Keeps `0` (a captured snapshot of an empty disk is still a fact) and maps an
+ * unset count to `undefined`, so callers can apply their own fallback.
+ */
+export function formatBytes(value?: number): string | undefined {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  if (value < 1024) {
+    return `${value}`;
+  }
+
+  let size = value;
+  let unit = 0;
+
+  while (size >= 1024 && unit < byteUnits.length) {
+    size /= 1024;
+    unit += 1;
+  }
+
+  // One decimal, but never a trailing ".0": "1Gi" reads better than "1.0Gi".
+  return `${Number(size.toFixed(1))}${byteUnits[unit - 1]}`;
+}
+
 /** Reference to another KubeSwift object living in the same namespace. */
 export interface LocalObjectReference {
   name?: string;

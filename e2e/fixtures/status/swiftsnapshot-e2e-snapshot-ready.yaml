@@ -1,0 +1,41 @@
+# Merge patch applied to the status subresource of
+# swiftsnapshot/e2e-snapshot-ready. No KubeSwift controller runs in the E2E
+# cluster, so the status a real controller would write is injected here instead.
+status:
+  phase: Ready
+  capturedAt: "2026-08-27T02:04:12Z"
+  totalSizeBytes: 22548578304
+  hypervisor: cloud-hypervisor
+  hypervisorVersion: v52.0
+  snapshotDirVersion: v1
+  disks:
+    - role: root
+      handle: kubeswift-e2e/snap-e2e-snapshot-ready-root
+      sizeBytes: 21474836480
+    - role: data
+      diskName: scratch
+      handle: kubeswift-e2e/snap-e2e-snapshot-ready-scratch
+      sizeBytes: 1073741824
+  guestSpec:
+    cpu: "2"
+    memoryMi: 4096
+    imageName: e2e-ubuntu-2404
+    osType: linux
+    rootDiskSize: 20Gi
+    hasSeed: true
+    hasDataDisks: true
+    guestAgent: false
+    network: true
+    interfaceNames:
+      - eth0
+    storage:
+      accessMode: ReadWriteOnce
+      storageClassName: standard
+      volumeMode: Block
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: SnapshotCaptured
+      message: The snapshot was captured and is ready to restore.
+      lastTransitionTime: "2026-08-27T02:04:12Z"
+      observedGeneration: 1

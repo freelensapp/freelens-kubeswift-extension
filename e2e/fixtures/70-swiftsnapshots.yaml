@@ -1,0 +1,41 @@
+# Disk-only snapshot taken through the CSI backend, the one the suite checks in
+# detail. Its status is injected by cluster-up.sh: phase Ready, a total size and
+# the guest spec frozen at capture time.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftSnapshot
+metadata:
+  name: e2e-snapshot-ready
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-running
+  backend:
+    type: csi-volume-snapshot
+    csiVolumeSnapshot:
+      volumeSnapshotClassName: e2e-csi-snapclass
+  deletionPolicy: Retain
+  ttl: 720h
+---
+# Full-state capture pushed to an OCI registry: memory plus disk, still
+# uploading. The list must show it as "Memory + disk" even though the backend
+# differs, and with no total size yet.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftSnapshot
+metadata:
+  name: e2e-snapshot-uploading
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-running
+  backend:
+    type: oci
+    oci:
+      repository: ghcr.io/freelensapp/kubeswift-e2e/vm-snapshots
+      tag: kubeswift-e2e-nightly
+  includeDisk: true
+  includeMemory: true
+  resumeAfterSnapshot: false

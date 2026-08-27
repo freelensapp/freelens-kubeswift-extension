@@ -1,0 +1,19 @@
+.page {
+  :global(.TableCell) {
+    &.keep {
+      flex-grow: 0.3;
+    }
+
+    &.suspended {
+      flex-grow: 0.4;
+    }
+
+    &.lastSchedule {
+      flex-grow: 0.8;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

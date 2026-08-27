@@ -18,21 +18,21 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| SwiftGuest list + detail | [SPEC-0001](../specs/SPEC-0001-swiftguest-read-only-views.md) | In PR |
-| SwiftGuestClass list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
-| SwiftGuestPool list + detail (replicas, rollout) | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
-| SwiftImage list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
-| SwiftSeedProfile list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
-| SwiftKernel list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | In PR |
+| SwiftGuest list + detail | [SPEC-0001](../specs/SPEC-0001-swiftguest-read-only-views.md) | Done |
+| SwiftGuestClass list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
+| SwiftGuestPool list + detail (replicas, rollout) | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
+| SwiftImage list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
+| SwiftSeedProfile list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
+| SwiftKernel list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
 
 ### M2 — Snapshots and migrations (read-only)
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| SwiftSnapshot list + detail | — | Planned |
-| SwiftRestore list + detail | — | Planned |
-| SwiftSnapshotSchedule list + detail | — | Planned |
-| SwiftMigration list + detail (status, progress) | — | Planned |
+| SwiftSnapshot list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | In PR |
+| SwiftRestore list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | In PR |
+| SwiftSnapshotSchedule list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | In PR |
+| SwiftMigration list + detail (status, progress) | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | In PR |
 
 ### M3 — GPU views (read-only)
 
@@ -80,7 +80,7 @@ means (each item needs its own spec before implementation):
 
 | Item | Status |
 | --- | --- |
-| E2E test infrastructure (kind + CRDs + simulated statuses + Playwright) | [SPEC-0003](../specs/SPEC-0003-e2e-infrastructure.md) — In PR (see [TESTING.md](TESTING.md)) |
+| E2E test infrastructure (kind + CRDs + simulated statuses + Playwright) | [SPEC-0003](../specs/SPEC-0003-e2e-infrastructure.md) — Done (see [TESTING.md](TESTING.md)) |
 | Overview/dashboard page (counts, phases) | Planned, after M2 |
 
 ## Out of scope for v1

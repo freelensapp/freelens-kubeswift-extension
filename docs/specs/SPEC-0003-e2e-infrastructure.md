@@ -1,7 +1,6 @@
 # SPEC-0003: E2E test infrastructure (kind + fixtures + Playwright)
 
-- **Status:** Approved (Roberto's standing go-ahead for M1; formal review in
-  the implementation PR)
+- **Status:** Verified (merged; the E2E suite runs green in CI on main)
 - **Milestone:** M1 (closing item)
 - **KubeSwift version reviewed:** v0.13.12
 - **Author / date:** Claude with Roberto, 2026-08-27

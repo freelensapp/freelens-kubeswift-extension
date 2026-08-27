@@ -1,0 +1,18 @@
+# Merge patch applied to the status subresource of
+# swiftsnapshot/e2e-snapshot-uploading. The memory portion has been captured but
+# the push has not finished, so there is no total size and no OCI reference yet.
+status:
+  phase: Uploading
+  capturedAt: "2026-08-27T08:35:00Z"
+  hypervisor: cloud-hypervisor
+  memorySnapshot:
+    handle: /var/lib/kubeswift/snapshots/e2e-snapshot-uploading/memory.bin
+    sizeBytes: 4294967296
+  observedPauseWindowMs: 820
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: Uploading
+      message: The snapshot artifacts are being pushed to the registry.
+      lastTransitionTime: "2026-08-27T08:35:00Z"
+      observedGeneration: 1

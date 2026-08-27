@@ -1,6 +1,7 @@
 # SPEC-0001: SwiftGuest read-only list and detail views
 
-- **Status:** Implemented (this PR)
+- **Status:** Verified (merged; the non-regression suites run green in CI on
+  main)
 - **Milestone:** M1
 - **KubeSwift version reviewed:** v0.13.12
 - **Author / date:** Claude with Roberto, 2026-08-27

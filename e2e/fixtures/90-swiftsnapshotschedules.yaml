@@ -1,0 +1,48 @@
+# Nightly schedule with a retention budget, the one the suite checks in detail.
+# Its status is injected by cluster-up.sh with the last tick and an in-flight
+# snapshot.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftSnapshotSchedule
+metadata:
+  name: e2e-schedule-nightly
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  schedule: 0 2 * * *
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  retention:
+    keepLast: 7
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: e2e-schedule-nightly
+    spec:
+      guestRef:
+        name: e2e-guest-running
+      backend:
+        type: csi-volume-snapshot
+      ttl: 168h
+---
+# Suspended schedule without a retention budget, left without any status: the
+# list renders its retention as "All" and its last tick as "N/A".
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftSnapshotSchedule
+metadata:
+  name: e2e-schedule-suspended
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  schedule: "*/15 * * * *"
+  suspend: true
+  concurrencyPolicy: Allow
+  template:
+    spec:
+      guestRef:
+        name: e2e-guest-pending
+      backend:
+        type: local
+        local:
+          hostPath: /var/lib/kubeswift/snapshots
