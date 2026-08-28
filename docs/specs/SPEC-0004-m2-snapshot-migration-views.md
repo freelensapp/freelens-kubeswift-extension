@@ -236,12 +236,12 @@ exist until the restore creates it, which this now renders correctly as
 plain text instead of a dead link), `SwiftSnapshotSchedule`'s Guest, and
 `SwiftMigration`'s Guest (both `SwiftGuest` store again).
 
-Reconciliation of the two 2026-08-28 notes above: the Captured Guest
-Image and Storage Class rows were linked and the existence degradation was
-written in parallel, so those two links do not yet carry the existence
-check (the captured values are historical and their targets may be gone).
-Residual tracked under #29: apply `objectExists` to the captured Image ref
-and evaluate the same for the Storage Class link.
+Reconciliation of the two 2026-08-28 notes above, now closed: the Captured
+Guest Image and Storage Class rows were linked and the existence
+degradation was written in parallel, so those two links initially did not
+carry the existence check (the captured values are historical and their
+targets may be gone). Closed by the 2026-08-28 #29 follow-up note below,
+which applies `objectExists` to both rows.
 
 Deliberately out of scope here: the `LinkToNode`/`LinkToPod` references in
 these same four drawers (`SwiftSnapshot`'s Node, `SwiftRestore`'s Target
@@ -284,3 +284,22 @@ links to the SwiftImage object via a new `SwiftSnapshot.getCapturedImageRef`
 helper (same `toKubeObjectRef`/`LinkToObject` pattern as `getGuestRef`), and
 "Storage Class" now uses the core `LinkToStorageClass` component instead of
 plain text.
+
+2026-08-28 follow-up (issue #29, closing the residual noted above): those
+two rows were linked without the existence check every other reference in
+these four drawers already carries. "Image" now resolves the `SwiftImage`
+store via `SwiftImage.getStore<SwiftImage>()` (wrapped in `maybe()`, same
+as the `SwiftGuest` store above) and only renders `LinkToObject` when
+`objectExists` finds the captured image name, falling back to plain text
+with `WithTooltip` otherwise. "Storage Class" does the same against core's
+`storageClassStore`. That store turned out to be reachable: inspecting
+`@freelensapp/core`'s `renderer-api/k8s-api.d.ts` shows it exports
+`storageClassStore`/`StorageClassStore` directly (the same shape as
+`nodesStore`, not per-kind `getStore()`, since `StorageClass` is a core
+kind, not an extension CRD), so no fallback to leaving `LinkToStorageClass`
+unchecked was needed. Because `StorageClass` is cluster-scoped,
+`objectExists` is called without a namespace argument. Both stores are
+loaded through the same `ensureLoaded` `useEffect` as `guestStore`/
+`nodesStore`. The stale comment in the drawer claiming these two rows were
+"plain text with nothing to degrade" (left over from the note two
+paragraphs above, written before the links landed) is removed.

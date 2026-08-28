@@ -3,6 +3,7 @@ import * as MobxReact from "mobx-react";
 import React from "react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
+import { SwiftImage } from "../api/kubeswift/swiftimage-v1alpha1";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { formatBytes } from "../api/kubeswift/types";
 import { withErrorPage } from "../components/error-page";
@@ -22,7 +23,7 @@ const {
     LocaleDate,
     WithTooltip,
   },
-  K8sApi: { nodesStore },
+  K8sApi: { nodesStore, storageClassStore },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -54,13 +55,29 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
     // that one backend, and is subject to the same dead-link risk as the
     // guest reference above: `LinkToNode` never checks the target exists
     // either (issue #23).
+    //
+    // The captured guest's Image and Storage Class references below (#29
+    // follow-up) share the same risk: they point at historical values from
+    // when the snapshot was taken, so the SwiftImage or StorageClass they
+    // named may since have been deleted. `imageStore` follows the same
+    // `maybe(() => Kind.getStore())` pattern as `guestStore` above;
+    // `storageClassStore` comes straight off `Renderer.K8sApi` like
+    // `nodesStore`, since core exports it directly rather than through a
+    // per-kind `getStore()`.
+    const imageStore = maybe(() => SwiftImage.getStore<SwiftImage>());
+
     React.useEffect(() => {
       ensureLoaded(guestStore);
       ensureLoaded(nodesStore);
+      ensureLoaded(imageStore);
+      ensureLoaded(storageClassStore);
     }, []);
 
     const guestIsLinkable = objectExists(guestStore, guestRef?.name, guestRef?.namespace);
     const nodeIsLinkable = objectExists(nodesStore, status?.nodeName);
+    const capturedImageIsLinkable = objectExists(imageStore, capturedImageRef?.name, capturedImageRef?.namespace);
+    // StorageClass is cluster-scoped: no namespace argument.
+    const capturedStorageClassIsLinkable = objectExists(storageClassStore, guestSpec?.storage?.storageClassName);
 
     return (
       <>
@@ -163,13 +180,15 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
 
         {guestSpec ? (
           <>
-            {/* Image and Storage Class below are historical text captured at
-                snapshot time (status.guestSpec.imageName/.storage.storageClassName,
-                plain strings, not object refs), not live links to a SwiftImage or a
-                StorageClass - nothing to degrade here (issue #23 follow-up check). */}
+            {/* Image and Storage Class below are historical values captured at
+                snapshot time (status.guestSpec.imageName/.storage.storageClassName).
+                Like the Guest and Node references above, the SwiftImage or
+                StorageClass they named may since have been deleted, so both
+                rows go through the same objectExists/ensureLoaded
+                degradation (#29 follow-up, closing the SPEC-0004 residual). */}
             <DrawerTitle>Captured Guest</DrawerTitle>
             <DrawerItem name="Image" hidden={!guestSpec.imageName}>
-              {capturedImageRef ? (
+              {capturedImageRef && capturedImageIsLinkable ? (
                 <LinkToObject objectRef={capturedImageRef} object={object} />
               ) : (
                 <WithTooltip>{guestSpec.imageName}</WithTooltip>
@@ -188,7 +207,11 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
               <WithTooltip>{guestSpec.rootDiskSize}</WithTooltip>
             </DrawerItem>
             <DrawerItem name="Storage Class" hidden={!guestSpec.storage?.storageClassName}>
-              <LinkToStorageClass name={guestSpec.storage?.storageClassName} />
+              {capturedStorageClassIsLinkable ? (
+                <LinkToStorageClass name={guestSpec.storage?.storageClassName} />
+              ) : (
+                <WithTooltip>{guestSpec.storage?.storageClassName}</WithTooltip>
+              )}
             </DrawerItem>
             <DrawerItem name="Data Disks" hidden={capturedDataDisks.length === 0} labelsOnly>
               {capturedDataDisks.map((disk) => (

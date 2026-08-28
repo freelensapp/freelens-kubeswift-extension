@@ -73,6 +73,15 @@ describe("KubeSwift views against the fixture cluster", () => {
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
 
+      // Every list header cell carries an id (DESIGN.md's resizing
+      // requirement, SPEC-0006 scope item 3). Stable across five pre-review
+      // pass runs, so it graduates here per that spec's scope item 5
+      // (issue #28), reusing the pass's own `headerCellsWithoutId` rather
+      // than re-implementing the DOM query. Folded into each of this file's
+      // existing per-view "lists the ..." tests right after they open that
+      // view's list page, so the check costs no extra navigation.
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
       // The guest whose status was injected: running, scheduled, addressable,
       // and restarted twice (the IP and the restart count are adjacent cells).
       // The node name is the E2E cluster's real (single) node, substituted
@@ -177,6 +186,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftGuestClasses with their sizing",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftguestclasses", "Guest Classes");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       // CPU, memory and root disk size, in column order.
       await cluster.expectRow(frame, "e2e-small", "2 4Gi 20Gi");
@@ -191,6 +201,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftGuestPools with desired and ready replicas",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftguestpools", "Guest Pools");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       // Desired, ready, updated, available and failed, in column order: the
       // pool is mid-rollout, so desired and ready differ.
@@ -205,6 +216,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftImages with their source and phase",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftimages", "Images");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       await cluster.expectRow(
         frame,
@@ -230,6 +242,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftSeedProfiles without leaking their content",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftseedprofiles", "Seed Profiles");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       await cluster.expectRow(frame, "e2e-seed-basic", "NoCloud", "Inline");
 
@@ -242,6 +255,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftKernels with their artifact and node progress",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftkernels", "Kernels");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       await cluster.expectRow(
         frame,
@@ -266,6 +280,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftSnapshots with their backend, contents and size",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       // Guest, backend, contents, phase and size, in column order. The CSI
       // backend is disk-only whatever the snapshot asks for.
@@ -292,6 +307,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftRestores with their snapshot and target",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftrestores", "Restores");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       await cluster.expectRow(frame, "e2e-restore-clone", "e2e-snapshot-ready e2e-guest-restored Ready");
 
@@ -319,6 +335,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftSnapshotSchedules with their cron, retention and last tick",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftsnapshotschedules", "Snapshot Schedules");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       // Cron, guest, retention budget and suspended flag, in column order.
       await cluster.expectRow(frame, "e2e-schedule-nightly", "0 2 * * * e2e-guest-running 7 false");
@@ -343,6 +360,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     "lists the SwiftMigrations with their resolved mode, phase and progress",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftmigrations", "Migrations");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       // The controller resolved spec.mode "auto" to "offline", and an offline
       // migration has no memory stream to report progress through.

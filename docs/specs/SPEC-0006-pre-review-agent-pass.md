@@ -233,6 +233,19 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   rather than re-implementing the check, so the two never drift apart. The
   other asserts in this file remain exploratory-only, as noted above; this is
   scope item 5's first graduated case, not the general closure of the gap.
+- **Scope item 5 (graduation), second instance.** The header-cell-id assert
+  (`headerCellsWithoutId`, this spec's DOM assert list item "every list
+  header cell carries an `id`", motivating finding #27, fixed by #31) has
+  now stayed green for five consecutive pre-review pass runs, so per the
+  same standing rule it graduates too (issue #28):
+  `e2e/__tests__/kubeswift-e2e.tests.ts` folds
+  `expect(await pr.headerCellsWithoutId(frame)).toEqual([])` into each of
+  its ten existing per-view "lists the ..." tests, right after the
+  `openKubeSwiftPage` call each of them already makes, so the check costs no
+  extra navigation and does not become an eleventh test. It also stays part
+  of `e2e/__tests__/pre-review.tests.ts`'s own `ViewAssertResults` and
+  REPORT.md output - graduating an assert into the permanent suite does not
+  retire it from the pass, the same as the drawer-link case above.
 - **Byte-humanization regex** flags digit runs of 5+ with a word boundary
   on both sides (`/\b\d{5,}\b/g`), so it does not misfire on IPs, dates,
   4-digit counters, or hex digests (letters break the boundary inside a
