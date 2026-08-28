@@ -74,6 +74,9 @@ This repository is developed spec-first. Before implementing anything, read:
 - `docs/development/ROADMAP.md` — scope and progress toward v1.0.0
 - `docs/development/ARCHITECTURE.md` — CRD-native architecture, licensing
   boundary, reference repositories
+- `docs/development/DESIGN.md` — binding UI/UX directives (native-first
+  components, status color semantics, theming, non-happy states); no UI
+  work without reading it
 - `docs/development/TESTING.md` — required test layers (unit, integration,
   Playwright E2E, agent-driven checks via Playwright MCP) and the
   non-regression policy

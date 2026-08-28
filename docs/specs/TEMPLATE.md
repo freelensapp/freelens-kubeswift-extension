@@ -25,6 +25,10 @@ What is included. What is explicitly excluded (and where it goes instead).
 - Freelens extension points used (pages, detail items, menus, actions).
 - UI sketch or description of columns, panels, and states.
 - Error and empty states.
+- UI/UX conformance to [DESIGN.md](../development/DESIGN.md): column
+  grammar, status classifier and badge mapping, drawer sections, the four
+  non-happy states, both themes. Any deviation is declared here and
+  updates DESIGN.md in the same PR (or is dropped).
 
 ## Tests (non-regression list)
 
