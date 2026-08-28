@@ -212,6 +212,10 @@ Code in `src/common/` is shared between both processes.
 
 ## Best Practices
 
+0. **New package.json script that runs a repo shell script?** List the
+   script path in `ignoreBinaries` in `knip.jsonc`, or the Check workflow
+   fails with "Unlisted binaries" (this has bitten twice: demo:up/down and
+   pre-review).
 1. **Use semantic search** to find examples and patterns in the codebase
 2. **Follow existing patterns** — grep for similar implementations before creating new ones
 3. **Test changes** before committing

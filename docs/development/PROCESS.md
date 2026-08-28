@@ -57,6 +57,11 @@ Automated tests prove behavior; they do not prove the experience. At the
 end of every milestone (after the post-merge closure step), Roberto runs a
 manual review session in a real Freelens before the next milestone starts:
 
+0. Precondition: the pre-review agent pass has run and its report is in
+   the reviewer's hands (see [SPEC-0006](../specs/SPEC-0006-pre-review-agent-pass.md)
+   and TESTING.md): the agent has already verified everything automatable,
+   so the human session covers only judgment calls, the report's "for
+   human judgment" list, and what cannot be automated.
 1. Bring up the demo environment with `pnpm demo:up` (procedure and
    platform notes in [TRY-IT.md](TRY-IT.md), design in
    [SPEC-0005](../specs/SPEC-0005-local-demo-cluster.md)).

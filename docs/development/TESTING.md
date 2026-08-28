@@ -101,14 +101,27 @@ cluster is created. Nothing from KubeSwift is vendored into this repository
 
 Runs in CI on every PR through `.github/workflows/e2e-tests.yaml`.
 
-### 4. Agent-driven testing during development (Playwright MCP)
+### 4. Agent-driven testing during development, and the pre-review pass
 
 While developing, coding agents must verify their UI changes live, not just
 by compiling: launch Freelens with the extension and the kind fixture
-cluster, then use the Playwright MCP server to inspect the rendered pages
+cluster, then drive it with Playwright to inspect the rendered pages
 (assert the list shows the fixture guests, open the detail panel, screenshot
-for the PR). Findings go into the PR description. This is exploratory
-verification; the durable guarantees belong in layers 1-3.
+for the PR). Findings go into the PR description.
+
+Before every human milestone review session, the same machinery runs as the
+**pre-review agent pass** (`pnpm pre-review`, see
+[SPEC-0006](../specs/SPEC-0006-pre-review-agent-pass.md)): every view and
+every drawer, both themes, screenshots plus DOM asserts of the statically
+checkable [DESIGN.md](DESIGN.md) rules, with a report handed to the
+reviewer. The human session covers only judgment calls and what cannot be
+automated (rule set by Roberto on 2026-08-28, after the first review
+session found that 4 of its 5 findings were automatable).
+
+Nothing is verified only once: every check of the pass that can be
+codified graduates into the E2E suite (layer 3) as a permanent
+non-regression test. Exploratory verification is allowed to stay
+exploratory only until it stabilizes.
 
 ## Non-regression policy
 

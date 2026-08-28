@@ -18,7 +18,8 @@
     "e2e/scripts/cluster-up.sh",
     "e2e/scripts/demo-down.sh",
     "e2e/scripts/demo-up.sh",
-    "e2e/scripts/e2e.sh"
+    "e2e/scripts/e2e.sh",
+    "e2e/scripts/pre-review.sh"
   ],
   "ignoreDependencies": [
     // used as vite plugin

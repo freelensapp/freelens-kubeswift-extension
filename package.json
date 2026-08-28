@@ -50,6 +50,7 @@
     "e2e:cluster:down": "e2e/scripts/cluster-down.sh",
     "demo:up": "e2e/scripts/demo-up.sh",
     "demo:down": "e2e/scripts/demo-down.sh",
+    "pre-review": "e2e/scripts/pre-review.sh",
     "type:check": "tsc --noEmit -p tsconfig.json --composite false",
     "prebuild": "pnpm type:check",
     "build": "electron-vite build",
