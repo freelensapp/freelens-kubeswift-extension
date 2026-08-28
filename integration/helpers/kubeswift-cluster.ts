@@ -212,21 +212,113 @@ export async function clickSidebarItem(frame: Frame, testId: string): Promise<vo
   await frame.dispatchEvent(selector, "click");
 }
 
+/** True when at least one sidebar item is currently rendered as a child of `parentTestId`. */
+async function hasVisibleChild(frame: Frame, parentTestId: string): Promise<boolean> {
+  return (await frame.$(`[data-parent-id-test="${parentTestId}"]`)) !== null;
+}
+
+/**
+ * Full test ids of every sidebar group currently rendered but not yet
+ * expanded (Freelens shows their expand arrow pointing down, see
+ * `sidebar-item.tsx`'s `expand-icon-for-<id>` and `data-icon-name`).
+ */
+async function collapsedGroupTestIds(frame: Frame): Promise<string[]> {
+  try {
+    return await frame.$$eval(
+      '[data-testid^="expand-icon-for-"] .icon[data-icon-name="keyboard_arrow_down"]',
+      (icons) =>
+        icons
+          .map((icon) => icon.closest('[data-testid^="expand-icon-for-"]')?.getAttribute("data-testid") ?? "")
+          .map((testId) => testId.replace(/^expand-icon-for-/, ""))
+          .filter(Boolean),
+    );
+  } catch {
+    return [];
+  }
+}
+
+// Bounds how many rounds of "expand every still-collapsed group, then
+// recheck" expandSidebarAncestors runs. The sidebar is not nested more than a
+// couple of levels deep in practice; this only guards against looping forever
+// if `targetTestId` never appears (e.g. a typo'd menu id).
+const MAX_EXPAND_ATTEMPTS = 6;
+
+/**
+ * Expands sidebar groups until the item `targetTestId` is rendered, without
+ * needing to know the sidebar's taxonomy.
+ *
+ * A group's children only exist in the DOM once the group itself is expanded
+ * (see Freelens's `sidebar-item.tsx`: `renderSubMenu` returns `null` while
+ * collapsed), so with nested groups a leaf's test id is invisible until every
+ * ancestor group on its branch has been clicked open first, and those
+ * ancestors are themselves invisible until *their* ancestors are open. This
+ * walks the sidebar breadth-first: on each round it expands every group that
+ * is currently visible and still collapsed, then rechecks for the target,
+ * which converges regardless of how deep the target sits. With a flat
+ * sidebar (the target is a direct, already-visible child of the root) the
+ * very first check succeeds and no group is ever clicked, so this is safe to
+ * call unconditionally from both the flat and the grouped shape.
+ */
+export async function expandSidebarAncestors(frame: Frame, targetTestId: string): Promise<void> {
+  const targetSelector = `[data-testid="${targetTestId}"]`;
+
+  for (let attempt = 0; attempt < MAX_EXPAND_ATTEMPTS; attempt++) {
+    if (await frame.$(targetSelector)) {
+      return;
+    }
+
+    const collapsed = await collapsedGroupTestIds(frame);
+
+    if (collapsed.length === 0) {
+      break;
+    }
+
+    for (const groupTestId of collapsed) {
+      if (await frame.$(targetSelector)) {
+        return;
+      }
+
+      await clickSidebarItem(frame, `link-for-${groupTestId}`);
+      // Wait for that group's own children to land in the DOM before either
+      // expanding the next collapsed group or rechecking, instead of racing
+      // the mobx-driven re-render.
+      await frame
+        .waitForSelector(`[data-parent-id-test="${groupTestId}"]`, { timeout: ELEMENT_TIMEOUT })
+        .catch(() => {});
+    }
+  }
+
+  if (!(await frame.$(targetSelector))) {
+    const screenshot = await captureScreenshot(frame, `expand-ancestors-${targetTestId}`);
+    const testIds = await sidebarTestIds(frame);
+
+    throw new Error(
+      `Could not expand the sidebar down to "${targetTestId}". ` +
+        `Sidebar test ids present: ${testIds.length > 0 ? testIds.join(", ") : "(none)"}.` +
+        (screenshot ? ` Screenshot: ${screenshot}` : ""),
+    );
+  }
+}
+
 /** Expands the KubeSwift group, unless it already is. */
 export async function openKubeSwiftGroup(frame: Frame): Promise<void> {
-  const firstChildSelector = `[data-testid="${sidebarItemTestId("swiftguests")}"]`;
+  const rootTestId = sidebarItemTestId("kubeswift");
 
-  if (await frame.$(firstChildSelector)) {
+  if (await hasVisibleChild(frame, rootTestId)) {
     return;
   }
 
   await clickSidebarItem(frame, sidebarLinkTestId("kubeswift"));
-  await frame.waitForSelector(firstChildSelector, { timeout: ELEMENT_TIMEOUT });
+  await frame.waitForSelector(`[data-parent-id-test="${rootTestId}"]`, { timeout: ELEMENT_TIMEOUT });
 }
 
 /** Opens one of the KubeSwift pages and waits for its header title. */
 export async function openKubeSwiftPage(frame: Frame, menuId: string, title: string): Promise<void> {
   await openKubeSwiftGroup(frame);
+  // The target may sit under an intermediate group (the tab-bar grouping),
+  // not directly under the root: make sure every ancestor along its branch
+  // is expanded before clicking its own link.
+  await expandSidebarAncestors(frame, sidebarItemTestId(menuId));
   await clickSidebarItem(frame, sidebarLinkTestId(menuId));
 
   try {

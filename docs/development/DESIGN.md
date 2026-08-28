@@ -129,6 +129,16 @@ repositories.
 - One root menu entry for the extension with an icon; group parents and
   leaves below it are text-only (`components: {}`), mirroring core's
   sidebar (icon on "Workloads", none on "Pods").
+- **Two-level grouping is the standard** (decision of 2026-08-28, issue
+  #24): the root's children are a few domain groups (Guests, Boot and
+  Images, Data Protection, Migrations - future milestones add their own,
+  e.g. GPU, Sandbox, Fleet), each with a `target` pointing at its first
+  leaf, and the resource pages hang under the groups. The host's page-top
+  tab bar shows the visible children of the active root item, so with
+  grouping it shows the few group tabs instead of duplicating every
+  resource entry (the fluxcd precedent). Never flatten all resources
+  directly under the root once a milestone brings the count past a
+  handful.
 - **One menu leaf per resource, not per API version** (a fluxcd defect to
   avoid: duplicated ids and repeated sidebar entries per version).
   Version selection happens inside the page (probe the store per
