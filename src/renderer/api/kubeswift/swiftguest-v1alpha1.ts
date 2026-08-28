@@ -275,7 +275,7 @@ export class SwiftGuest extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftguests",
     singular: "swiftguest",
     shortNames: ["sg"],
-    title: "SwiftGuests",
+    title: "Guests",
   };
 
   static getPhase(object: SwiftGuest): SwiftGuestPhase | undefined {

@@ -151,6 +151,13 @@ repositories.
 - Titles come from the model: the `crd` static block (`title`, `plural`)
   is the single source of truth feeding the menu title, the page header
   and the `tableId`.
+- **Fix (decision of 2026-08-28, issues #24, #29):** navigation display
+  names (`crd.title`) are humanized Title Case with spaces, dropping the
+  redundant "Swift" prefix (e.g. "Guest Pools", not "SwiftGuestPools") -
+  the KubeSwift root already gives the context, and this is how core
+  spells its own sidebar ("Replica Sets", "Config Maps"). The kind stays
+  technical everywhere it is a kind: drawer titles (`Kind: name`) and
+  other data contexts are unaffected.
 
 ## 5. Theming
 

@@ -211,7 +211,7 @@ export class SwiftSnapshot extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftsnapshots",
     singular: "swiftsnapshot",
     shortNames: ["ssnap"],
-    title: "SwiftSnapshots",
+    title: "Snapshots",
   };
 
   static getPhase(object: SwiftSnapshot): SwiftSnapshotPhase | undefined {

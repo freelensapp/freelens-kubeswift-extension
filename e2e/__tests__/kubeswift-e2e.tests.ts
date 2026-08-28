@@ -57,7 +57,7 @@ describe("KubeSwift views against the fixture cluster", () => {
     // A freshly connected cluster shows the `default` namespace, not all of
     // them, so the fixtures stay invisible until the filter is moved. Doing it
     // once here covers every page: the selection is kept per cluster.
-    await cluster.openKubeSwiftPage(frame, "swiftguests", "SwiftGuests");
+    await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
     await cluster.selectNamespace(frame);
   }, TIMEOUT);
 
@@ -71,7 +71,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftGuests with their phase, node and address",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftguests", "SwiftGuests");
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
 
       // The guest whose status was injected: running, scheduled, addressable,
       // and restarted twice (the IP and the restart count are adjacent cells).
@@ -134,11 +134,11 @@ describe("KubeSwift views against the fixture cluster", () => {
       // degradation - exactly the fallback DESIGN.md section 3 asks for
       // when a reference cannot be confirmed - not a failure: it is logged
       // so CI output still shows it happened, and the test moves on.
-      await cluster.openKubeSwiftPage(frame, "swiftguests", "SwiftGuests");
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
       await pr.openDrawer(frame, "e2e-guest-running");
 
       const reopen = async () => {
-        await cluster.openKubeSwiftPage(frame, "swiftguests", "SwiftGuests");
+        await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
         await pr.openDrawer(frame, "e2e-guest-running");
       };
 
@@ -176,7 +176,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftGuestClasses with their sizing",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftguestclasses", "SwiftGuestClasses");
+      await cluster.openKubeSwiftPage(frame, "swiftguestclasses", "Guest Classes");
 
       // CPU, memory and root disk size, in column order.
       await cluster.expectRow(frame, "e2e-small", "2 4Gi 20Gi");
@@ -190,7 +190,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftGuestPools with desired and ready replicas",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftguestpools", "SwiftGuestPools");
+      await cluster.openKubeSwiftPage(frame, "swiftguestpools", "Guest Pools");
 
       // Desired, ready, updated, available and failed, in column order: the
       // pool is mid-rollout, so desired and ready differ.
@@ -204,7 +204,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftImages with their source and phase",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftimages", "SwiftImages");
+      await cluster.openKubeSwiftPage(frame, "swiftimages", "Images");
 
       await cluster.expectRow(
         frame,
@@ -229,7 +229,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftSeedProfiles without leaking their content",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftseedprofiles", "SwiftSeedProfiles");
+      await cluster.openKubeSwiftPage(frame, "swiftseedprofiles", "Seed Profiles");
 
       await cluster.expectRow(frame, "e2e-seed-basic", "NoCloud", "Inline");
 
@@ -241,7 +241,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftKernels with their artifact and node progress",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftkernels", "SwiftKernels");
+      await cluster.openKubeSwiftPage(frame, "swiftkernels", "Kernels");
 
       await cluster.expectRow(
         frame,
@@ -265,7 +265,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftSnapshots with their backend, contents and size",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "SwiftSnapshots");
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
 
       // Guest, backend, contents, phase and size, in column order. The CSI
       // backend is disk-only whatever the snapshot asks for.
@@ -291,7 +291,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftRestores with their snapshot and target",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftrestores", "SwiftRestores");
+      await cluster.openKubeSwiftPage(frame, "swiftrestores", "Restores");
 
       await cluster.expectRow(frame, "e2e-restore-clone", "e2e-snapshot-ready e2e-guest-restored Ready");
 
@@ -318,7 +318,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftSnapshotSchedules with their cron, retention and last tick",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftsnapshotschedules", "SwiftSnapshotSchedules");
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshotschedules", "Snapshot Schedules");
 
       // Cron, guest, retention budget and suspended flag, in column order.
       await cluster.expectRow(frame, "e2e-schedule-nightly", "0 2 * * * e2e-guest-running 7 false");
@@ -342,7 +342,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "lists the SwiftMigrations with their resolved mode, phase and progress",
     async () => {
-      await cluster.openKubeSwiftPage(frame, "swiftmigrations", "SwiftMigrations");
+      await cluster.openKubeSwiftPage(frame, "swiftmigrations", "Migrations");
 
       // The controller resolved spec.mode "auto" to "offline", and an offline
       // migration has no memory stream to report progress through.

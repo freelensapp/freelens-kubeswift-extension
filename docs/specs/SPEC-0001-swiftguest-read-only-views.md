@@ -105,3 +105,6 @@ addition for `kubectl get sg -o wide` parity).
   substituted with the real cluster node rather than hardcoded (see
   SPEC-0006 "Notes and deviations" for the pass-side detection this
   regression exposed).
+- 2026-08-28: sidebar/page-header title humanized to "Guests" (`crd.title`),
+  dropping the redundant "Swift" prefix (issues #24, #29); the `SwiftGuest`
+  kind is unchanged in drawer titles and data contexts.

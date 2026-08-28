@@ -72,7 +72,7 @@ export class SwiftSnapshotSchedule extends Renderer.K8sApi.LensExtensionKubeObje
     plural: "swiftsnapshotschedules",
     singular: "swiftsnapshotschedule",
     shortNames: ["sss"],
-    title: "SwiftSnapshotSchedules",
+    title: "Snapshot Schedules",
   };
 
   static getSchedule(object: SwiftSnapshotSchedule): string | undefined {

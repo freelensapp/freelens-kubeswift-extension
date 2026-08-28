@@ -132,7 +132,7 @@ export class SwiftGuestPool extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftguestpools",
     singular: "swiftguestpool",
     shortNames: ["sgpool"],
-    title: "SwiftGuestPools",
+    title: "Guest Pools",
   };
 
   /**

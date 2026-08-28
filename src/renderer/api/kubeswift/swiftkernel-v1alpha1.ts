@@ -56,7 +56,7 @@ export class SwiftKernel extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftkernels",
     singular: "swiftkernel",
     shortNames: ["sk"],
-    title: "SwiftKernels",
+    title: "Kernels",
   };
 
   static getPhase(object: SwiftKernel): SwiftKernelPhase | undefined {

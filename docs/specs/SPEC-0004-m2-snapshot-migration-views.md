@@ -81,6 +81,11 @@ order is implemented, but the labels follow the M1 convention of using the CRD
 kind's plural (`SwiftSnapshots`, `SwiftRestores`, `SwiftSnapshotSchedules`,
 `SwiftMigrations`), since the sidebar entry reuses `crd.title`.
 
+- 2026-08-28: superseded by the humanization decision (issues #24, #29):
+  `crd.title` now reads Snapshots, Restores, Snapshot Schedules and
+  Migrations, dropping the "Swift" prefix the M1 convention above used; the
+  kind is unchanged everywhere it is a kind (drawer titles, YAML).
+
 - 2026-08-28: header cells gained explicit column ids to enable the host's
   column resizing (issue #27); the Last Schedule column width was fixed in
   the schedules page.

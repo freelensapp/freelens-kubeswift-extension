@@ -76,7 +76,7 @@ export class SwiftRestore extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftrestores",
     singular: "swiftrestore",
     shortNames: ["srst"],
-    title: "SwiftRestores",
+    title: "Restores",
   };
 
   static getPhase(object: SwiftRestore): SwiftRestorePhase | undefined {

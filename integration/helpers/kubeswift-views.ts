@@ -26,14 +26,14 @@ export interface KubeSwiftView {
 }
 
 export const KUBESWIFT_VIEWS: KubeSwiftView[] = [
-  { menuId: "swiftguests", title: "SwiftGuests", fixtureObject: "e2e-guest-running" },
-  { menuId: "swiftguestclasses", title: "SwiftGuestClasses", fixtureObject: "e2e-small" },
-  { menuId: "swiftguestpools", title: "SwiftGuestPools", fixtureObject: "e2e-pool" },
-  { menuId: "swiftimages", title: "SwiftImages", fixtureObject: "e2e-ubuntu-2404" },
-  { menuId: "swiftseedprofiles", title: "SwiftSeedProfiles", fixtureObject: "e2e-seed-basic" },
-  { menuId: "swiftkernels", title: "SwiftKernels", fixtureObject: "e2e-kernel-6-12" },
-  { menuId: "swiftsnapshots", title: "SwiftSnapshots", fixtureObject: "e2e-snapshot-ready" },
-  { menuId: "swiftrestores", title: "SwiftRestores", fixtureObject: "e2e-restore-clone" },
-  { menuId: "swiftsnapshotschedules", title: "SwiftSnapshotSchedules", fixtureObject: "e2e-schedule-nightly" },
-  { menuId: "swiftmigrations", title: "SwiftMigrations", fixtureObject: "e2e-migration-completed" },
+  { menuId: "swiftguests", title: "Guests", fixtureObject: "e2e-guest-running" },
+  { menuId: "swiftguestclasses", title: "Guest Classes", fixtureObject: "e2e-small" },
+  { menuId: "swiftguestpools", title: "Guest Pools", fixtureObject: "e2e-pool" },
+  { menuId: "swiftimages", title: "Images", fixtureObject: "e2e-ubuntu-2404" },
+  { menuId: "swiftseedprofiles", title: "Seed Profiles", fixtureObject: "e2e-seed-basic" },
+  { menuId: "swiftkernels", title: "Kernels", fixtureObject: "e2e-kernel-6-12" },
+  { menuId: "swiftsnapshots", title: "Snapshots", fixtureObject: "e2e-snapshot-ready" },
+  { menuId: "swiftrestores", title: "Restores", fixtureObject: "e2e-restore-clone" },
+  { menuId: "swiftsnapshotschedules", title: "Snapshot Schedules", fixtureObject: "e2e-schedule-nightly" },
+  { menuId: "swiftmigrations", title: "Migrations", fixtureObject: "e2e-migration-completed" },
 ];

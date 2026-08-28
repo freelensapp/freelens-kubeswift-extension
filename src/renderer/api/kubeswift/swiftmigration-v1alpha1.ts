@@ -144,7 +144,7 @@ export class SwiftMigration extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftmigrations",
     singular: "swiftmigration",
     shortNames: ["smig"],
-    title: "SwiftMigrations",
+    title: "Migrations",
   };
 
   static getPhase(object: SwiftMigration): SwiftMigrationPhase | undefined {

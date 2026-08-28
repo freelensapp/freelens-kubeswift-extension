@@ -124,7 +124,7 @@ export class SwiftImage extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftimages",
     singular: "swiftimage",
     shortNames: ["si"],
-    title: "SwiftImages",
+    title: "Images",
   };
 
   static getPhase(object: SwiftImage): SwiftImagePhase | undefined {

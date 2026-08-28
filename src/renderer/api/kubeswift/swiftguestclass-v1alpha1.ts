@@ -55,7 +55,7 @@ export class SwiftGuestClass extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftguestclasses",
     singular: "swiftguestclass",
     shortNames: ["sgc"],
-    title: "SwiftGuestClasses",
+    title: "Guest Classes",
   };
 
   static getCpu(object: SwiftGuestClass): string | undefined {

@@ -106,7 +106,7 @@ export class SwiftSeedProfile extends Renderer.K8sApi.LensExtensionKubeObject<
     plural: "swiftseedprofiles",
     singular: "swiftseedprofile",
     shortNames: ["ssp"],
-    title: "SwiftSeedProfiles",
+    title: "Seed Profiles",
   };
 
   static getDatasource(object: SwiftSeedProfile): SwiftSeedProfileDatasource | undefined {

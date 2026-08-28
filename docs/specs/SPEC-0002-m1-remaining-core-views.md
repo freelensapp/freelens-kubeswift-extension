@@ -95,6 +95,10 @@ difference is listed here.
   names used in the Design section, so that every entry matches the existing
   SwiftGuests one and the names `kubectl` prints. The order is the one the
   spec asks for.
+- 2026-08-28: superseded by the humanization decision (issues #24, #29):
+  `crd.title` now reads Guest Classes, Guest Pools, Images, Seed Profiles and
+  Kernels, dropping the "Swift" prefix; the kind is unchanged everywhere it
+  is a kind (drawer titles, YAML).
 - Every quantity in these schemas is `x-kubernetes-int-or-string`, so a bare
   number is as valid on the wire as a string. The models share a `Quantity`
   type and a `formatQuantity` helper instead of assuming strings.
