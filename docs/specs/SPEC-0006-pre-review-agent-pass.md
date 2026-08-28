@@ -101,7 +101,10 @@ uncovered a need for. Item 1 (documenting the local harness setup in
 TRY-IT.md) and item 4 (wiring the report into the PROCESS.md gate and
 TESTING.md wording) are left for a follow-up: PROCESS.md already names this
 spec as a precondition of the milestone review gate, but TRY-IT.md does not
-yet walk through preparing `./freelens` on a developer machine. Item 5
+yet walk through preparing `./freelens` on a developer machine.
+(2026-08-28, later the same day: item 1 closed - TRY-IT.md now has the
+"Preparing the local Freelens harness" section, with the build-order and
+macOS Gatekeeper gotchas learned while setting it up.) Item 5
 (graduating stable asserts into the E2E suite) is likewise still mostly a
 follow-up - the asserts below should stay exploratory in the pre-review pass
 until a milestone review confirms which failures are real regressions worth
