@@ -63,6 +63,25 @@ describe("SwiftSnapshotSchedule (v1alpha1)", () => {
     });
   });
 
+  describe("getGuestRef", () => {
+    it("builds a same-namespace SwiftGuest link target", () => {
+      const object = buildSwiftSnapshotSchedule(dailySpec);
+
+      expect(SwiftSnapshotSchedule.getGuestRef(object)).toEqual({
+        apiVersion: "swift.kubeswift.io/v1alpha1",
+        kind: "SwiftGuest",
+        name: "web-1",
+        namespace: "default",
+      });
+    });
+
+    it("returns undefined when the template carries no guest", () => {
+      const object = buildSwiftSnapshotSchedule({ schedule: "0 2 * * *" } as SwiftSnapshotSchedule["spec"]);
+
+      expect(SwiftSnapshotSchedule.getGuestRef(object)).toBeUndefined();
+    });
+  });
+
   describe("getSnapshotTemplateSpec", () => {
     it("returns the SwiftSnapshot spec every tick instantiates", () => {
       const object = buildSwiftSnapshotSchedule(dailySpec);

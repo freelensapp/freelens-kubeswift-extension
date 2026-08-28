@@ -6,7 +6,7 @@ import { withErrorPage } from "../components/error-page";
 const { observer } = MobxReact;
 
 const {
-  Component: { Badge, DrawerItem, DrawerTitle, KubeObjectConditionsDrawer, LocaleDate, WithTooltip },
+  Component: { Badge, DrawerItem, DrawerTitle, KubeObjectConditionsDrawer, LinkToObject, LocaleDate, WithTooltip },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -21,6 +21,7 @@ export const SwiftSnapshotScheduleDetails = observer((props: SwiftSnapshotSchedu
     const { object } = props;
     const spec = object.spec;
     const templateSpec = SwiftSnapshotSchedule.getSnapshotTemplateSpec(object);
+    const guestRef = SwiftSnapshotSchedule.getGuestRef(object);
     const templateLabels = Object.entries(spec?.template?.metadata?.labels ?? {});
     const active = SwiftSnapshotSchedule.getActiveSnapshots(object);
     const lastScheduleTime = SwiftSnapshotSchedule.getLastScheduleTime(object);
@@ -54,7 +55,7 @@ export const SwiftSnapshotScheduleDetails = observer((props: SwiftSnapshotSchedu
 
         <DrawerTitle>Snapshot Template</DrawerTitle>
         <DrawerItem name="Guest">
-          <WithTooltip>{SwiftSnapshotSchedule.getGuestName(object) ?? notAvailable}</WithTooltip>
+          {guestRef ? <LinkToObject objectRef={guestRef} object={object} /> : <WithTooltip>{notAvailable}</WithTooltip>}
         </DrawerItem>
         <DrawerItem name="Backend">
           <WithTooltip>{templateSpec?.backend?.type ?? notAvailable}</WithTooltip>

@@ -1,5 +1,13 @@
 import { Renderer } from "@freelensapp/extensions";
-import { type Condition, formatBytes, type KubeSwiftKubeObjectCRD, type LocalObjectReference } from "./types";
+import { SwiftGuest } from "./swiftguest-v1alpha1";
+import {
+  type Condition,
+  formatBytes,
+  type KubeObjectRef,
+  type KubeSwiftKubeObjectCRD,
+  type LocalObjectReference,
+  toKubeObjectRef,
+} from "./types";
 
 /**
  * Model for `swiftsnapshots.snapshot.kubeswift.io/v1alpha1`.
@@ -212,6 +220,16 @@ export class SwiftSnapshot extends Renderer.K8sApi.LensExtensionKubeObject<
   /** The guest the snapshot was taken from. Always in the same namespace. */
   static getGuestName(object: SwiftSnapshot): string | undefined {
     return object.spec?.guestRef?.name || undefined;
+  }
+
+  /** Link target for the guest the snapshot was taken from. */
+  static getGuestRef(object: SwiftSnapshot): KubeObjectRef | undefined {
+    return toKubeObjectRef(
+      SwiftGuest.kind,
+      SwiftGuest.crd.apiVersions[0],
+      SwiftSnapshot.getGuestName(object),
+      object.getNs(),
+    );
   }
 
   static getBackendType(object: SwiftSnapshot): SwiftSnapshotBackendType | undefined {

@@ -7,7 +7,16 @@ import { withErrorPage } from "../components/error-page";
 const { observer } = MobxReact;
 
 const {
-  Component: { Badge, DrawerItem, DrawerTitle, KubeObjectConditionsDrawer, LinkToNode, LocaleDate, WithTooltip },
+  Component: {
+    Badge,
+    DrawerItem,
+    DrawerTitle,
+    KubeObjectConditionsDrawer,
+    LinkToNode,
+    LinkToObject,
+    LocaleDate,
+    WithTooltip,
+  },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -23,6 +32,7 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
     const status = object.status;
     const disks = SwiftSnapshot.getDisks(object);
     const artifact = SwiftSnapshot.getArtifactLocation(object);
+    const guestRef = SwiftSnapshot.getGuestRef(object);
     const guestSpec = status?.guestSpec;
     const capturedDataDisks = guestSpec?.dataDisks ?? [];
 
@@ -33,7 +43,7 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
           <WithTooltip>{SwiftSnapshot.getPhase(object) ?? notAvailable}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="Guest">
-          <WithTooltip>{SwiftSnapshot.getGuestName(object) ?? notAvailable}</WithTooltip>
+          {guestRef ? <LinkToObject objectRef={guestRef} object={object} /> : <WithTooltip>{notAvailable}</WithTooltip>}
         </DrawerItem>
         <DrawerItem name="Backend">
           <WithTooltip>{SwiftSnapshot.getBackendType(object) ?? notAvailable}</WithTooltip>

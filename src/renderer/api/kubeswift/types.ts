@@ -77,6 +77,32 @@ export interface ObjectReference {
   uid?: string;
 }
 
+/** A reference to another KubeObject, resolvable by `Renderer.Component.LinkToObject`. */
+export interface KubeObjectRef {
+  apiVersion: string;
+  kind: string;
+  name: string;
+  namespace?: string;
+}
+
+/**
+ * Builds a `Renderer.Component.LinkToObject` ref for a same-namespace
+ * KubeSwift object, or `undefined` when the name is absent, so a detail
+ * drawer falls back to "N/A" instead of rendering a dead link.
+ */
+export function toKubeObjectRef(
+  kind: string,
+  apiVersion: string,
+  name: string | undefined,
+  namespace: string | undefined,
+): KubeObjectRef | undefined {
+  if (!name) {
+    return undefined;
+  }
+
+  return { apiVersion, kind, name, namespace };
+}
+
 /** Kubernetes `metav1.Condition`. */
 export interface Condition {
   type: string;

@@ -60,6 +60,25 @@ describe("SwiftMigration (v1alpha1)", () => {
     });
   });
 
+  describe("getGuestRef", () => {
+    it("builds a same-namespace SwiftGuest link target", () => {
+      const object = buildSwiftMigration(baseSpec);
+
+      expect(SwiftMigration.getGuestRef(object)).toEqual({
+        apiVersion: "swift.kubeswift.io/v1alpha1",
+        kind: "SwiftGuest",
+        name: "web-1",
+        namespace: "default",
+      });
+    });
+
+    it("returns undefined when the guest reference is absent", () => {
+      const object = buildSwiftMigration({ guestRef: { name: "" }, target: {} });
+
+      expect(SwiftMigration.getGuestRef(object)).toBeUndefined();
+    });
+  });
+
   describe("getMode", () => {
     // The controller resolves `auto` and writes the outcome to the status, so
     // the resolved mode is what an operator needs to see.

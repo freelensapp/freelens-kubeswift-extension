@@ -204,3 +204,8 @@ one without, and a Completed offline migration against a live one mid pre-copy.
 `fixturesReady()` now probes one fixture per milestone, so a cluster left over
 from an older checkout is reported as not ready instead of failing later as a
 page full of missing rows.
+
+### Object reference links
+
+2026-08-28: object references in the four detail drawers are rendered as
+links (issue #26), per DESIGN.md section 3.

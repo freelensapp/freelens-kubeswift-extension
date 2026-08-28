@@ -56,6 +56,25 @@ describe("SwiftSnapshot (v1alpha1)", () => {
     });
   });
 
+  describe("getGuestRef", () => {
+    it("builds a same-namespace SwiftGuest link target", () => {
+      const object = buildSwiftSnapshot(csiSpec);
+
+      expect(SwiftSnapshot.getGuestRef(object)).toEqual({
+        apiVersion: "swift.kubeswift.io/v1alpha1",
+        kind: "SwiftGuest",
+        name: "web-1",
+        namespace: "default",
+      });
+    });
+
+    it("returns undefined when the guest reference is absent", () => {
+      const object = buildSwiftSnapshot({ ...csiSpec, guestRef: { name: "" } });
+
+      expect(SwiftSnapshot.getGuestRef(object)).toBeUndefined();
+    });
+  });
+
   describe("getContents", () => {
     // The schema documents the captured set as backend-determined rather than
     // driven by spec.includeMemory, which it calls a no-op on every backend.

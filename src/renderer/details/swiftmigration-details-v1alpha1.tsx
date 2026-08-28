@@ -12,6 +12,7 @@ const {
     DrawerTitle,
     KubeObjectConditionsDrawer,
     LinkToNode,
+    LinkToObject,
     LinkToPod,
     LocaleDate,
     WithTooltip,
@@ -33,6 +34,7 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
     const requestedMode = SwiftMigration.getRequestedMode(object);
     const failure = SwiftMigration.getFailure(object);
     const nodeSelector = Object.entries(spec?.target?.nodeSelector ?? {});
+    const guestRef = SwiftMigration.getGuestRef(object);
 
     return (
       <>
@@ -44,7 +46,7 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
           <WithTooltip>{status?.phaseDetail}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="Guest">
-          <WithTooltip>{SwiftMigration.getGuestName(object) ?? notAvailable}</WithTooltip>
+          {guestRef ? <LinkToObject objectRef={guestRef} object={object} /> : <WithTooltip>{notAvailable}</WithTooltip>}
         </DrawerItem>
         {/* The controller resolves `auto`, so the mode in force can differ from
             the one the spec asked for. Both are shown when they disagree. */}

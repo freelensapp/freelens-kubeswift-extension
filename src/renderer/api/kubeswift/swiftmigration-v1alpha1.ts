@@ -1,6 +1,12 @@
 import { Renderer } from "@freelensapp/extensions";
-
-import type { Condition, KubeSwiftKubeObjectCRD, LocalObjectReference } from "./types";
+import { SwiftGuest } from "./swiftguest-v1alpha1";
+import {
+  type Condition,
+  type KubeObjectRef,
+  type KubeSwiftKubeObjectCRD,
+  type LocalObjectReference,
+  toKubeObjectRef,
+} from "./types";
 
 /**
  * Model for `swiftmigrations.migration.kubeswift.io/v1alpha1`.
@@ -148,6 +154,16 @@ export class SwiftMigration extends Renderer.K8sApi.LensExtensionKubeObject<
   /** The guest being moved. Always in the same namespace. */
   static getGuestName(object: SwiftMigration): string | undefined {
     return object.spec?.guestRef?.name || undefined;
+  }
+
+  /** Link target for the guest being moved. */
+  static getGuestRef(object: SwiftMigration): KubeObjectRef | undefined {
+    return toKubeObjectRef(
+      SwiftGuest.kind,
+      SwiftGuest.crd.apiVersions[0],
+      SwiftMigration.getGuestName(object),
+      object.getNs(),
+    );
   }
 
   /**

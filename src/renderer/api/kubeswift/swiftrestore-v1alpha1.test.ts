@@ -67,6 +67,44 @@ describe("SwiftRestore (v1alpha1)", () => {
     });
   });
 
+  describe("link targets", () => {
+    it("builds same-namespace link targets for the snapshot and the target guest", () => {
+      const object = buildSwiftRestore(cloneSpec);
+
+      expect(SwiftRestore.getSnapshotRef(object)).toEqual({
+        apiVersion: "snapshot.kubeswift.io/v1alpha1",
+        kind: "SwiftSnapshot",
+        name: "nightly",
+        namespace: "default",
+      });
+      expect(SwiftRestore.getTargetGuestRef(object)).toEqual({
+        apiVersion: "swift.kubeswift.io/v1alpha1",
+        kind: "SwiftGuest",
+        name: "web-2",
+        namespace: "default",
+      });
+    });
+
+    it("builds a link target for the restored guest once the status reports one", () => {
+      const object = buildSwiftRestore(cloneSpec, { phase: "Ready", guestRef: { name: "web-2" } });
+
+      expect(SwiftRestore.getRestoredGuestRef(object)).toEqual({
+        apiVersion: "swift.kubeswift.io/v1alpha1",
+        kind: "SwiftGuest",
+        name: "web-2",
+        namespace: "default",
+      });
+    });
+
+    it("returns undefined for absent references", () => {
+      const object = buildSwiftRestore({ snapshotRef: { name: "" }, targetGuest: { name: "" } });
+
+      expect(SwiftRestore.getSnapshotRef(object)).toBeUndefined();
+      expect(SwiftRestore.getTargetGuestRef(object)).toBeUndefined();
+      expect(SwiftRestore.getRestoredGuestRef(object)).toBeUndefined();
+    });
+  });
+
   describe("getTargetMode", () => {
     // The schema requires overwriteExisting to restore over a guest that
     // already exists at the target name; anything else creates a new guest.

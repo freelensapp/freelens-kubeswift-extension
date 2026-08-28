@@ -13,12 +13,18 @@ import { vi } from "vitest";
 class LensExtensionKubeObject {
   apiVersion?: string;
   kind?: string;
-  metadata?: unknown;
+  metadata?: { namespace?: string };
   spec?: unknown;
   status?: unknown;
 
   constructor(data: Record<string, unknown> = {}) {
     Object.assign(this, data);
+  }
+
+  // Mirrors `@freelensapp/kube-object`'s `KubeObject.getNs()`, which detail
+  // views and link-target helpers call on the real host object.
+  getNs(): string | undefined {
+    return this.metadata?.namespace || undefined;
   }
 }
 

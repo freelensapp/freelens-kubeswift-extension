@@ -6,7 +6,16 @@ import { withErrorPage } from "../components/error-page";
 const { observer } = MobxReact;
 
 const {
-  Component: { Badge, DrawerItem, DrawerTitle, KubeObjectConditionsDrawer, LinkToNode, LocaleDate, WithTooltip },
+  Component: {
+    Badge,
+    DrawerItem,
+    DrawerTitle,
+    KubeObjectConditionsDrawer,
+    LinkToNode,
+    LinkToObject,
+    LocaleDate,
+    WithTooltip,
+  },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -21,6 +30,9 @@ export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) =>
     const spec = object.spec;
     const status = object.status;
     const regenerated = SwiftRestore.getRegeneratedIdentity(object);
+    const snapshotRef = SwiftRestore.getSnapshotRef(object);
+    const targetGuestRef = SwiftRestore.getTargetGuestRef(object);
+    const restoredGuestRef = SwiftRestore.getRestoredGuestRef(object);
 
     return (
       <>
@@ -29,20 +41,28 @@ export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) =>
           <WithTooltip>{SwiftRestore.getPhase(object) ?? notAvailable}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="Snapshot">
-          <WithTooltip>{SwiftRestore.getSnapshotName(object) ?? notAvailable}</WithTooltip>
+          {snapshotRef ? (
+            <LinkToObject objectRef={snapshotRef} object={object} />
+          ) : (
+            <WithTooltip>{notAvailable}</WithTooltip>
+          )}
         </DrawerItem>
 
         <DrawerTitle>Target</DrawerTitle>
         <DrawerItem name="Guest">
-          <WithTooltip>{SwiftRestore.getTargetGuestName(object) ?? notAvailable}</WithTooltip>
+          {targetGuestRef ? (
+            <LinkToObject objectRef={targetGuestRef} object={object} />
+          ) : (
+            <WithTooltip>{notAvailable}</WithTooltip>
+          )}
         </DrawerItem>
         {/* `overwriteExisting` is what the schema uses to tell a restore over an
             existing guest from one that creates a new guest from the snapshot. */}
         <DrawerItem name="Mode">
           <WithTooltip>{SwiftRestore.getTargetMode(object)}</WithTooltip>
         </DrawerItem>
-        <DrawerItem name="Restored Guest" hidden={!SwiftRestore.getRestoredGuestName(object)}>
-          <WithTooltip>{SwiftRestore.getRestoredGuestName(object)}</WithTooltip>
+        <DrawerItem name="Restored Guest" hidden={!restoredGuestRef}>
+          {restoredGuestRef ? <LinkToObject objectRef={restoredGuestRef} object={object} /> : null}
         </DrawerItem>
         <DrawerItem name="Target Node" hidden={!spec?.targetNode}>
           <LinkToNode name={spec?.targetNode} />

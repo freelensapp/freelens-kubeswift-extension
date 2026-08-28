@@ -1,5 +1,14 @@
 import { Renderer } from "@freelensapp/extensions";
-import { type Condition, formatBytes, type KubeSwiftKubeObjectCRD, type LocalObjectReference } from "./types";
+import { SwiftGuest } from "./swiftguest-v1alpha1";
+import { SwiftSnapshot } from "./swiftsnapshot-v1alpha1";
+import {
+  type Condition,
+  formatBytes,
+  type KubeObjectRef,
+  type KubeSwiftKubeObjectCRD,
+  type LocalObjectReference,
+  toKubeObjectRef,
+} from "./types";
 
 /**
  * Model for `swiftrestores.snapshot.kubeswift.io/v1alpha1`.
@@ -79,9 +88,29 @@ export class SwiftRestore extends Renderer.K8sApi.LensExtensionKubeObject<
     return object.spec?.snapshotRef?.name || undefined;
   }
 
+  /** Link target for the snapshot being restored. */
+  static getSnapshotRef(object: SwiftRestore): KubeObjectRef | undefined {
+    return toKubeObjectRef(
+      SwiftSnapshot.kind,
+      SwiftSnapshot.crd.apiVersions[0],
+      SwiftRestore.getSnapshotName(object),
+      object.getNs(),
+    );
+  }
+
   /** The guest the restore is asked to produce. */
   static getTargetGuestName(object: SwiftRestore): string | undefined {
     return object.spec?.targetGuest?.name || undefined;
+  }
+
+  /** Link target for the guest the restore is asked to produce. */
+  static getTargetGuestRef(object: SwiftRestore): KubeObjectRef | undefined {
+    return toKubeObjectRef(
+      SwiftGuest.kind,
+      SwiftGuest.crd.apiVersions[0],
+      SwiftRestore.getTargetGuestName(object),
+      object.getNs(),
+    );
   }
 
   /**
@@ -97,6 +126,16 @@ export class SwiftRestore extends Renderer.K8sApi.LensExtensionKubeObject<
   /** The guest the restore actually produced, once it got that far. */
   static getRestoredGuestName(object: SwiftRestore): string | undefined {
     return object.status?.guestRef?.name || undefined;
+  }
+
+  /** Link target for the guest the restore actually produced. */
+  static getRestoredGuestRef(object: SwiftRestore): KubeObjectRef | undefined {
+    return toKubeObjectRef(
+      SwiftGuest.kind,
+      SwiftGuest.crd.apiVersions[0],
+      SwiftRestore.getRestoredGuestName(object),
+      object.getNs(),
+    );
   }
 
   static getDownloadedSize(object: SwiftRestore): string | undefined {

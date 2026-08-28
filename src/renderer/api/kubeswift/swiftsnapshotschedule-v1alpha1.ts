@@ -1,7 +1,8 @@
 import { Renderer } from "@freelensapp/extensions";
+import { SwiftGuest } from "./swiftguest-v1alpha1";
+import { type Condition, type KubeObjectRef, type KubeSwiftKubeObjectCRD, toKubeObjectRef } from "./types";
 
 import type { SwiftSnapshotSpec } from "./swiftsnapshot-v1alpha1";
-import type { Condition, KubeSwiftKubeObjectCRD } from "./types";
 
 /**
  * Model for `swiftsnapshotschedules.snapshot.kubeswift.io/v1alpha1`.
@@ -86,6 +87,16 @@ export class SwiftSnapshotSchedule extends Renderer.K8sApi.LensExtensionKubeObje
   /** The guest the schedule snapshots, read through the snapshot template. */
   static getGuestName(object: SwiftSnapshotSchedule): string | undefined {
     return object.spec?.template?.spec?.guestRef?.name || undefined;
+  }
+
+  /** Link target for the guest the schedule snapshots. */
+  static getGuestRef(object: SwiftSnapshotSchedule): KubeObjectRef | undefined {
+    return toKubeObjectRef(
+      SwiftGuest.kind,
+      SwiftGuest.crd.apiVersions[0],
+      SwiftSnapshotSchedule.getGuestName(object),
+      object.getNs(),
+    );
   }
 
   /** Unset means keep every Ready snapshot, so it has no numeric answer. */
