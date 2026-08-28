@@ -60,9 +60,26 @@ apply_fixtures() {
 }
 
 inject_statuses() {
-  local entry target patch_file resource name
+  local entry target patch_file resource name node_name substituted_file json_path actual_node_name
 
-  log "injecting the fixture statuses"
+  # A handful of status patches spell the cluster's real (single) node name
+  # as the __NODE_NAME__ placeholder rather than a literal such as
+  # "kubeswift-e2e-control-plane": that string is only the real node name of
+  # a single-node kind cluster created with E2E_CLUSTER_NAME set to its
+  # default "kubeswift-e2e" (kind names such a node
+  # "<cluster-name>-control-plane"), so hardcoding it broke the fixtures (and
+  # any drawer link built from them) for any other cluster the patch was
+  # applied to (issue #23). See E2E_NODE_NAME_FIELDS in lib.sh for which
+  # fields use it. Substituting the actual node name here keeps the fixtures
+  # correct everywhere, the E2E cluster included.
+  node_name="$(kubectl_e2e get nodes -o jsonpath='{.items[0].metadata.name}')"
+  [ -n "${node_name}" ] || die "could not determine the node name of the ${E2E_CLUSTER_NAME} cluster"
+
+  substituted_file="$(mktemp)"
+  # shellcheck disable=SC2064 # the file path is expanded now on purpose
+  trap "rm -f '${substituted_file}'" RETURN
+
+  log "injecting the fixture statuses (node name: ${node_name})"
   for entry in "${E2E_STATUS_PATCHES[@]}"; do
     target="${entry%%=*}"
     patch_file="${E2E_FIXTURES_DIR}/status/${entry#*=}"
@@ -71,11 +88,32 @@ inject_statuses() {
 
     [ -f "${patch_file}" ] || die "missing status patch ${patch_file}"
 
+    # A no-op for every patch file that does not contain the placeholder.
+    sed "s/__NODE_NAME__/${node_name}/g" "${patch_file}" >"${substituted_file}"
+
     kubectl_e2e patch "${resource}" "${name}" \
       --namespace "${E2E_NAMESPACE}" \
       --subresource=status \
       --type=merge \
-      --patch-file "${patch_file}" >/dev/null
+      --patch-file "${substituted_file}" >/dev/null
+  done
+
+  # The generic readback loop in verify_statuses() only compares against
+  # values known statically in E2E_STATUS_ASSERTIONS, so it cannot cover a
+  # value computed at runtime; verify every __NODE_NAME__ substitution here
+  # instead, right where node_name is in scope.
+  for entry in "${E2E_NODE_NAME_FIELDS[@]}"; do
+    target="${entry%%=*}"
+    json_path="${entry#*=}"
+    resource="${target%%/*}"
+    name="${target#*/}"
+
+    actual_node_name="$(kubectl_e2e get "${resource}" "${name}" \
+      --namespace "${E2E_NAMESPACE}" \
+      --output "jsonpath=${json_path}")"
+
+    [ "${actual_node_name}" = "${node_name}" ] ||
+      die "status readback mismatch for ${resource}/${name} ${json_path}: expected '${node_name}', got '${actual_node_name}'"
   done
 }
 

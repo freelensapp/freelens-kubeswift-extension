@@ -63,6 +63,17 @@ addition for `kubectl get sg -o wide` parity).
   left without a status (`N/A`), and its detail panel (phase, hypervisor,
   primary IP, boot image). Fixtures: `e2e/fixtures/50-swiftguests.yaml` and
   `e2e/fixtures/status/swiftguest-e2e-guest-running.yaml`.
+  "navigates the SwiftGuest drawer's Node and Pod links to objects that
+  actually exist" (added for issue #23) asserts the no-dead-links invariant
+  the fix guarantees, not that the rows always render as links: it waits
+  (bounded) for the existence check to upgrade each row, and only once it
+  did, clicks the link and requires a real, non-error detail drawer on the
+  other end; a row still plain text after the wait is logged as a
+  legitimate degradation rather than failed, since whether the store-backed
+  existence check upgrades a row in time turned out to be
+  environment-dependent (reliable against the local pre-review pass, but
+  the Node row never upgraded on the packed Linux CI build within the
+  bounded wait). Fixture: `e2e/fixtures/55-launcher-pods.yaml`.
 - Manual verification: none required for read-only views against the
   fixture cluster; behavior against a real KVM cluster is a known
   manual-only area (TESTING.md).
@@ -78,3 +89,19 @@ addition for `kubectl get sg -o wide` parity).
   string as unset.
 - 2026-08-28: header cells gained explicit column ids to enable the host's
   column resizing (issue #27).
+- 2026-08-28: fixed the detail drawer's Node and Pod rows always rendering as
+  links, even when the status named an object that did not exist (issue #23,
+  found by the pre-review pass of SPEC-0006). Core's `LinkToNode`/`LinkToPod`
+  only format a details URL from the name, never checking the target is
+  there, so clicking such a link surfaced the host's own
+  "Resource loading has failed" panel. `swiftguest-details-v1alpha1.tsx` now
+  looks the name up in `Renderer.K8sApi.nodesStore`/`podsStore` (via the new
+  pure helper `src/renderer/components/object-existence.ts`, unit-tested) and
+  degrades to plain text with `WithTooltip` when the object is absent. The
+  E2E fixture that exposed this (`e2e-guest-running`'s injected `podRef`
+  named a launcher pod nothing ever created) now has a real, deliberately
+  unschedulable `Pod` fixture
+  (`e2e/fixtures/55-launcher-pods.yaml`), and its injected `nodeName` is
+  substituted with the real cluster node rather than hardcoded (see
+  SPEC-0006 "Notes and deviations" for the pass-side detection this
+  regression exposed).

@@ -1,7 +1,11 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
+import React from "react";
+import { maybe } from "../../common/utils";
+import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftSnapshotSchedule } from "../api/kubeswift/swiftsnapshotschedule-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { ensureLoaded, objectExists } from "../components/object-existence";
 
 const { observer } = MobxReact;
 
@@ -26,6 +30,17 @@ export const SwiftSnapshotScheduleDetails = observer((props: SwiftSnapshotSchedu
     const active = SwiftSnapshotSchedule.getActiveSnapshots(object);
     const lastScheduleTime = SwiftSnapshotSchedule.getLastScheduleTime(object);
     const lastSuccessfulTime = SwiftSnapshotSchedule.getLastSuccessfulTime(object);
+
+    // The scheduled guest can since have been deleted; LinkToObject only
+    // formats a details URL from the ref, it never checks the target exists
+    // (DESIGN.md section 3, issue #23).
+    const guestStore = maybe(() => SwiftGuest.getStore<SwiftGuest>());
+
+    React.useEffect(() => {
+      ensureLoaded(guestStore);
+    }, []);
+
+    const guestIsLinkable = objectExists(guestStore, guestRef?.name, guestRef?.namespace);
 
     return (
       <>
@@ -55,7 +70,11 @@ export const SwiftSnapshotScheduleDetails = observer((props: SwiftSnapshotSchedu
 
         <DrawerTitle>Snapshot Template</DrawerTitle>
         <DrawerItem name="Guest">
-          {guestRef ? <LinkToObject objectRef={guestRef} object={object} /> : <WithTooltip>{notAvailable}</WithTooltip>}
+          {guestRef && guestIsLinkable ? (
+            <LinkToObject objectRef={guestRef} object={object} />
+          ) : (
+            <WithTooltip>{guestRef?.name ?? notAvailable}</WithTooltip>
+          )}
         </DrawerItem>
         <DrawerItem name="Backend">
           <WithTooltip>{templateSpec?.backend?.type ?? notAvailable}</WithTooltip>

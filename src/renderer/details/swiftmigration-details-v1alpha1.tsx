@@ -1,7 +1,11 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
+import React from "react";
+import { maybe } from "../../common/utils";
+import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftMigration } from "../api/kubeswift/swiftmigration-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { ensureLoaded, objectExists } from "../components/object-existence";
 
 const { observer } = MobxReact;
 
@@ -17,6 +21,7 @@ const {
     LocaleDate,
     WithTooltip,
   },
+  K8sApi: { nodesStore, podsStore },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -35,6 +40,30 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
     const failure = SwiftMigration.getFailure(object);
     const nodeSelector = Object.entries(spec?.target?.nodeSelector ?? {});
     const guestRef = SwiftMigration.getGuestRef(object);
+    const sourceNode = SwiftMigration.getSourceNode(object);
+    const destinationNode = SwiftMigration.getDestinationNode(object);
+    const sourcePodName = status?.sourcePodRef?.name;
+    const destinationPodName = status?.destinationPodRef?.name;
+
+    // The migrated guest, the source/destination nodes and the launcher pods
+    // on each end are none of them guaranteed to still exist: a migration's
+    // source node in particular may legitimately be gone by the time anyone
+    // looks at a finished migration. LinkToObject/LinkToNode/LinkToPod only
+    // format a details URL from the ref/name, they never check the target
+    // exists (DESIGN.md section 3, issue #23).
+    const guestStore = maybe(() => SwiftGuest.getStore<SwiftGuest>());
+
+    React.useEffect(() => {
+      ensureLoaded(guestStore);
+      ensureLoaded(nodesStore);
+      ensureLoaded(podsStore);
+    }, []);
+
+    const guestIsLinkable = objectExists(guestStore, guestRef?.name, guestRef?.namespace);
+    const sourceNodeIsLinkable = objectExists(nodesStore, sourceNode);
+    const destinationNodeIsLinkable = objectExists(nodesStore, destinationNode);
+    const sourcePodIsLinkable = objectExists(podsStore, sourcePodName, object.getNs());
+    const destinationPodIsLinkable = objectExists(podsStore, destinationPodName, object.getNs());
 
     return (
       <>
@@ -46,7 +75,11 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
           <WithTooltip>{status?.phaseDetail}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="Guest">
-          {guestRef ? <LinkToObject objectRef={guestRef} object={object} /> : <WithTooltip>{notAvailable}</WithTooltip>}
+          {guestRef && guestIsLinkable ? (
+            <LinkToObject objectRef={guestRef} object={object} />
+          ) : (
+            <WithTooltip>{guestRef?.name ?? notAvailable}</WithTooltip>
+          )}
         </DrawerItem>
         {/* The controller resolves `auto`, so the mode in force can differ from
             the one the spec asked for. Both are shown when they disagree. */}
@@ -61,12 +94,16 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
         </DrawerItem>
 
         <DrawerTitle>Placement</DrawerTitle>
-        <DrawerItem name="From" hidden={!SwiftMigration.getSourceNode(object)}>
-          <LinkToNode name={SwiftMigration.getSourceNode(object)} />
+        <DrawerItem name="From" hidden={!sourceNode}>
+          {sourceNodeIsLinkable ? <LinkToNode name={sourceNode} /> : <WithTooltip>{sourceNode}</WithTooltip>}
         </DrawerItem>
         <DrawerItem name="To">
-          {SwiftMigration.getDestinationNode(object) ? (
-            <LinkToNode name={SwiftMigration.getDestinationNode(object)} />
+          {destinationNode ? (
+            destinationNodeIsLinkable ? (
+              <LinkToNode name={destinationNode} />
+            ) : (
+              <WithTooltip>{destinationNode}</WithTooltip>
+            )
           ) : (
             <WithTooltip>{notAvailable}</WithTooltip>
           )}
@@ -76,11 +113,19 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
             <Badge key={key} label={`${key}: ${value}`} />
           ))}
         </DrawerItem>
-        <DrawerItem name="Source Pod" hidden={!status?.sourcePodRef?.name}>
-          <LinkToPod name={status?.sourcePodRef?.name} namespace={object.getNs()} />
+        <DrawerItem name="Source Pod" hidden={!sourcePodName}>
+          {sourcePodIsLinkable ? (
+            <LinkToPod name={sourcePodName} namespace={object.getNs()} />
+          ) : (
+            <WithTooltip>{sourcePodName}</WithTooltip>
+          )}
         </DrawerItem>
-        <DrawerItem name="Destination Pod" hidden={!status?.destinationPodRef?.name}>
-          <LinkToPod name={status?.destinationPodRef?.name} namespace={object.getNs()} />
+        <DrawerItem name="Destination Pod" hidden={!destinationPodName}>
+          {destinationPodIsLinkable ? (
+            <LinkToPod name={destinationPodName} namespace={object.getNs()} />
+          ) : (
+            <WithTooltip>{destinationPodName}</WithTooltip>
+          )}
         </DrawerItem>
         <DrawerItem name="Target IP" hidden={!status?.targetIP}>
           <WithTooltip>{status?.targetIP}</WithTooltip>

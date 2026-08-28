@@ -210,6 +210,69 @@ page full of missing rows.
 2026-08-28: object references in the four detail drawers are rendered as
 links (issue #26), per DESIGN.md section 3.
 
+2026-08-28 follow-up (issue #23): those links did not check that the
+referenced object still existed - `Renderer.Component.LinkToObject` only
+formats a details URL from the ref, exactly like core's `LinkToNode`/
+`LinkToPod` (see SPEC-0001 "Notes and deviations" for the SwiftGuest drawer
+fix this generalizes). The `SwiftRestore` drawer's "Restored Guest" row was
+the case that surfaced it live: `status.guestRef` named
+`e2e-guest-restored`, a guest the E2E fixtures never create, so the link
+showed the host's "Resource loading has failed" panel. All four drawers now
+resolve the target kind's own store via `<Kind>.getStore()` (wrapped in
+`maybe()` from `src/common/utils.ts`, since `getStore()` throws rather than
+returning `undefined` when it cannot resolve one) and the shared
+`objectExists`/`ensureLoaded` helpers from
+`src/renderer/components/object-existence.ts`, rendering `LinkToObject`
+only when the target resolves and plain text with `WithTooltip` otherwise:
+`SwiftSnapshot`'s Guest (against the `SwiftGuest` store), `SwiftRestore`'s
+Snapshot (`SwiftSnapshot` store), Guest and Restored Guest (both against the
+`SwiftGuest` store - a "Clone" restore's target guest legitimately does not
+exist until the restore creates it, which this now renders correctly as
+plain text instead of a dead link), `SwiftSnapshotSchedule`'s Guest, and
+`SwiftMigration`'s Guest (both `SwiftGuest` store again).
+
+Reconciliation of the two 2026-08-28 notes above: the Captured Guest
+Image and Storage Class rows were linked and the existence degradation was
+written in parallel, so those two links do not yet carry the existence
+check (the captured values are historical and their targets may be gone).
+Residual tracked under #29: apply `objectExists` to the captured Image ref
+and evaluate the same for the Storage Class link.
+
+Deliberately out of scope here: the `LinkToNode`/`LinkToPod` references in
+these same four drawers (`SwiftSnapshot`'s Node, `SwiftRestore`'s Target
+Node, `SwiftMigration`'s From/To nodes and Source/Destination Pod) share the
+same root cause but were not part of this pass, which targeted the
+`LinkToObject`-based CRD refs specifically; left as a follow-up.
+
+2026-08-28 follow-up (issue #23, closing the previous entry's deliberate
+gap): the `LinkToNode`/`LinkToPod` references above were live dead links too.
+`SwiftMigration`'s drawer was the case that surfaced it: the fixtures
+hardcode `kubeswift-e2e-worker` and `kubeswift-e2e-control-plane` as
+source/target nodes, and neither exists on the demo cluster while only the
+control-plane one exists on the E2E cluster. All of `SwiftSnapshot`'s Node,
+`SwiftRestore`'s Target Node, and `SwiftMigration`'s From/To nodes and
+Source/Destination Pod now go through the same `objectExists`/`ensureLoaded`
+pair against `nodesStore`/`podsStore` (exactly the SwiftGuest drawer's
+pattern), degrading to `WithTooltip` plain text instead of a dead link.
+
+The E2E fixture change that goes with this: `status.destinationNode` of
+`e2e-migration-completed` (`e2e/fixtures/status/swiftmigration-e2e-migration-completed.yaml`)
+now uses the `__NODE_NAME__` placeholder cluster-up.sh's `inject_statuses()`
+substitutes with the real node - the same mechanism SPEC-0001 introduced for
+the SwiftGuest fixture's `nodeName` - so the drawer's "To" link is genuinely
+alive on any cluster, not only one whose single node happens to be named
+`kubeswift-e2e-control-plane`. `status.sourceNode` for that same migration
+stays the literal `kubeswift-e2e-worker` deliberately: a migration's source
+node may legitimately no longer exist by the time anyone looks at a finished
+migration, and the drawer now renders that correctly as plain text rather
+than papering over it with a link. `e2e-migration-live`'s source/destination
+nodes and its pod refs are untouched (still literal, still may or may not
+resolve depending on the cluster) - it is not the fixture `expectDetails`
+opens in `kubeswift-e2e.tests.ts`, so nothing there depended on it being
+alive everywhere. `lib.sh` gained `E2E_NODE_NAME_FIELDS`, generalizing the
+readback verification `cluster-up.sh` already did for the SwiftGuest
+`nodeName` substitution to cover this second field.
+
 2026-08-28: the SwiftSnapshot "Captured Guest" section still had two
 unlinked references, a pre-review pass finding (part of #29). "Image" now
 links to the SwiftImage object via a new `SwiftSnapshot.getCapturedImageRef`

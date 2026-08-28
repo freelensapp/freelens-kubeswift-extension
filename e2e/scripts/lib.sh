@@ -105,6 +105,22 @@ E2E_STATUS_ASSERTIONS=(
   "swiftmigrations.migration.kubeswift.io/e2e-migration-live={.status.transferProgress}=64"
 )
 
+# Status fields whose status patch file spells the cluster's real (single)
+# node name as the __NODE_NAME__ placeholder rather than a literal, so that
+# the fixture stays correct (and any drawer link built from it stays alive)
+# on a cluster whose node is not named "kubeswift-e2e-control-plane" (issue
+# #23). cluster-up.sh's inject_statuses() substitutes the placeholder before
+# patching and then verifies the readback here by name: unlike
+# E2E_STATUS_ASSERTIONS above, the expected value is only known at runtime
+# (it is whatever `kubectl get nodes` returns), so it cannot be a literal in
+# this file.
+#
+# Format: <resource>/<name>=<jsonpath>
+E2E_NODE_NAME_FIELDS=(
+  "swiftguests.swift.kubeswift.io/e2e-guest-running={.status.nodeName}"
+  "swiftmigrations.migration.kubeswift.io/e2e-migration-completed={.status.destinationNode}"
+)
+
 log() {
   printf '[e2e] %s\n' "$*" >&2
 }

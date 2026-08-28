@@ -1,0 +1,27 @@
+# Stand-in for the launcher pod a real KubeSwift controller would create for
+# swiftguest/e2e-guest-running (status.podRef in
+# status/swiftguest-e2e-guest-running.yaml). No controller runs in the E2E
+# cluster, so nothing ever creates this pod unless this fixture does - and
+# without it, the SwiftGuest detail view's Pod reference pointed at an object
+# that did not exist (issue #23).
+#
+# What the detail view's link needs is for the object to exist, not for it to
+# run: the pod carries a nodeSelector that matches no node, so the scheduler
+# leaves it Pending forever and it never reaches the image-pull step. That
+# keeps the fixture free of any dependency on an image actually being
+# available to pull.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-guest-running-launcher
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  nodeSelector:
+    kubeswift-e2e.freelensapp.github.io/no-such-node: "true"
+  containers:
+    - name: launcher
+      # Never pulled: the pod is deliberately unschedulable (see nodeSelector
+      # above), so this image reference is never resolved.
+      image: launcher.invalid/kubeswift-e2e/unused:none

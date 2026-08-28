@@ -1,7 +1,12 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
+import React from "react";
+import { maybe } from "../../common/utils";
+import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftRestore } from "../api/kubeswift/swiftrestore-v1alpha1";
+import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { ensureLoaded, objectExists } from "../components/object-existence";
 
 const { observer } = MobxReact;
 
@@ -16,6 +21,7 @@ const {
     LocaleDate,
     WithTooltip,
   },
+  K8sApi: { nodesStore },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -34,6 +40,28 @@ export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) =>
     const targetGuestRef = SwiftRestore.getTargetGuestRef(object);
     const restoredGuestRef = SwiftRestore.getRestoredGuestRef(object);
 
+    // None of these three refs are guaranteed to resolve: the snapshot can
+    // have been deleted, a "Clone" restore's target guest legitimately does
+    // not exist yet (the restore is what creates it), and even a completed
+    // restore's guest could since have been removed. LinkToObject only
+    // formats a details URL from the ref, it never checks the target exists
+    // (DESIGN.md section 3, issue #23).
+    const snapshotStore = maybe(() => SwiftSnapshot.getStore<SwiftSnapshot>());
+    const guestStore = maybe(() => SwiftGuest.getStore<SwiftGuest>());
+
+    // `spec.targetNode` (s3 backend restores only) shares the same dead-link
+    // risk: `LinkToNode` never checks the target exists either (issue #23).
+    React.useEffect(() => {
+      ensureLoaded(snapshotStore);
+      ensureLoaded(guestStore);
+      ensureLoaded(nodesStore);
+    }, []);
+
+    const snapshotIsLinkable = objectExists(snapshotStore, snapshotRef?.name, snapshotRef?.namespace);
+    const targetGuestIsLinkable = objectExists(guestStore, targetGuestRef?.name, targetGuestRef?.namespace);
+    const restoredGuestIsLinkable = objectExists(guestStore, restoredGuestRef?.name, restoredGuestRef?.namespace);
+    const targetNodeIsLinkable = objectExists(nodesStore, spec?.targetNode);
+
     return (
       <>
         <DrawerTitle>Restore</DrawerTitle>
@@ -41,19 +69,19 @@ export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) =>
           <WithTooltip>{SwiftRestore.getPhase(object) ?? notAvailable}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="Snapshot">
-          {snapshotRef ? (
+          {snapshotRef && snapshotIsLinkable ? (
             <LinkToObject objectRef={snapshotRef} object={object} />
           ) : (
-            <WithTooltip>{notAvailable}</WithTooltip>
+            <WithTooltip>{snapshotRef?.name ?? notAvailable}</WithTooltip>
           )}
         </DrawerItem>
 
         <DrawerTitle>Target</DrawerTitle>
         <DrawerItem name="Guest">
-          {targetGuestRef ? (
+          {targetGuestRef && targetGuestIsLinkable ? (
             <LinkToObject objectRef={targetGuestRef} object={object} />
           ) : (
-            <WithTooltip>{notAvailable}</WithTooltip>
+            <WithTooltip>{targetGuestRef?.name ?? notAvailable}</WithTooltip>
           )}
         </DrawerItem>
         {/* `overwriteExisting` is what the schema uses to tell a restore over an
@@ -62,10 +90,20 @@ export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) =>
           <WithTooltip>{SwiftRestore.getTargetMode(object)}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="Restored Guest" hidden={!restoredGuestRef}>
-          {restoredGuestRef ? <LinkToObject objectRef={restoredGuestRef} object={object} /> : null}
+          {restoredGuestRef ? (
+            restoredGuestIsLinkable ? (
+              <LinkToObject objectRef={restoredGuestRef} object={object} />
+            ) : (
+              <WithTooltip>{restoredGuestRef.name}</WithTooltip>
+            )
+          ) : null}
         </DrawerItem>
         <DrawerItem name="Target Node" hidden={!spec?.targetNode}>
-          <LinkToNode name={spec?.targetNode} />
+          {targetNodeIsLinkable ? (
+            <LinkToNode name={spec?.targetNode} />
+          ) : (
+            <WithTooltip>{spec?.targetNode}</WithTooltip>
+          )}
         </DrawerItem>
         <DrawerItem name="Memory Restore Mode">
           <WithTooltip>{SwiftRestore.getMemoryRestoreMode(object)}</WithTooltip>

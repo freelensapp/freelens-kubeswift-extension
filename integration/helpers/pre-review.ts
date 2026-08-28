@@ -78,6 +78,63 @@ export async function inspectDrawerRows(frame: Frame): Promise<DrawerRow[]> {
   );
 }
 
+// A store-backed drawer row (a Node/Pod/CRD reference resolved via
+// `objectExists`/`ensureLoaded`, see swiftguest-details-v1alpha1.tsx and the
+// other M1/M2 detail views) renders as plain text until the referencing
+// store's own `loadAll()` resolves (issue #23). The component is a MobX
+// `observer`, so the row upgrades to a real link once the store's `items`
+// fill in - but that can take longer than a fixed pause on a slow runner. A
+// caller that reads the row once right after `openDrawer` can race that
+// async load and misreport a real link as absent: exactly what happened to
+// "navigates the SwiftGuest drawer's Node and Pod links to objects that
+// actually exist" on a slower CI runner, though the same run stayed green
+// locally.
+const DRAWER_LINK_SETTLE_TIMEOUT_MS = 15_000;
+const DRAWER_LINK_POLL_INTERVAL_MS = 250;
+
+/**
+ * Waits for `label`'s row to have an href, up to `timeoutMs`, then returns
+ * the row's state at that point (`href: null` if it never got one).
+ * Resolves as soon as an href appears, so a row that is already a link on
+ * the very first check - the common case on a fast machine - costs nothing
+ * extra.
+ *
+ * Only call this for a row the caller already expects to become a link (the
+ * fixture is known to make the referenced object exist); it does not decide
+ * that for you. A row genuinely expected to stay plain text (the referenced
+ * object really does not exist) should be read with `inspectDrawerRows`
+ * directly instead - waiting the full timeout on it would just be wasted
+ * time, and is not what this function is for. A row that still has no href
+ * once `timeoutMs` elapses is a legitimate FAIL (or a real, if unexpected,
+ * degradation to plain text), not something this function papers over.
+ */
+export async function waitForDrawerLink(
+  frame: Frame,
+  label: string,
+  timeoutMs = DRAWER_LINK_SETTLE_TIMEOUT_MS,
+): Promise<DrawerRow | undefined> {
+  try {
+    await frame.waitForFunction(
+      (targetLabel) => {
+        const items = Array.from(document.querySelectorAll(".Drawer.KubeObjectDetails .DrawerItem"));
+        const item = items.find((element) => element.querySelector(".name")?.textContent?.trim() === targetLabel);
+
+        return Boolean(item?.querySelector(".value a[href]"));
+      },
+      label,
+      { timeout: timeoutMs, polling: DRAWER_LINK_POLL_INTERVAL_MS },
+    );
+  } catch {
+    // Timed out (or the row never appeared at all): fall through and report
+    // the row's actual final state below, rather than throwing here - the
+    // caller decides whether a still-absent href is a failure.
+  }
+
+  const rows = await inspectDrawerRows(frame);
+
+  return rows.find((row) => row.label === label);
+}
+
 // Field labels that typically hold a cross-reference to another object.
 // Deliberately broad: a false positive only adds a line to "for human
 // judgment" in the report, a false negative would silently hide a real
@@ -112,6 +169,25 @@ export interface LinkCheckResult extends DrawerRow {
 // Freelens core's webpack "*-module__*--<hash>" pattern).
 const ERROR_PAGE_SELECTOR = '[class*="_errorPage_"]';
 
+// Freelens' own `KubeObjectDetails` component (the host-drawn drawer chrome,
+// not any per-kind detail body) renders this panel when the object named by
+// the link's `kube-details` query parameter could not be loaded - for
+// example because it does not exist. It is host DOM this pass does not
+// control (unlike our own extension's error page above), so it is matched by
+// the host's own class for it ("box center", scoped under the drawer so no
+// unrelated "box center" element elsewhere in the app can match) rather than
+// a search for its wording alone: the first pass already found that a broad
+// text search over-matches legitimate field values (see "Notes and
+// deviations" in SPEC-0006), and a class scoped to this exact panel is no
+// less precise while staying immune to that.
+//
+// First found live by issue #23: a SwiftGuest's Pod reference pointed at a
+// launcher pod nothing had ever created, and the drawer this produced (a
+// visible, non-empty `.Drawer.KubeObjectDetails` holding only this panel)
+// passed the two checks below unmodified, since neither one is specific to
+// this failure mode - the drawer is real and non-empty, just not the object.
+const HOST_LOAD_ERROR_SELECTOR = ".box.center";
+
 /**
  * Clicks a drawer link found by `inspectDrawerRows`/`classifyDrawerReferences`
  * and checks that it landed on real content, then calls `reopen` to bring the
@@ -122,14 +198,15 @@ const ERROR_PAGE_SELECTOR = '[class*="_errorPage_"]';
  * Node or Pod a SwiftGuest names) the same way: the href only changes the
  * `kube-details` query parameter, which opens that object's own
  * `.Drawer.KubeObjectDetails` on top of the current page. So the check here
- * is deliberately positive (did a real, non-empty drawer appear) rather than
- * a search for negative-sounding text, which risks matching a core object's
- * own legitimate field values (a Pod's status message, for example) instead
- * of an actual failure. The one thing this pass can name for certain as
- * "wrong" is our own extension's error-page component
- * (src/renderer/components/error-page.tsx, matched by ERROR_PAGE_SELECTOR
- * below); an empty or missing drawer otherwise is reported too, but more
- * cautiously, since it could also mean the click did not navigate at all.
+ * is deliberately positive (did a real, non-empty drawer with real content
+ * appear) rather than a search for negative-sounding text, which risks
+ * matching a core object's own legitimate field values (a Pod's status
+ * message, for example) instead of an actual failure. What this pass can
+ * name for certain as "wrong" is our own extension's error-page component
+ * (ERROR_PAGE_SELECTOR) and the host's own load-failure panel
+ * (HOST_LOAD_ERROR_SELECTOR); an empty or missing drawer otherwise is
+ * reported too, but more cautiously, since it could also mean the click did
+ * not navigate at all.
  */
 export async function checkDrawerLink(
   frame: Frame,
@@ -161,6 +238,18 @@ export async function checkDrawerLink(
       await screenshotView(frame, view, `link-error-${slugify(row.text)}`);
 
       return { ...row, ok: false, note: "no detail drawer content appeared after clicking the link" };
+    }
+
+    const hostLoadError = await drawer
+      .locator(HOST_LOAD_ERROR_SELECTOR)
+      .first()
+      .isVisible()
+      .catch(() => false);
+
+    if (hostLoadError) {
+      await screenshotView(frame, view, `link-error-${slugify(row.text)}`);
+
+      return { ...row, ok: false, note: `the host reported "Resource loading has failed" (${drawerText})` };
     }
 
     return { ...row, ok: true };

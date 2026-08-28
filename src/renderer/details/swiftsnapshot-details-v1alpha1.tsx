@@ -1,8 +1,12 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
+import React from "react";
+import { maybe } from "../../common/utils";
+import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { formatBytes } from "../api/kubeswift/types";
 import { withErrorPage } from "../components/error-page";
+import { ensureLoaded, objectExists } from "../components/object-existence";
 
 const { observer } = MobxReact;
 
@@ -18,6 +22,7 @@ const {
     LocaleDate,
     WithTooltip,
   },
+  K8sApi: { nodesStore },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -38,6 +43,25 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
     const guestSpec = status?.guestSpec;
     const capturedDataDisks = guestSpec?.dataDisks ?? [];
 
+    // The guest a snapshot was taken from may since have been deleted;
+    // LinkToObject only formats a details URL from the ref, it never checks
+    // the target exists (DESIGN.md section 3, issue #23). guestStore is
+    // wrapped in maybe() because Kind.getStore() throws rather than
+    // returning undefined when it cannot resolve a store.
+    const guestStore = maybe(() => SwiftGuest.getStore<SwiftGuest>());
+
+    // The `local` backend's node - `status.nodeName` - is only ever set for
+    // that one backend, and is subject to the same dead-link risk as the
+    // guest reference above: `LinkToNode` never checks the target exists
+    // either (issue #23).
+    React.useEffect(() => {
+      ensureLoaded(guestStore);
+      ensureLoaded(nodesStore);
+    }, []);
+
+    const guestIsLinkable = objectExists(guestStore, guestRef?.name, guestRef?.namespace);
+    const nodeIsLinkable = objectExists(nodesStore, status?.nodeName);
+
     return (
       <>
         <DrawerTitle>Snapshot</DrawerTitle>
@@ -45,7 +69,11 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
           <WithTooltip>{SwiftSnapshot.getPhase(object) ?? notAvailable}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="Guest">
-          {guestRef ? <LinkToObject objectRef={guestRef} object={object} /> : <WithTooltip>{notAvailable}</WithTooltip>}
+          {guestRef && guestIsLinkable ? (
+            <LinkToObject objectRef={guestRef} object={object} />
+          ) : (
+            <WithTooltip>{guestRef?.name ?? notAvailable}</WithTooltip>
+          )}
         </DrawerItem>
         <DrawerItem name="Backend">
           <WithTooltip>{SwiftSnapshot.getBackendType(object) ?? notAvailable}</WithTooltip>
@@ -82,7 +110,7 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
           <WithTooltip>{SwiftSnapshot.getMemorySnapshotSize(object) ?? notAvailable}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="Node" hidden={!status?.nodeName}>
-          <LinkToNode name={status?.nodeName} />
+          {nodeIsLinkable ? <LinkToNode name={status?.nodeName} /> : <WithTooltip>{status?.nodeName}</WithTooltip>}
         </DrawerItem>
         <DrawerItem name="Hypervisor" hidden={!status?.hypervisor}>
           <WithTooltip>
@@ -135,6 +163,10 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
 
         {guestSpec ? (
           <>
+            {/* Image and Storage Class below are historical text captured at
+                snapshot time (status.guestSpec.imageName/.storage.storageClassName,
+                plain strings, not object refs), not live links to a SwiftImage or a
+                StorageClass - nothing to degrade here (issue #23 follow-up check). */}
             <DrawerTitle>Captured Guest</DrawerTitle>
             <DrawerItem name="Image" hidden={!guestSpec.imageName}>
               {capturedImageRef ? (

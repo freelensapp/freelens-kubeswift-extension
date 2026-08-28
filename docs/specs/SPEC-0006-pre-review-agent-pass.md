@@ -98,15 +98,17 @@ Excluded:
 First implementation pass (2026-08-28), covering scope items 2 and 3 (the
 pass itself and its DOM asserts) plus a macOS-specific fix the pass
 uncovered a need for. Item 1 (documenting the local harness setup in
-TRY-IT.md), item 4 (wiring the report into the PROCESS.md gate and
-TESTING.md wording) and item 5 (graduating stable asserts into the E2E
-suite) are left for a follow-up: PROCESS.md already names this spec as a
-precondition of the milestone review gate, but TRY-IT.md does not yet walk
-through preparing `./freelens` on a developer machine, and none of the
-asserts below have been promoted to `e2e/__tests__/kubeswift-e2e.tests.ts`
-yet - they should stay exploratory in the pre-review pass until a milestone
-review confirms which failures are real regressions worth locking in
-permanently, per the standing rule in this spec's Goal.
+TRY-IT.md) and item 4 (wiring the report into the PROCESS.md gate and
+TESTING.md wording) are left for a follow-up: PROCESS.md already names this
+spec as a precondition of the milestone review gate, but TRY-IT.md does not
+yet walk through preparing `./freelens` on a developer machine. Item 5
+(graduating stable asserts into the E2E suite) is likewise still mostly a
+follow-up - the asserts below should stay exploratory in the pre-review pass
+until a milestone review confirms which failures are real regressions worth
+locking in permanently, per the standing rule in this spec's Goal - except
+for the one case below (2026-08-28, issue #23) that confirmed itself as a
+real regression before any milestone review, and graduated immediately per
+that same standing rule.
 
 **macOS install failure, diagnosed while preparing the local harness.**
 Before this pass could be written, `pnpm e2e` was run locally on macOS (arm)
@@ -198,6 +200,36 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   all views that have links, which matches every fixture reference
   actually resolving; a screenshot is still taken on failure
   (`link-error-<slug>.png`) for whichever case trips this next.
+- **2026-08-28 follow-up (issue #23): the positive check above was not
+  positive enough.** "A non-empty `.Drawer.KubeObjectDetails` appeared" also
+  describes the host's own `KubeObjectDetails` component when it fails to
+  load the linked object: it still renders a visible, non-empty drawer, just
+  one that says "Resource loading has failed" instead of showing the object.
+  `checkDrawerLink` passed this case silently - live proof was the
+  SwiftGuest drawer's Pod link, which pointed at a launcher pod nothing had
+  ever created (`status.podRef` named it, but no controller runs in the E2E
+  cluster to create it, and no fixture did either). `HOST_LOAD_ERROR_SELECTOR`
+  (`.box.center`, the host's class for this exact panel, scoped under the
+  drawer) now catches it, matched by class rather than by the wording alone
+  for the same reason `ERROR_PAGE_SELECTOR` is: precise and immune to the
+  false-positive risk the paragraph above already ruled out a plain text
+  search for. Fixed alongside: a real (deliberately unschedulable, so it
+  never needs an image pull) launcher pod fixture
+  (`e2e/fixtures/55-launcher-pods.yaml`), and `swiftguest-details-v1alpha1.tsx`
+  now checks `nodesStore`/`podsStore` before rendering `LinkToNode`/`LinkToPod`
+  at all (see SPEC-0001 "Notes and deviations").
+- **Scope item 5 (graduation), first instance.** This spec's Goal states the
+  standing rule verbatim: every check that can be codified becomes a
+  permanent test once it has proven itself, not only once a milestone review
+  confirms it. The drawer-link check above just did, against a real
+  regression rather than a hypothetical one, so it graduated immediately
+  instead of waiting: `e2e/__tests__/kubeswift-e2e.tests.ts` gained
+  "navigates the SwiftGuest drawer's Node and Pod links to objects that
+  actually exist", which imports `checkDrawerLink`/`openDrawer`/
+  `inspectDrawerRows` straight from `integration/helpers/pre-review.ts`
+  rather than re-implementing the check, so the two never drift apart. The
+  other asserts in this file remain exploratory-only, as noted above; this is
+  scope item 5's first graduated case, not the general closure of the gap.
 - **Byte-humanization regex** flags digit runs of 5+ with a word boundary
   on both sides (`/\b\d{5,}\b/g`), so it does not misfire on IPs, dates,
   4-digit counters, or hex digests (letters break the boundary inside a

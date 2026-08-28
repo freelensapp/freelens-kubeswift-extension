@@ -1,7 +1,9 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
+import React from "react";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { ensureLoaded, objectExists } from "../components/object-existence";
 
 const { observer } = MobxReact;
 
@@ -16,6 +18,7 @@ const {
     LocaleDate,
     WithTooltip,
   },
+  K8sApi: { nodesStore, podsStore },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -35,6 +38,25 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
     const gpuPartitionId = SwiftGuest.getGpuPartitionId(object);
     const gpuProfileName = spec?.gpuProfileRef?.name;
     const seedProfileName = spec?.seedProfileRef?.name;
+    const nodeName = SwiftGuest.getNodeName(object);
+    const podName = status?.podRef?.name;
+    const podNamespace = status?.podRef?.namespace ?? object.getNs();
+
+    // A stale or not-yet-reconciled status can name a Node or Pod that is no
+    // longer (or not yet) there; `nodesStore`/`podsStore` may also simply not
+    // have loaded yet the first time this drawer opens, since nothing else on
+    // this page needs them. Either way `LinkToNode`/`LinkToPod` would still
+    // render a link (they only format a details URL from the name, they
+    // never check the target exists), so the existence check below decides
+    // between a real link and plain text instead (DESIGN.md section 3,
+    // issue #23).
+    React.useEffect(() => {
+      ensureLoaded(nodesStore);
+      ensureLoaded(podsStore);
+    }, []);
+
+    const nodeIsLinkable = objectExists(nodesStore, nodeName);
+    const podIsLinkable = objectExists(podsStore, podName, podNamespace);
 
     return (
       <>
@@ -71,10 +93,10 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
 
         <DrawerTitle>Runtime</DrawerTitle>
         <DrawerItem name="Node" hidden={!status?.nodeName}>
-          <LinkToNode name={SwiftGuest.getNodeName(object)} />
+          {nodeIsLinkable ? <LinkToNode name={nodeName} /> : <WithTooltip>{nodeName}</WithTooltip>}
         </DrawerItem>
         <DrawerItem name="Pod" hidden={!status?.podRef?.name}>
-          <LinkToPod name={status?.podRef?.name} namespace={status?.podRef?.namespace ?? object.getNs()} />
+          {podIsLinkable ? <LinkToPod name={podName} namespace={podNamespace} /> : <WithTooltip>{podName}</WithTooltip>}
         </DrawerItem>
         <DrawerItem name="Hypervisor" hidden={!status?.runtime?.hypervisor}>
           <WithTooltip>{SwiftGuest.getHypervisor(object)}</WithTooltip>

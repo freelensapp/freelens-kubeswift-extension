@@ -2,11 +2,22 @@
 # swiftmigration/e2e-migration-completed. The controller resolved spec.mode
 # "auto" to "offline", which is what the views must show; an offline migration
 # populates neither transferProgress nor observedTransferDuration.
+#
+# destinationNode is __NODE_NAME__, substituted by cluster-up.sh's
+# inject_statuses() with the real node of whatever cluster this is applied to
+# (the same mechanism status/swiftguest-e2e-guest-running.yaml uses for its
+# nodeName, see that file's comment), so the drawer's "To" link is a real
+# link everywhere, not only on a cluster whose single node happens to be
+# named "kubeswift-e2e-control-plane" (issue #23). sourceNode stays the
+# literal "kubeswift-e2e-worker" on purpose: it names a node this migration
+# moved the guest away from, which a real migration's source node may
+# legitimately no longer have (the guest detail view degrades this reference
+# to plain text rather than a dead link, per DESIGN.md section 3).
 status:
   phase: Completed
   mode: offline
   sourceNode: kubeswift-e2e-worker
-  destinationNode: kubeswift-e2e-control-plane
+  destinationNode: __NODE_NAME__
   sourcePodRef:
     name: e2e-guest-running-launcher
   destinationPodRef:

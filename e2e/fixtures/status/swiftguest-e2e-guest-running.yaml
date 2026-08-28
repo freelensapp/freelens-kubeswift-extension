@@ -1,9 +1,16 @@
 # Merge patch applied to the status subresource of swiftguest/e2e-guest-running.
 # No KubeSwift controller runs in the E2E cluster, so the status a real
 # controller would write is injected here instead.
+#
+# nodeName is __NODE_NAME__, substituted by cluster-up.sh's inject_statuses()
+# with the real (single) node of whatever cluster this is applied to, instead
+# of the literal "kubeswift-e2e-control-plane" kind would only give a cluster
+# named "kubeswift-e2e" (E2E_CLUSTER_NAME). That value happens to still be
+# correct for the E2E cluster itself, since kind names a single-node cluster's
+# node "<cluster-name>-control-plane" (see docs/specs/SPEC-0001, issue #23).
 status:
   phase: Running
-  nodeName: kubeswift-e2e-control-plane
+  nodeName: __NODE_NAME__
   restartCount: 2
   lastRestartTime: "2026-08-27T08:30:00Z"
   network:
