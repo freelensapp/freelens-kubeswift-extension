@@ -123,4 +123,11 @@ What cannot be automated is escalated to Roberto following the protocol in
 [PROCESS.md](PROCESS.md) ("Manual testing escalation"), and its outcome is
 recorded in the spec. Current known manual-only areas: behavior against a
 real KVM cluster with running VMs, GPU views with real hardware, console
-interaction latency.
+interaction latency, and the overall look and feel inside a real Freelens
+on Windows, Linux, and macOS (agents verify rendering via Playwright
+screenshots, not the lived experience).
+
+In addition to ad-hoc escalations, every milestone ends with a structured
+manual review session in a real Freelens: see "Milestone manual review
+gate" in [PROCESS.md](PROCESS.md) and the procedure in
+[TRY-IT.md](TRY-IT.md) (`pnpm demo:up`).

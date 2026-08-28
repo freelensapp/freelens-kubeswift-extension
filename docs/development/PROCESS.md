@@ -51,6 +51,27 @@ views, console interaction). In that case:
 3. The result is recorded in the spec (date, result, tester) before the
    feature is marked Verified.
 
+## Milestone manual review gate
+
+Automated tests prove behavior; they do not prove the experience. At the
+end of every milestone (after the post-merge closure step), Roberto runs a
+manual review session in a real Freelens before the next milestone starts:
+
+1. Bring up the demo environment with `pnpm demo:up` (procedure and
+   platform notes in [TRY-IT.md](TRY-IT.md), design in
+   [SPEC-0005](../specs/SPEC-0005-local-demo-cluster.md)).
+2. Walk through every view the milestone introduced, following the "What
+   to look at" checklist in TRY-IT.md, on both themes.
+3. Record findings as issues (one per finding, or one umbrella issue per
+   session) and the session outcome (date, tester, verdict) in the specs
+   involved.
+4. Blocking findings are fixed before the next milestone begins; the fixes
+   follow the normal loop.
+
+The review is per milestone, not once at the end: feedback on `M(n)` must
+arrive before its patterns are replicated in `M(n+1)`. The first session
+covers M1 and M2 retroactively.
+
 ## Upstream drift watch
 
 KubeSwift's API is v1alpha1 and changes between releases. At the start of

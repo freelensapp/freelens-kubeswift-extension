@@ -35,3 +35,6 @@
 *.DS_Store
 /.idea
 /.vscode
+
+# Kubeconfig and state of the local demo cluster (e2e/scripts/demo-up.sh)
+/.demo/
