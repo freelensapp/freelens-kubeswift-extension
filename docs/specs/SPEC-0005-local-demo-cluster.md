@@ -1,6 +1,6 @@
 # SPEC-0005: Local demo cluster for manual testing
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Milestone:** Cross-cutting (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Roberto Bandini with Claude / 2026-08-28

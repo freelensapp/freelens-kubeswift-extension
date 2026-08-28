@@ -81,7 +81,7 @@ means (each item needs its own spec before implementation):
 | Item | Status |
 | --- | --- |
 | E2E test infrastructure (kind + CRDs + simulated statuses + Playwright) | [SPEC-0003](../specs/SPEC-0003-e2e-infrastructure.md) — Done (see [TESTING.md](TESTING.md)) |
-| Local demo cluster for manual testing (`pnpm demo:up`, milestone review gate) | [SPEC-0005](../specs/SPEC-0005-local-demo-cluster.md) — In PR |
+| Local demo cluster for manual testing (`pnpm demo:up`, milestone review gate) | [SPEC-0005](../specs/SPEC-0005-local-demo-cluster.md) — Done (see [TRY-IT.md](TRY-IT.md)) |
 | Overview/dashboard page (counts, phases) | Planned, after M2 |
 
 ## Out of scope for v1
