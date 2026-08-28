@@ -76,3 +76,5 @@ addition for `kubectl get sg -o wide` parity).
   (`renderer/api/<group>/`, flat `pages/`, flat `details/`).
 - Every ref `name` in the schema has `default: ""`; the model treats empty
   string as unset.
+- 2026-08-28: header cells gained explicit column ids to enable the host's
+  column resizing (issue #27).

@@ -28,13 +28,13 @@ const sortingCallbacks = {
 
 // The columns the CRD publishes as printer columns, so the list reads like
 // `kubectl get swiftrestores`.
-const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; className?: string }[] = [
-  { title: "Name", sortBy: "name" },
-  { title: "Namespace", sortBy: "namespace" },
-  { title: "Snapshot", sortBy: "snapshot" },
-  { title: "Target", sortBy: "target" },
-  { title: "Phase", sortBy: "phase", className: styles.phase },
-  { title: "Age", sortBy: "age", className: styles.age },
+const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; id: string; className?: string }[] = [
+  { title: "Name", sortBy: "name", id: "name" },
+  { title: "Namespace", sortBy: "namespace", id: "namespace" },
+  { title: "Snapshot", sortBy: "snapshot", id: "snapshot" },
+  { title: "Target", sortBy: "target", id: "target" },
+  { title: "Phase", sortBy: "phase", id: "phase", className: styles.phase },
+  { title: "Age", sortBy: "age", id: "age", className: styles.age },
 ];
 
 export interface SwiftRestoresPageProps {

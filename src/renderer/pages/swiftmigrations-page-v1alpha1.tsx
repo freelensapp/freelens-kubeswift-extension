@@ -31,14 +31,14 @@ const sortingCallbacks = {
 // reads like `kubectl get swiftmigrations`. The source and destination nodes
 // are printer columns too, but they are node links, which belong in the detail
 // panel rather than in a cell that has to stay narrow.
-const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; className?: string }[] = [
-  { title: "Name", sortBy: "name" },
-  { title: "Namespace", sortBy: "namespace" },
-  { title: "Guest", sortBy: "guest" },
-  { title: "Mode", sortBy: "mode", className: styles.mode },
-  { title: "Phase", sortBy: "phase", className: styles.phase },
-  { title: "Progress", sortBy: "progress", className: styles.progress },
-  { title: "Age", sortBy: "age", className: styles.age },
+const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; id: string; className?: string }[] = [
+  { title: "Name", sortBy: "name", id: "name" },
+  { title: "Namespace", sortBy: "namespace", id: "namespace" },
+  { title: "Guest", sortBy: "guest", id: "guest" },
+  { title: "Mode", sortBy: "mode", id: "mode", className: styles.mode },
+  { title: "Phase", sortBy: "phase", id: "phase", className: styles.phase },
+  { title: "Progress", sortBy: "progress", id: "progress", className: styles.progress },
+  { title: "Age", sortBy: "age", id: "age", className: styles.age },
 ];
 
 export interface SwiftMigrationsPageProps {

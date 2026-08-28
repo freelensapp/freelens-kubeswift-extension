@@ -25,14 +25,14 @@ const sortingCallbacks = {
   age: (object: KubeObject) => object.getCreationTimestamp(),
 };
 
-const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; className?: string }[] = [
-  { title: "Name", sortBy: "name" },
-  { title: "Namespace", sortBy: "namespace" },
-  { title: "Phase", sortBy: "phase", className: styles.phase },
-  { title: "Node", sortBy: "node", className: styles.node },
-  { title: "IP", sortBy: "ip", className: styles.ip },
-  { title: "Restarts", sortBy: "restarts", className: styles.restarts },
-  { title: "Age", sortBy: "age", className: styles.age },
+const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; id: string; className?: string }[] = [
+  { title: "Name", sortBy: "name", id: "name" },
+  { title: "Namespace", sortBy: "namespace", id: "namespace" },
+  { title: "Phase", sortBy: "phase", id: "phase", className: styles.phase },
+  { title: "Node", sortBy: "node", id: "node", className: styles.node },
+  { title: "IP", sortBy: "ip", id: "ip", className: styles.ip },
+  { title: "Restarts", sortBy: "restarts", id: "restarts", className: styles.restarts },
+  { title: "Age", sortBy: "age", id: "age", className: styles.age },
 ];
 
 export interface SwiftGuestsPageProps {

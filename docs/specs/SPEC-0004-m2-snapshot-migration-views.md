@@ -81,6 +81,10 @@ order is implemented, but the labels follow the M1 convention of using the CRD
 kind's plural (`SwiftSnapshots`, `SwiftRestores`, `SwiftSnapshotSchedules`,
 `SwiftMigrations`), since the sidebar entry reuses `crd.title`.
 
+- 2026-08-28: header cells gained explicit column ids to enable the host's
+  column resizing (issue #27); the Last Schedule column width was fixed in
+  the schedules page.
+
 ### SwiftSnapshot
 
 - The design's "Kind (disk-only vs memory+disk)" column has no field behind it.

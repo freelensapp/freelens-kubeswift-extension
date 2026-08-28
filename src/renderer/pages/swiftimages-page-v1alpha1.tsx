@@ -30,13 +30,13 @@ const sortingCallbacks = {
   age: (object: KubeObject) => object.getCreationTimestamp(),
 };
 
-const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; className?: string }[] = [
-  { title: "Name", sortBy: "name" },
-  { title: "Namespace", sortBy: "namespace" },
-  { title: "Source", sortBy: "source", className: styles.source },
-  { title: "Phase", sortBy: "phase", className: styles.phase },
-  { title: "Size", sortBy: "size", className: styles.size },
-  { title: "Age", sortBy: "age", className: styles.age },
+const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; id: string; className?: string }[] = [
+  { title: "Name", sortBy: "name", id: "name" },
+  { title: "Namespace", sortBy: "namespace", id: "namespace" },
+  { title: "Source", sortBy: "source", id: "source", className: styles.source },
+  { title: "Phase", sortBy: "phase", id: "phase", className: styles.phase },
+  { title: "Size", sortBy: "size", id: "size", className: styles.size },
+  { title: "Age", sortBy: "age", id: "age", className: styles.age },
 ];
 
 export interface SwiftImagesPageProps {

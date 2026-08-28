@@ -35,15 +35,15 @@ const sortingCallbacks = {
 // Schedule, suspend, guest and the last tick are the columns the CRD publishes
 // as printer columns, so the list reads like `kubectl get
 // swiftsnapshotschedules`; Keep is the retention budget that governs them.
-const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; className?: string }[] = [
-  { title: "Name", sortBy: "name" },
-  { title: "Namespace", sortBy: "namespace" },
-  { title: "Schedule", sortBy: "schedule" },
-  { title: "Guest", sortBy: "guest" },
-  { title: "Keep", sortBy: "keep", className: styles.keep },
-  { title: "Suspended", sortBy: "suspended", className: styles.suspended },
-  { title: "Last Schedule", sortBy: "lastSchedule", className: styles.lastSchedule },
-  { title: "Age", sortBy: "age", className: styles.age },
+const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; id: string; className?: string }[] = [
+  { title: "Name", sortBy: "name", id: "name" },
+  { title: "Namespace", sortBy: "namespace", id: "namespace" },
+  { title: "Schedule", sortBy: "schedule", id: "schedule" },
+  { title: "Guest", sortBy: "guest", id: "guest" },
+  { title: "Keep", sortBy: "keep", id: "keep", className: styles.keep },
+  { title: "Suspended", sortBy: "suspended", id: "suspended", className: styles.suspended },
+  { title: "Last Schedule", sortBy: "lastSchedule", id: "lastSchedule", className: styles.lastSchedule },
+  { title: "Age", sortBy: "age", id: "age", className: styles.age },
 ];
 
 export interface SwiftSnapshotSchedulesPageProps {

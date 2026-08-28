@@ -101,6 +101,8 @@ difference is listed here.
 - Fields the schema declares without an `enum` stay plain strings in the
   models, as in SPEC-0001, so an unexpected value from a cluster cannot break
   a view.
+- 2026-08-28: header cells gained explicit column ids to enable the host's
+  column resizing (issue #27).
 
 ### SwiftGuestClass
 

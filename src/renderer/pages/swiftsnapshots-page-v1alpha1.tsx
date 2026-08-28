@@ -31,15 +31,15 @@ const sortingCallbacks = {
 // Guest, backend, phase and size are the columns the CRD publishes as printer
 // columns, so the list reads like `kubectl get swiftsnapshots`. Contents is
 // derived from the backend, which is what decides whether memory was captured.
-const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; className?: string }[] = [
-  { title: "Name", sortBy: "name" },
-  { title: "Namespace", sortBy: "namespace" },
-  { title: "Guest", sortBy: "guest" },
-  { title: "Backend", sortBy: "backend", className: styles.backend },
-  { title: "Contents", sortBy: "contents", className: styles.contents },
-  { title: "Phase", sortBy: "phase", className: styles.phase },
-  { title: "Size", sortBy: "size", className: styles.size },
-  { title: "Age", sortBy: "age", className: styles.age },
+const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; id: string; className?: string }[] = [
+  { title: "Name", sortBy: "name", id: "name" },
+  { title: "Namespace", sortBy: "namespace", id: "namespace" },
+  { title: "Guest", sortBy: "guest", id: "guest" },
+  { title: "Backend", sortBy: "backend", id: "backend", className: styles.backend },
+  { title: "Contents", sortBy: "contents", id: "contents", className: styles.contents },
+  { title: "Phase", sortBy: "phase", id: "phase", className: styles.phase },
+  { title: "Size", sortBy: "size", id: "size", className: styles.size },
+  { title: "Age", sortBy: "age", id: "age", className: styles.age },
 ];
 
 export interface SwiftSnapshotsPageProps {

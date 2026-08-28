@@ -28,15 +28,15 @@ const sortingCallbacks = {
 
 // The replica columns are the ones the CRD publishes as printer columns, so the
 // list reads like `kubectl get swiftguestpools`.
-const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; className?: string }[] = [
-  { title: "Name", sortBy: "name" },
-  { title: "Namespace", sortBy: "namespace" },
-  { title: "Desired", sortBy: "desired", className: styles.desired },
-  { title: "Ready", sortBy: "ready", className: styles.ready },
-  { title: "Updated", sortBy: "updated", className: styles.updated },
-  { title: "Available", sortBy: "available", className: styles.available },
-  { title: "Failed", sortBy: "failed", className: styles.failed },
-  { title: "Age", sortBy: "age", className: styles.age },
+const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; id: string; className?: string }[] = [
+  { title: "Name", sortBy: "name", id: "name" },
+  { title: "Namespace", sortBy: "namespace", id: "namespace" },
+  { title: "Desired", sortBy: "desired", id: "desired", className: styles.desired },
+  { title: "Ready", sortBy: "ready", id: "ready", className: styles.ready },
+  { title: "Updated", sortBy: "updated", id: "updated", className: styles.updated },
+  { title: "Available", sortBy: "available", id: "available", className: styles.available },
+  { title: "Failed", sortBy: "failed", id: "failed", className: styles.failed },
+  { title: "Age", sortBy: "age", id: "age", className: styles.age },
 ];
 
 export interface SwiftGuestPoolsPageProps {
