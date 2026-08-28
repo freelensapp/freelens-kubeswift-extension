@@ -38,3 +38,6 @@
 
 # Kubeconfig and state of the local demo cluster (e2e/scripts/demo-up.sh)
 /.demo/
+
+# Agent worktrees (transient, managed by the coding agent harness)
+/.claude/worktrees/

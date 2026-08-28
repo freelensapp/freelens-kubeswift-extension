@@ -1,6 +1,6 @@
 # SPEC-0006: Pre-review agent pass
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Milestone:** Cross-cutting (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Roberto Bandini with Claude / 2026-08-28
