@@ -164,6 +164,11 @@ difference is listed here.
 - The list adds Size, a published printer column. Format and Strategy are
   priority-1 printer columns and stay in the detail panel. The "Ready/Phase"
   column of this spec is `status.phase`, so the column is Phase.
+- 2026-08-28: `status.cloneSeed.sourceSizeBytes` rendered as a raw digit run
+  (`10737418240 bytes`) in the detail panel; a pre-review pass finding (part
+  of #29). Now humanized through the shared `formatBytes` helper (the same one
+  SPEC-0004 documents for SwiftSnapshot/SwiftRestore), with the raw byte count
+  kept in the `WithTooltip`.
 
 ### SwiftSeedProfile
 
@@ -180,6 +185,16 @@ difference is listed here.
   The host `MonacoEditor` was considered and set aside: a read-only display
   needs no editor, and its behavior inside a details drawer cannot be verified
   without a real cluster.
+- 2026-08-28: the milestone review (issue #25) found the plain code block
+  above nearly unreadable (very low contrast) and clipped to about one line,
+  which is exactly the risk the previous entry could not verify without a
+  real cluster. DESIGN.md section 3 has since made a read-only `MonacoEditor`
+  binding for blobs, so the code block is replaced with one (host theme,
+  height clamped to 5-20 lines via `getBlobEditorHeight` in
+  `renderer/utils.ts`, `scrollbar.alwaysConsumeMouseWheel: false`), reversing
+  the earlier decision. The redundant top-level "Datasource" row (duplicated
+  under an otherwise-empty "Seed Profile" title) is also dropped: the list
+  page's own Datasource column already covers it.
 - `metaData` is optional in the schema but defaulted by the controller, not by
   the API server. The panel reports it as not set rather than showing a
   default the object does not carry.

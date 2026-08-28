@@ -199,18 +199,67 @@ export async function headerCellsWithoutId(frame: Frame): Promise<string[]> {
 }
 
 // Byte-like quantities must be humanized (DESIGN.md): a run of more than 4
-// digits, not directly adjacent to a letter, is a value that likely was not
-// passed through a humanizer. The word-boundary requirement on both sides
-// keeps this from misfiring on hex digests (e.g. a sha256, which mixes
-// letters into every run of digits) while still catching raw byte counts,
-// which are always pure digits.
-const RAW_DIGIT_RUN_PATTERN = /\b\d{5,}\b/g;
+// digits that stands alone as its own token - not embedded in a larger
+// identifier - is a value that likely was not passed through a humanizer.
+// The lookaround requires an identifier boundary on both sides (not a
+// letter, digit, hyphen, underscore or dot), which is stricter than a plain
+// `\b`: a hyphen or dot is not a `\w` character, so `\b` alone would still
+// treat the digits on either side of one as a standalone "word" even though
+// they read as part of the same token. This keeps catching bare raw byte
+// counts (a host printer column's "22548578304") and hex digests (still
+// broken up by letters, as before), while no longer flagging a digit run
+// that is part of a generated identifier, such as the Unix-style suffix in
+// SwiftSnapshotSchedule's CronJob-style snapshot names
+// ("e2e-schedule-nightly-28160520": the hyphen right before the digits
+// means the run is not a standalone token).
+const RAW_DIGIT_RUN_PATTERN = /(?<![A-Za-z0-9_.-])\d{5,}(?![A-Za-z0-9_.-])/g;
 
 /** Raw digit runs of more than 4 digits found in `text`, deduplicated. */
 export function nonHumanizedByteValues(text: string): string[] {
   const matches = text.match(RAW_DIGIT_RUN_PATTERN) ?? [];
 
   return [...new Set(matches)];
+}
+
+// Every CR drawer also carries Freelens core's own generic detail item
+// (`custom-resource-detail-item`, `orderNumber: 100`, `NonInjectedCustomResourceDetails`
+// in `@freelensapp/core`), which renders a `<div class="CustomResourceDetails ...">`
+// wrapper with one `DrawerItem` per CRD `additionalPrinterColumns` entry, read
+// with `safeJSONPathValue` and rendered verbatim - it has no way to know a
+// given column is a byte count, so it never humanizes one. When a CRD
+// publishes a raw byte count as a printer column (SwiftSnapshot's `SIZE`, for
+// example), this host section shows it unhumanized, and this extension has no
+// hook to change that rendering. See "Notes and deviations" in SPEC-0006.
+const HOST_GENERIC_CR_SECTION_SELECTOR = ".CustomResourceDetails";
+
+/**
+ * Text content of the open detail drawer, excluding Freelens core's generic
+ * `.CustomResourceDetails` printer-column section (see
+ * `HOST_GENERIC_CR_SECTION_SELECTOR` above). Walks text nodes directly
+ * instead of cloning the subtree, so it does not depend on the clone being
+ * laid out (a detached clone's `innerText` is unreliable across browsers).
+ * Used by the byte-humanization assert, which only holds the extension
+ * responsible for what it renders itself.
+ */
+export async function extensionDrawerText(frame: Frame): Promise<string> {
+  return frame.$eval(
+    ".Drawer.KubeObjectDetails",
+    (root, hostSectionSelector) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) =>
+          node.parentElement?.closest(hostSectionSelector) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+      });
+
+      const parts: string[] = [];
+
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        parts.push(node.textContent ?? "");
+      }
+
+      return parts.join(" ");
+    },
+    HOST_GENERIC_CR_SECTION_SELECTOR,
+  );
 }
 
 export interface ViewAssertResults {
@@ -250,6 +299,12 @@ export function renderReport(views: ViewReport[], generatedAt = new Date()): str
     "See [SPEC-0006](../../docs/specs/SPEC-0006-pre-review-agent-pass.md) for what this pass covers, and " +
       "[DESIGN.md](../../docs/development/DESIGN.md) for the rules behind each assert. Every FAIL below is a " +
       "candidate for a permanent E2E non-regression test once confirmed as a real bug (SPEC-0006 scope item 5).",
+    "",
+    'The "Byte-like values are humanized" assert only scans this extension\'s own drawer content: it excludes ' +
+      "Freelens core's generic `.CustomResourceDetails` printer-column section (host printer column, upstream " +
+      "CRD defines raw bytes - out of extension control), present in every CR drawer regardless of what an " +
+      "extension registers. A CRD that publishes a raw byte count as a printer column (SwiftSnapshot's `SIZE`, " +
+      'for example) always shows it unhumanized there; see "Notes and deviations" in SPEC-0006.',
     "",
   ];
 

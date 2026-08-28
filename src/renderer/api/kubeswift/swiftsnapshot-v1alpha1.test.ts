@@ -75,6 +75,27 @@ describe("SwiftSnapshot (v1alpha1)", () => {
     });
   });
 
+  describe("getCapturedImageRef", () => {
+    it("builds a same-namespace SwiftImage link target from the captured guest spec", () => {
+      const object = buildSwiftSnapshot(csiSpec, { guestSpec: { imageName: "ubuntu-noble" } });
+
+      expect(SwiftSnapshot.getCapturedImageRef(object)).toEqual({
+        apiVersion: "image.kubeswift.io/v1alpha1",
+        kind: "SwiftImage",
+        name: "ubuntu-noble",
+        namespace: "default",
+      });
+    });
+
+    it("returns undefined when the captured guest spec carries no image name", () => {
+      const withoutGuestSpec = buildSwiftSnapshot(csiSpec);
+      const withEmptyName = buildSwiftSnapshot(csiSpec, { guestSpec: { imageName: "" } });
+
+      expect(SwiftSnapshot.getCapturedImageRef(withoutGuestSpec)).toBeUndefined();
+      expect(SwiftSnapshot.getCapturedImageRef(withEmptyName)).toBeUndefined();
+    });
+  });
+
   describe("getContents", () => {
     // The schema documents the captured set as backend-determined rather than
     // driven by spec.includeMemory, which it calls a no-op on every backend.

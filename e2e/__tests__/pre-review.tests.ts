@@ -113,7 +113,7 @@ describe("Pre-review agent pass against the demo cluster", () => {
 
       conditionsSectionCount = (await pr.conditionsSectionTitles(frame)).length;
 
-      const drawerText = await frame.locator(".Drawer.KubeObjectDetails").innerText();
+      const drawerText = await pr.extensionDrawerText(frame);
 
       nonHumanizedDrawerValues = pr.nonHumanizedByteValues(drawerText);
     }

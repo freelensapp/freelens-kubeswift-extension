@@ -14,6 +14,7 @@ const {
     KubeObjectConditionsDrawer,
     LinkToNode,
     LinkToObject,
+    LinkToStorageClass,
     LocaleDate,
     WithTooltip,
   },
@@ -33,6 +34,7 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
     const disks = SwiftSnapshot.getDisks(object);
     const artifact = SwiftSnapshot.getArtifactLocation(object);
     const guestRef = SwiftSnapshot.getGuestRef(object);
+    const capturedImageRef = SwiftSnapshot.getCapturedImageRef(object);
     const guestSpec = status?.guestSpec;
     const capturedDataDisks = guestSpec?.dataDisks ?? [];
 
@@ -135,7 +137,11 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
           <>
             <DrawerTitle>Captured Guest</DrawerTitle>
             <DrawerItem name="Image" hidden={!guestSpec.imageName}>
-              <WithTooltip>{guestSpec.imageName}</WithTooltip>
+              {capturedImageRef ? (
+                <LinkToObject objectRef={capturedImageRef} object={object} />
+              ) : (
+                <WithTooltip>{guestSpec.imageName}</WithTooltip>
+              )}
             </DrawerItem>
             <DrawerItem name="OS Type" hidden={!guestSpec.osType}>
               <WithTooltip>{guestSpec.osType}</WithTooltip>
@@ -150,7 +156,7 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
               <WithTooltip>{guestSpec.rootDiskSize}</WithTooltip>
             </DrawerItem>
             <DrawerItem name="Storage Class" hidden={!guestSpec.storage?.storageClassName}>
-              <WithTooltip>{guestSpec.storage?.storageClassName}</WithTooltip>
+              <LinkToStorageClass name={guestSpec.storage?.storageClassName} />
             </DrawerItem>
             <DrawerItem name="Data Disks" hidden={capturedDataDisks.length === 0} labelsOnly>
               {capturedDataDisks.map((disk) => (

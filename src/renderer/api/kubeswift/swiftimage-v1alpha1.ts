@@ -1,6 +1,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import {
   type Condition,
+  formatBytes,
   formatQuantity,
   type KubeSwiftKubeObjectCRD,
   type LocalObjectReference,
@@ -190,6 +191,15 @@ export class SwiftImage extends Renderer.K8sApi.LensExtensionKubeObject<
 
   static getRootDiskSize(object: SwiftImage): string | undefined {
     return formatQuantity(object.spec?.rootDisk?.size);
+  }
+
+  /**
+   * Size of the VolumeSnapshot the `snapshot` clone strategy reused, humanized
+   * the way the other raw `int64` byte counts in this extension are (the
+   * status reports a byte count, not a `resource.Quantity`).
+   */
+  static getCloneSeedSourceSize(object: SwiftImage): string | undefined {
+    return formatBytes(object.status?.cloneSeed?.sourceSizeBytes);
   }
 }
 

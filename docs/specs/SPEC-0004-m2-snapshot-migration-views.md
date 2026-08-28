@@ -209,3 +209,10 @@ page full of missing rows.
 
 2026-08-28: object references in the four detail drawers are rendered as
 links (issue #26), per DESIGN.md section 3.
+
+2026-08-28: the SwiftSnapshot "Captured Guest" section still had two
+unlinked references, a pre-review pass finding (part of #29). "Image" now
+links to the SwiftImage object via a new `SwiftSnapshot.getCapturedImageRef`
+helper (same `toKubeObjectRef`/`LinkToObject` pattern as `getGuestRef`), and
+"Storage Class" now uses the core `LinkToStorageClass` component instead of
+plain text.

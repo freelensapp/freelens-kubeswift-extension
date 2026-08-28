@@ -2,16 +2,16 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { type SwiftSeedDataSource, SwiftSeedProfile } from "../api/kubeswift/swiftseedprofile-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { getBlobEditorHeight } from "../utils";
 import styles from "./swiftseedprofile-details.module.scss";
 import stylesInline from "./swiftseedprofile-details.module.scss?inline";
 
 const { observer } = MobxReact;
 
 const {
-  Component: { DrawerItem, DrawerTitle, LinkToConfigMap, LinkToSecret, WithTooltip },
+  Component: { DrawerItem, DrawerTitle, LinkToConfigMap, LinkToSecret, MonacoEditor, WithTooltip },
 } = Renderer;
 
-const notAvailable = "N/A";
 const notSet = "Not set";
 
 interface SeedDocumentProps {
@@ -46,7 +46,20 @@ function SeedDocument({ title, namespace, source, value }: SeedDocumentProps) {
       <DrawerItem name="Optional" hidden={source?.optional === undefined}>
         <WithTooltip>{String(source?.optional)}</WithTooltip>
       </DrawerItem>
-      {source?.origin === "inline" && value ? <pre className={styles.codeBlock}>{value}</pre> : null}
+      {source?.origin === "inline" && value ? (
+        <MonacoEditor
+          readOnly
+          className={styles.editor}
+          style={{ minHeight: getBlobEditorHeight(value) }}
+          value={value}
+          setInitialHeight
+          options={{
+            scrollbar: {
+              alwaysConsumeMouseWheel: false,
+            },
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -64,11 +77,12 @@ export const SwiftSeedProfileDetails = observer((props: SwiftSeedProfileDetailsP
     return (
       <>
         <style>{stylesInline}</style>
-        <DrawerTitle>Seed Profile</DrawerTitle>
-        <DrawerItem name="Datasource">
-          <WithTooltip>{SwiftSeedProfile.getDatasource(object) ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-
+        {/* The list page already shows the "Datasource" printer column (parity
+            with `kubectl get`); a single-value field ("NoCloud" is the only
+            option the CRD currently declares) does not earn its own drawer
+            section here, and duplicating it under a "Seed Profile" title with
+            no other content of its own was the #25 finding. Each document
+            below carries its own title with real content instead. */}
         <SeedDocument
           title="User Data"
           namespace={namespace}

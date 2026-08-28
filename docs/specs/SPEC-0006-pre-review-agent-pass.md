@@ -204,10 +204,57 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   digest). First run found real violations: `SwiftImage` and
   `SwiftSnapshot` show a raw byte count in their drawers (`10737418240`,
   `22548578304`) and `SwiftSnapshotSchedule` shows a raw Unix-style
-  revision suffix (`28160520`, from the CronJob-style generated name, a
-  false positive worth a follow-up look since it is not a byte value at
-  all - the assert is about digit runs, not specifically about the field
-  being byte-shaped).
+  revision suffix (`28160520`, from the CronJob-style generated name, not a
+  byte value at all - the assert is about digit runs, not specifically
+  about the field being byte-shaped). See the dated notes below for how
+  each of these was resolved, including the regex itself.
+- 2026-08-28: follow-up on the two real violations above (part of #29).
+  `SwiftImage`'s `status.cloneSeed.sourceSizeBytes` is now humanized through
+  the shared `formatBytes` helper (see SPEC-0002's SwiftImage notes).
+  `SwiftSnapshot`'s `22548578304` turned out not to be the extension's own
+  rendering at all: `status.totalSizeBytes` already went through
+  `formatBytes` in the extension's own "Total Size" `DrawerItem` (added in
+  #32, before this pass existed), confirmed by unit test and by inspecting
+  the compiled bundle. The raw digit run instead comes from Freelens core's
+  generic `.CustomResourceDetails` printer-column section (the
+  `custom-resource-detail-item` injectable, `orderNumber: 100`, present in
+  every CR drawer regardless of what an extension registers), which reads
+  the SwiftSnapshot CRD's `SIZE` `additionalPrinterColumns` entry with
+  `safeJSONPathValue` and renders it verbatim - a host-rendered section this
+  extension has no hook to humanize. Confirmed visually in
+  `e2e-artifacts/pre-review/swiftsnapshots/drawer-dark.png`: the raw
+  `22548578304` sits in the ungrouped Phase/Guest/Backend/Size/Conditions
+  block right under the object metadata, above the extension's own
+  "Snapshot" titled section (where "Total Size" correctly reads "21Gi").
+  This also confirms the mechanism behind the earlier SwiftSeedProfile
+  "Datasource" duplication (issue #25): the same host section is what
+  rendered the first, unlabeled "Datasource" copy. The byte-humanization
+  assert (`integration/helpers/pre-review.ts`,
+  `extensionDrawerText`/`HOST_GENERIC_CR_SECTION_SELECTOR`) now scopes
+  itself to the drawer text outside `.CustomResourceDetails`, so it only
+  holds the extension accountable for what it renders; the report's intro
+  documents the exemption. Candidate upstream feedback for KubeSwift: its
+  SwiftSnapshot CRD's `SIZE` printer column could be defined in a
+  human-readable format (or as a `resource.Quantity`-shaped string) instead
+  of a raw `int64` byte count, the way most core Kubernetes printer columns
+  are formatted.
+- 2026-08-28: the `28160520` false positive from the first run (above) is
+  now handled by the matcher itself, not just documented. The original
+  regex required only a `\b` word boundary on both sides, but a hyphen or
+  dot is not a `\w` character, so `\b` still treated the digits inside a
+  hyphenated identifier as a standalone "word" - exactly what let
+  `SwiftSnapshotSchedule`'s "Active" badges (`e2e-schedule-nightly-28160520`,
+  the CronJob-style generated snapshot name) trip the assert, since that
+  digit run is genuinely part of the extension's own rendered content (not
+  the host's `.CustomResourceDetails` section, so the DOM-scoping fix above
+  correctly did not exempt it). `RAW_DIGIT_RUN_PATTERN`
+  (`integration/helpers/pre-review.ts`) now requires an identifier boundary
+  instead: `/(?<![A-Za-z0-9_.-])\d{5,}(?![A-Za-z0-9_.-])/g`. A digit run
+  immediately preceded or followed by a letter, digit, hyphen, underscore or
+  dot is part of a larger token and is not flagged; a bare raw byte count
+  with ordinary punctuation or whitespace on both sides (the host printer
+  column's `22548578304`, or a hypothetical unhumanized value in the
+  extension's own content) still is.
 - **"Possible unlinked reference" is a broad heuristic**, matching any
   `DrawerItem` label against a word list (node, namespace, guest, image,
   kernel, class, pool, snapshot, schedule, profile, restore, migration,

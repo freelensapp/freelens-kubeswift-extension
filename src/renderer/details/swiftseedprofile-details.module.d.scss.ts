@@ -1,4 +1,4 @@
 declare const classNames: {
-  readonly codeBlock: "codeBlock";
+  readonly editor: "editor";
 };
 export = classNames;

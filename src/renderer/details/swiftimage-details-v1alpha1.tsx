@@ -106,7 +106,9 @@ export const SwiftImageDetails = observer((props: SwiftImageDetailsProps) =>
               <WithTooltip>{cloneSeed.name}</WithTooltip>
             </DrawerItem>
             <DrawerItem name="Source Size" hidden={cloneSeed.sourceSizeBytes === undefined}>
-              <WithTooltip>{`${cloneSeed.sourceSizeBytes} bytes`}</WithTooltip>
+              <WithTooltip tooltip={`${cloneSeed.sourceSizeBytes} bytes`}>
+                {SwiftImage.getCloneSeedSourceSize(object) ?? notAvailable}
+              </WithTooltip>
             </DrawerItem>
           </>
         ) : null}

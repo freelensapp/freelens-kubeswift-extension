@@ -156,4 +156,21 @@ describe("SwiftImage (v1alpha1)", () => {
       expect(SwiftImage.getRootDiskSize(object)).toBeUndefined();
     });
   });
+
+  describe("getCloneSeedSourceSize", () => {
+    it("humanizes the clone seed's raw byte count", () => {
+      const object = buildSwiftImage(
+        { format: "qcow2", source: httpSource, cloneStrategy: "snapshot" },
+        { cloneSeed: { kind: "VolumeSnapshot", name: "seed", namespace: "default", sourceSizeBytes: 10737418240 } },
+      );
+
+      expect(SwiftImage.getCloneSeedSourceSize(object)).toBe("10Gi");
+    });
+
+    it("returns undefined when there is no clone seed", () => {
+      const object = buildSwiftImage({ format: "qcow2", source: httpSource });
+
+      expect(SwiftImage.getCloneSeedSourceSize(object)).toBeUndefined();
+    });
+  });
 });

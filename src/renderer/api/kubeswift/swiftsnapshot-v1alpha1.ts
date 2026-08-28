@@ -1,5 +1,6 @@
 import { Renderer } from "@freelensapp/extensions";
 import { SwiftGuest } from "./swiftguest-v1alpha1";
+import { SwiftImage } from "./swiftimage-v1alpha1";
 import {
   type Condition,
   formatBytes,
@@ -271,6 +272,21 @@ export class SwiftSnapshot extends Renderer.K8sApi.LensExtensionKubeObject<
 
   static getDisks(object: SwiftSnapshot): SwiftSnapshotDiskRef[] {
     return object.status?.disks ?? [];
+  }
+
+  /** The image the captured guest was built from, frozen at capture time. */
+  static getCapturedImageName(object: SwiftSnapshot): string | undefined {
+    return object.status?.guestSpec?.imageName || undefined;
+  }
+
+  /** Link target for the image the captured guest was built from. */
+  static getCapturedImageRef(object: SwiftSnapshot): KubeObjectRef | undefined {
+    return toKubeObjectRef(
+      SwiftImage.kind,
+      SwiftImage.crd.apiVersions[0],
+      SwiftSnapshot.getCapturedImageName(object),
+      object.getNs(),
+    );
   }
 
   /**
