@@ -138,14 +138,21 @@ inject_statuses() {
 }
 
 verify_statuses() {
-	local entry target json_path expected actual resource name
+	local entry target rest json_path expected actual resource name
 
 	log "verifying that the injected statuses were persisted"
 	for entry in "${E2E_STATUS_ASSERTIONS[@]}"; do
+		# The jsonpath itself may contain "=" - a condition filter such as
+		# {.status.conditions[?(@.type=="Reachable")].status} does, and M5 needs
+		# exactly that shape because it is the one the fleet CRD's own Ready
+		# printer column uses. So the expected value is taken from the LAST "="
+		# and the path is everything between the first and the last, instead of
+		# splitting on the first two (SPEC-0009). No expected value in this
+		# file contains an "=", which is what makes the split unambiguous.
 		target="${entry%%=*}"
-		json_path="${entry#*=}"
-		expected="${json_path#*=}"
-		json_path="${json_path%%=*}"
+		rest="${entry#*=}"
+		expected="${rest##*=}"
+		json_path="${rest%=*}"
 		resource="${target%%/*}"
 		name="$(substitute_node_name "${target#*/}")"
 

@@ -4,6 +4,10 @@
  */
 
 import { Renderer } from "@freelensapp/extensions";
+// The kind is `Cluster`; the class is `FleetCluster` because an import named
+// `Cluster` here would shadow the most overloaded noun in the host's vocabulary
+// for every future reader of this file (SPEC-0009).
+import { FleetCluster as FleetClusterV1alpha1 } from "./api/kubeswift/fleetcluster-v1alpha1";
 import { SwiftGPUNode as SwiftGPUNodeV1alpha1 } from "./api/kubeswift/swiftgpunode-v1alpha1";
 import { SwiftGPUProfile as SwiftGPUProfileV1alpha1 } from "./api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest as SwiftGuestV1alpha1 } from "./api/kubeswift/swiftguest-v1alpha1";
@@ -18,6 +22,7 @@ import { SwiftSandboxPool as SwiftSandboxPoolV1alpha1 } from "./api/kubeswift/sw
 import { SwiftSeedProfile as SwiftSeedProfileV1alpha1 } from "./api/kubeswift/swiftseedprofile-v1alpha1";
 import { SwiftSnapshot as SwiftSnapshotV1alpha1 } from "./api/kubeswift/swiftsnapshot-v1alpha1";
 import { SwiftSnapshotSchedule as SwiftSnapshotScheduleV1alpha1 } from "./api/kubeswift/swiftsnapshotschedule-v1alpha1";
+import { FleetClusterDetails as FleetClusterDetailsV1alpha1 } from "./details/fleetcluster-details-v1alpha1";
 import { SwiftGPUNodeDetails as SwiftGPUNodeDetailsV1alpha1 } from "./details/swiftgpunode-details-v1alpha1";
 import { SwiftGPUProfileDetails as SwiftGPUProfileDetailsV1alpha1 } from "./details/swiftgpuprofile-details-v1alpha1";
 import { SwiftGuestDetails as SwiftGuestDetailsV1alpha1 } from "./details/swiftguest-details-v1alpha1";
@@ -33,6 +38,7 @@ import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./de
 import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
 import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
 import { KubeSwiftIcon } from "./icons/kubeswift";
+import { FleetClustersPage as FleetClustersPageV1alpha1 } from "./pages/fleetclusters-page-v1alpha1";
 import { SwiftGPUNodesPage as SwiftGPUNodesPageV1alpha1 } from "./pages/swiftgpunodes-page-v1alpha1";
 import { SwiftGPUProfilesPage as SwiftGPUProfilesPageV1alpha1 } from "./pages/swiftgpuprofiles-page-v1alpha1";
 import { SwiftGuestClassesPage as SwiftGuestClassesPageV1alpha1 } from "./pages/swiftguestclasses-page-v1alpha1";
@@ -197,6 +203,21 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         ),
       },
     },
+    // The one registration in this list whose kind is not unique in the
+    // Kubernetes ecosystem. The host matches on kind AND apiVersion
+    // (`kubeObjectMatchesToKindAndApiVersion`), so a Cluster API
+    // (`cluster.x-k8s.io`) or a Rancher Fleet (`fleet.cattle.io`) object of the
+    // same kind never receives this drawer, and ours never receives theirs.
+    {
+      kind: FleetClusterV1alpha1.kind,
+      apiVersions: FleetClusterV1alpha1.crd.apiVersions,
+      priority: 10,
+      components: {
+        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
+          <FleetClusterDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
   ];
 
   clusterPages = [
@@ -282,6 +303,16 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       id: "swiftsandboxpools",
       components: {
         Page: () => <SwiftSandboxPoolsPageV1alpha1 extension={this} />,
+      },
+    },
+    // `fleetclusters` rather than `clusters`: page ids are already namespaced
+    // per extension by the host (`/extension/<id>/<pageId>`), so this is not a
+    // collision fix but a readability one - the E2E and pre-review test ids
+    // read unambiguously in failure output.
+    {
+      id: "fleetclusters",
+      components: {
+        Page: () => <FleetClustersPageV1alpha1 extension={this} />,
       },
     },
   ];
@@ -452,6 +483,32 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       parentId: "kubeswift-sandboxes",
       title: SwiftSandboxPoolV1alpha1.crd.title,
       target: { pageId: "swiftsandboxpools" },
+      components: {},
+    },
+    // The seventh group, appended after "Sandboxes" for the same reason every
+    // group since "GPU" was appended after the last one (SPEC-0009). It holds a
+    // single leaf, which SPEC-0007 rejected elsewhere: the M3 objection was to
+    // splitting a two-CRD domain across two groups, and the one-leaf group was
+    // the symptom. Nothing is split here - `fleet.kubeswift.io` contains
+    // exactly one CRD, and no other group could hold it without misfiling it.
+    {
+      id: "kubeswift-fleet",
+      parentId: "kubeswift",
+      title: "Fleet",
+      target: { pageId: "fleetclusters" },
+      components: {},
+    },
+    // Titled "Member Clusters" and not the plain humanization of the kind: core
+    // registers a root sidebar item titled exactly "Cluster", and the catalog
+    // outside the cluster frame calls kubeconfig entries "Clusters", so a leaf
+    // titled "Clusters" would sit a few pixels from both. The qualifier is the
+    // schema's own first words (declared deviation, SPEC-0009, written into
+    // DESIGN.md section 4 by the same PR).
+    {
+      id: "fleetclusters",
+      parentId: "kubeswift-fleet",
+      title: FleetClusterV1alpha1.crd.title,
+      target: { pageId: "fleetclusters" },
       components: {},
     },
   ];

@@ -74,6 +74,19 @@ review and checks, for each list page and detail drawer:
   the N/A fallbacks;
 - both dark and light Freelens themes.
 
+**Fleet > Member Clusters reads differently from every other page**, and
+the reviewer should know which of three situations an empty one means
+(SPEC-0009): the cluster is not a KubeSwift **hub** (the chart installs
+this CRD everywhere, so the page exists on every KubeSwift cluster and
+nothing ever writes a status on it); the cluster is a hub but the
+namespace filter does not include the KubeSwift system namespace, which
+is where Cluster objects live and which is never the `default` namespace
+a freshly connected Freelens selects; or the hub genuinely has no members
+registered yet. On the demo cluster the fixtures make the page non-empty,
+and an "Unknown" badge with "N/A" in K8s and Guests is a **correct steady
+state** there rather than a symptom: it is the member no gateway has
+reported on.
+
 Feedback goes into one issue per finding (or one umbrella issue per
 session), referenced from the spec of the feature it concerns; the spec's
 "Manual verification" section records date, tester, and result.

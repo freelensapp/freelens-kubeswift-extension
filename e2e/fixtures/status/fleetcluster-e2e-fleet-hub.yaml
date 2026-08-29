@@ -1,0 +1,43 @@
+# Merge patch applied to the status subresource of
+# clusters.fleet.kubeswift.io/e2e-fleet-hub. No kubeswift-gateway runs in the
+# E2E cluster - and it is the gateway, not the controller-manager, that
+# reconciles this kind - so the status it would write is injected here instead.
+#
+# The file is named after the model's class (FleetCluster) rather than after the
+# kind, which is literally `Cluster`: the same reason the TypeScript class,
+# the page and the drawer are named that way (SPEC-0009).
+#
+# The hub's own entry, healthy: it federates itself through its in-cluster
+# ServiceAccount, so it has no server URL to report and its telemetry endpoint
+# was auto-discovered rather than configured, which is what the `Discovered`
+# reason says. The guestCount of 0 is the point of this fixture: the schema
+# omits the field until the gateway has synced the member at least once, so 0 is
+# a synced cluster running no VMs and must not collapse into "N/A".
+status:
+  kubernetesVersion: v1.33.4
+  guestCount: 0
+  lastConnected: "2026-08-29T09:12:00Z"
+  observedGeneration: 1
+  prometheusEndpoint: http://prometheus-operated.monitoring.svc:9090
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ClientHealthy
+      message: The gateway holds a healthy in-cluster client for its own cluster.
+      lastTransitionTime: "2026-08-29T09:10:00Z"
+      observedGeneration: 1
+    # The newest condition of the three, and the one an operator wants in the
+    # Status column: with every condition True the ladder falls through to its
+    # third rung, which picks by transition time alone.
+    - type: Reachable
+      status: "True"
+      reason: APIServerReachable
+      message: The API server answered the last probe.
+      lastTransitionTime: "2026-08-29T09:11:00Z"
+      observedGeneration: 1
+    - type: PrometheusEndpointResolved
+      status: "True"
+      reason: Discovered
+      message: A Prometheus service was discovered in the monitoring namespace.
+      lastTransitionTime: "2026-08-29T09:09:00Z"
+      observedGeneration: 1

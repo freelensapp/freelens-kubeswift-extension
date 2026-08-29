@@ -1,0 +1,29 @@
+.page {
+  :global(.TableCell) {
+    // API server URLs are long, so this is the widest domain column and its
+    // cell truncates with a tooltip.
+    &.server {
+      flex-grow: 1.5;
+    }
+
+    &.k8s {
+      flex-grow: 0.5;
+    }
+
+    &.guests {
+      flex-grow: 0.5;
+    }
+
+    &.condition {
+      flex-grow: 0.7;
+    }
+
+    &.status {
+      flex-grow: 1.5;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

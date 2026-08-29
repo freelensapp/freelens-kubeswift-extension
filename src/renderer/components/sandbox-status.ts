@@ -15,17 +15,20 @@
 // host global (the same shape as `gpu-status.ts` and `object-existence.ts`).
 //
 // Unlike SwiftGPUNode, both sandbox CRDs report real `metav1.Condition`s and a
-// top-level `status.message`, so this is the first module in which the Status
-// column can carry the controller's own words instead of an explanation this
-// extension generates. `conditionMessage` below is that selector; the generated
-// explanation survives only as its last resort, for an object whose controller
-// has not written anything yet.
+// top-level `status.message`, so M4 was the first milestone in which the Status
+// column could carry the controller's own words instead of an explanation this
+// extension generates. That selector is `conditionMessage`, which M5 moved into
+// `condition-message.ts` once a second CRD family needed it (SPEC-0009); the
+// generated explanation survives only as its last resort, for an object whose
+// controller has not written anything yet.
 //
 // The module holds two classifiers because the two M4 CRDs have different phase
-// vocabularies, and one shared message selector because the ladder that picks
-// the controller's words is identical for both: `sandboxMessage` and
-// `sandboxPoolMessage` are `conditionMessage` with their own classifier's
-// explanation as the last resort.
+// vocabularies, and both message selectors are the shared ladder with their own
+// classifier's explanation as the last resort.
+
+import { conditionMessage } from "./condition-message";
+
+import type { ConditionFacts } from "./condition-message";
 
 /** The host's global status classes, defined in core's `app.scss`. */
 export type SandboxStatusClass = "success" | "warning" | "error" | "info";
@@ -62,20 +65,12 @@ export const sandboxPoolStates = {
   unknown: "Unknown",
 } as const;
 
-/** What one condition must look like for the message selector to read it. */
-export interface SandboxConditionFacts {
-  type?: string;
-  status?: string;
-  message?: string;
-  lastTransitionTime?: string;
-}
-
 /** What a SwiftSandbox's status must look like for these functions to read it. */
 export interface SandboxStatusFacts {
   phase?: string;
   message?: string;
   exitCode?: number;
-  conditions?: SandboxConditionFacts[];
+  conditions?: ConditionFacts[];
 }
 
 /**
@@ -87,7 +82,7 @@ export interface SandboxStatusFacts {
 export interface SandboxPoolStatusFacts {
   phase?: string;
   message?: string;
-  conditions?: SandboxConditionFacts[];
+  conditions?: ConditionFacts[];
 }
 
 export interface SandboxCondition {
@@ -255,74 +250,6 @@ export function classifySandboxPool(status?: SandboxPoolStatusFacts): SandboxCon
     className: "info",
     explanation: `The controller reported the phase "${phase}", which this extension does not know`,
   };
-}
-
-/** The condition status that means "this aspect is fine". */
-const trueConditionStatus = "True";
-
-/** Sorting key of a condition: an unparseable timestamp sorts oldest. */
-function transitionTime(condition: SandboxConditionFacts): number {
-  const parsed = Date.parse(condition.lastTransitionTime ?? "");
-
-  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
-}
-
-/**
- * The newest condition that carries a message and satisfies `accept`, or
- * `undefined`. Conditions with an empty message are skipped whatever their
- * timestamp: `metav1.Condition` allows one, and picking it would leave the
- * Status column blank, which is the one outcome this selector exists to avoid.
- */
-function newestCondition(
-  conditions: SandboxConditionFacts[],
-  accept: (condition: SandboxConditionFacts) => boolean,
-): SandboxConditionFacts | undefined {
-  const candidates = conditions.filter((condition) => Boolean(condition.message) && accept(condition));
-
-  if (candidates.length === 0) {
-    return undefined;
-  }
-
-  return candidates.reduce((newest, condition) =>
-    transitionTime(condition) >= transitionTime(newest) ? condition : newest,
-  );
-}
-
-/**
- * The controller's own words about an object, in order: its `status.message`,
- * then the newest condition that is reporting a problem, then the newest
- * condition of any kind. `undefined` when the controller has written nothing,
- * which is where each kind's own classifier explanation takes over.
- *
- * It deliberately hardcodes no condition type. The schema constrains conditions
- * only to the `metav1.Condition` shape; the type names (`Resolved`,
- * `RootfsReady`, `GuestRunning`, `GPUAllocated`, `ScratchDiskReady` on a
- * sandbox, `Resolved` and `Warm` on a pool) come from the upstream
- * documentation, not from the API, so a selector keyed on them would silently
- * fall through the day the controller adds a sixth. Ordering by transition time
- * and by "not True" is derived from the shape the API does guarantee.
- *
- * A problem being reported outranks a success being reported: that is the whole
- * reason for the second rung. Shared by both M4 kinds.
- */
-export function conditionMessage(status?: {
-  message?: string;
-  conditions?: SandboxConditionFacts[];
-}): string | undefined {
-  const message = status?.message;
-
-  if (message) {
-    return message;
-  }
-
-  const conditions = status?.conditions ?? [];
-  const problem = newestCondition(conditions, (condition) => condition.status !== trueConditionStatus);
-
-  if (problem) {
-    return problem.message;
-  }
-
-  return newestCondition(conditions, () => true)?.message;
 }
 
 /**

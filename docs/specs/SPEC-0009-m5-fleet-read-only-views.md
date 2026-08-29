@@ -1,6 +1,6 @@
 # SPEC-0009: Read-only fleet views (M5)
 
-- **Status:** Approved (Roberto, 2026-08-29, in chat)
+- **Status:** Approved (Roberto, 2026-08-29, in chat); implementation in PR
 - **Milestone:** M5
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Claude with Roberto, 2026-08-29
@@ -684,6 +684,81 @@ gateway's own words in the Status column.
 
 Filled during implementation when reality diverges from the plan. The recon
 that produced this spec follows the implementation notes.
+
+### Implementation notes (2026-08-29)
+
+The milestone shipped in one slice, as planned. Nothing in the Design section
+was contradicted by reality; what follows is the list of decisions the spec
+left to the implementation, plus the two DESIGN.md amendments it mandated.
+
+- **The schema was re-verified before a line was written.**
+  `config/crd/bases/fleet.kubeswift.io_clusters.yaml` was fetched at tag
+  `v0.13.12` through `gh api` and read field by field against the "Schema facts
+  that drive the design" section: the printer columns (including the
+  `priority: 1` on Prometheus), the six spec fields, the six status fields, the
+  `LocalObjectReference` with no `namespace`, the absence of any required field
+  or `x-kubernetes-validations` rule, and `subresources: {status: {}}` all
+  match. No drift, nothing to file upstream, no deviation.
+- **DESIGN.md section 4 carries both declared deviations**, in the wording this
+  spec proposed: the collision-qualified navigation title is added to the
+  humanization rule, and the `tableId` literal is added as a named exception to
+  the "the `crd` block is the single source of truth" bullet, with the sveltos
+  `capiclustersTable` precedent. Both are attributed to this spec and dated.
+- **The condition-message extraction changed two names beyond the move.**
+  `SandboxConditionFacts` is gone rather than re-exported: the new module's
+  interface is `ConditionFacts`, and `SandboxStatusFacts` /
+  `SandboxPoolStatusFacts` reuse it, which is what the Design section asked
+  for. The moved unit cases had been written against `sandboxMessage` rather
+  than against `conditionMessage`, so they were rewritten to call the selector
+  directly - the module they now live in knows nothing about a sandbox. What
+  stayed in `sandbox-status.test.ts` is the two classifier blocks, unchanged,
+  plus one "prefers the controller's own words" and one "falls back to my own
+  classifier" case per selector, which is the only behaviour those two
+  functions still own.
+- **The three condition types are each spelled in exactly one module.**
+  `PrometheusEndpointResolved` lives in the model, because only the Telemetry
+  section reads it; `Ready` and `Reachable` live in `fleet-status.ts`, because
+  only the classifier does. Exporting all three from the model and importing
+  them into the classifier would have pulled `@freelensapp/extensions` into a
+  module whose whole point is that its unit tests need no host global.
+- **The Certificate Verification warning is the row's own tooltip, through
+  `DrawerItem`'s `title` prop.** Core's `BadgeBoolean` takes a `value` and
+  nothing else, and `WithTooltip` renders a flat `Badge`, so wrapping the
+  boolean badge in one would have nested a badge inside a badge. `title` is the
+  host's own row-level tooltip and is what the Design section's "the row's
+  tooltip" means. This is the first use of that prop in the repository.
+- **The Telemetry section's line of context is a row labelled "Queried By"**,
+  reading "The kubeswift-gateway, for its own UI (never Freelens)", with the
+  join-on-label detail in its tooltip.
+- **`verify_statuses()` in `cluster-up.sh` now splits an assertion on its last
+  `=`.** The spec asks for a readback whose jsonPath is deliberately the shape
+  the CRD's own Ready printer column uses
+  (`{.status.conditions[?(@.type=="Reachable")].status}`), and that path
+  contains an `=` of its own, which the old "split on the first two `=`" parser
+  corrupted into a path of `{.status.conditions[?(@.type` . The expected value
+  is now taken from the last `=` and the path from everything in between; no
+  expected value in `E2E_STATUS_ASSERTIONS` contains an `=`, which is what makes
+  the split unambiguous. `lib.sh` documents the rule where an entry is written.
+- **The status patch files are named after the model's class**
+  (`fleetcluster-e2e-fleet-hub.yaml`, ...), not after the kind: a file called
+  `cluster-e2e-fleet-hub.yaml` in a repository full of Kubernetes fixtures is
+  exactly the ambiguity the class rename exists to avoid.
+- **`e2e-fleet-edge-down` carries its `PrometheusEndpointResolved: False`
+  older than its `Reachable: False`.** All three of its conditions are
+  reporting a problem, so the ladder's second rung picks the newest of them; the
+  spec names the dial-timeout message as the one the Status column must show, so
+  the failed telemetry resolution is dated before it. The hub's fixture is dated
+  the same way for the third rung: with everything `True`, `Reachable` is the
+  newest and its message is what the column reads.
+- **One assert was added to the drawer E2E case** beyond the spec's list: the
+  Telemetry section must guard itself away on `e2e-fleet-pending`, which asks
+  for no endpoint and had none resolved. It is the cheapest way to pin the
+  self-guarding rule the Design section states, and it is the same shape as the
+  section-guard asserts M3 and M4 already carry.
+- **Counts.** Unit: 345 tests over 26 files, up from 317 over 23 - 14 new for
+  the model, 11 for the classifier and 9 for the extracted ladder, against 6
+  removed from `sandbox-status.test.ts` by the move. E2E: 23 cases, up from 21.
+  The pre-review pass walks 15 views, up from 14.
 
 ### Upstream recon (2026-08-29)
 

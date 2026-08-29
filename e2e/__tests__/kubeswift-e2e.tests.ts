@@ -1127,6 +1127,183 @@ describe("KubeSwift views against the fixture cluster", () => {
   );
 
   it(
+    "lists the fleet Clusters with their server, version and condition",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "fleetclusters", "Member Clusters");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // Server, K8s version, guest count and the condition badge, in column
+      // order. The healthy remote member is the only fixture with all four.
+      await cluster.expectRow(
+        frame,
+        "e2e-fleet-edge-1",
+        "https://edge-1.kubeswift-e2e.internal:6443",
+        "v1.34.3 7 Ready",
+        "The API server answered the last probe.",
+      );
+
+      // The hub's own entry, and the two readings that make this view's Server
+      // and Guests cells worth their code: it federates itself through its
+      // in-cluster ServiceAccount, so it holds no server URL - "In-cluster",
+      // never "N/A" - and its guestCount of 0 is a synced cluster running no
+      // VMs, which the schema distinguishes from a member that has never been
+      // reached (SPEC-0009).
+      await cluster.expectRow(frame, "e2e-fleet-hub", "In-cluster", "v1.33.4 0 Ready");
+
+      // The unreachable one: the third reading of the Server cell (the URL is
+      // inside a credential Secret this extension does not read), the two cells
+      // that really are missing values, the Unreachable verdict, and the
+      // gateway's own dial-timeout text in the Status column - which is the
+      // message ladder's second rung, on a status that has no top-level
+      // message field at all.
+      await cluster.expectRow(
+        frame,
+        "e2e-fleet-edge-down",
+        "From kubeconfig N/A N/A Unreachable",
+        "dial tcp 10.10.0.9:6443: i/o timeout",
+      );
+
+      // The member no gateway has ever reconciled. It is the expected steady
+      // state on any KubeSwift cluster that is not a hub, so the explanation
+      // says exactly that instead of promising a transition.
+      await cluster.expectRow(frame, "e2e-fleet-pending", "N/A N/A Unknown", "No gateway has reported on this member");
+
+      // Unreachable is an error and Not Ready would be a warning: the member's
+      // API server did not answer a probe, an operator has to act, and the
+      // cause is outside the gateway. That is the SPEC-0009 judgement call, and
+      // this is what pins it.
+      //
+      // The badge is found by the class the classifier hands it, not by a
+      // `.Badge` selector: core's `Badge` is a CSS-module component, so its own
+      // class name is hashed at build time and only the `className` the
+      // extension passes survives verbatim.
+      const errorBadges = await frame
+        .locator(".TableRow", { hasText: "e2e-fleet-edge-down" })
+        .first()
+        .locator(".error")
+        .allInnerTexts();
+
+      if (!errorBadges.some((text) => text.trim() === "Unreachable")) {
+        throw new Error(
+          `The Unreachable badge must carry the host's "error" class, got: ${JSON.stringify(errorBadges)}`,
+        );
+      }
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "opens a fleet Cluster drawer and links its credential Secret",
+    async () => {
+      // The credential Secret is the only reference this CRD declares, and the
+      // one row of this drawer that resolves anything. It is named and linked,
+      // never read: the hub holds a credential to every member, and pulling
+      // those contents into a renderer process to pretty-print a hostname would
+      // widen exactly that blast radius (SPEC-0009). The fixture Secret exists
+      // and carries no credential-shaped data at all, which is all the row
+      // needs.
+      await cluster.openKubeSwiftPage(frame, "fleetclusters", "Member Clusters");
+      await pr.openDrawer(frame, "e2e-fleet-edge-1");
+
+      const reopen = async () => {
+        await cluster.openKubeSwiftPage(frame, "fleetclusters", "Member Clusters");
+        await pr.openDrawer(frame, "e2e-fleet-edge-1");
+      };
+
+      const secretRow = await pr.waitForDrawerLink(frame, "Credential Secret");
+
+      if (!secretRow) {
+        throw new Error('The fleet Cluster drawer has no "Credential Secret" row at all.');
+      }
+
+      if (!secretRow.href) {
+        throw new Error(
+          `The fleet Cluster drawer's "Credential Secret" row ("${secretRow.text}") stayed plain text: the fixture makes the Secret exist, so the row must render as a link.`,
+        );
+      }
+
+      const secretResult = await pr.checkDrawerLink(frame, "fleetclusters", secretRow, reopen);
+
+      if (!secretResult.ok) {
+        throw new Error(
+          `The "Credential Secret" link ("${secretRow.text}") did not navigate cleanly: ${secretResult.note}`,
+        );
+      }
+
+      await cluster.closeDetails(frame);
+
+      // The whole drawer: the section that removes the ambiguity of the host's
+      // own "Cluster: name" title from inside, the federation role named rather
+      // than left as a boolean, the certificate row, and the Telemetry
+      // section's Resolution row reading the humanized `Explicit` reason.
+      await cluster.expectDetails(
+        frame,
+        "e2e-fleet-edge-1",
+        "Cluster: e2e-fleet-edge-1",
+        "Member Cluster",
+        "Remote member",
+        "Certificate Verification",
+        "v1.34.3",
+        "Last Connected",
+        "Telemetry",
+        "Explicit",
+      );
+
+      // Every section guards itself, so the member no gateway has reported on
+      // shows the one that always applies and not the Telemetry block, which
+      // would otherwise read as a Freelens metrics problem rather than as the
+      // absence of a gateway.
+      await pr.openDrawer(frame, "e2e-fleet-pending");
+
+      const sections = await frame.$$eval(".Drawer.KubeObjectDetails .DrawerTitle", (elements) =>
+        elements.map((element) => element.textContent?.trim() ?? ""),
+      );
+
+      if (!sections.includes("Member Cluster")) {
+        throw new Error(
+          `The fleet Cluster drawer should always have a "Member Cluster" section, got: ${sections.join(", ")}`,
+        );
+      }
+
+      if (sections.includes("Telemetry")) {
+        throw new Error(
+          `The "Telemetry" section must guard itself away on a member with no endpoint asked for or resolved, got: ${sections.join(", ")}`,
+        );
+      }
+
+      await cluster.closeDetails(frame);
+
+      // The counter-assert every link case in this suite carries: the
+      // unreachable member names a Secret the fixtures never create, so its row
+      // must degrade to plain text rather than render a dead link (DESIGN.md
+      // section 3). It is also the normal outcome for a hub operator whose RBAC
+      // lets them list Clusters without listing the credential Secrets next to
+      // them.
+      await pr.openDrawer(frame, "e2e-fleet-edge-down");
+
+      const rows = await pr.inspectDrawerRows(frame);
+      const missingSecretRow = rows.find((row) => row.label === "Credential Secret");
+
+      if (!missingSecretRow) {
+        throw new Error('The fleet Cluster drawer has no "Credential Secret" row at all.');
+      }
+
+      if (missingSecretRow.href) {
+        throw new Error(
+          `"${missingSecretRow.text}" names a Secret the fixtures never create, so it must stay plain text.`,
+        );
+      }
+
+      if (!missingSecretRow.text.includes("e2e-fleet-edge-down-credential")) {
+        throw new Error(`The "Credential Secret" row should name the Secret, got "${missingSecretRow.text}".`);
+      }
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
     "opens the launcher pod's logs from the SwiftSandbox drawer",
     async () => {
       // The roadmap's "Sandbox logs" row, and the only place this extension

@@ -1,0 +1,81 @@
+# The four member clusters of the M5 fleet views, chosen so that every branch of
+# the classifier and every one of the four readings of the Server cell has a row
+# (SPEC-0009).
+#
+# Nothing in the E2E cluster is a hub and no kubeswift-gateway runs anywhere near
+# it: these objects are inert, and their statuses are injected by cluster-up.sh
+# exactly because the gateway - not the controller-manager - is what would
+# normally write them.
+#
+# The hub's own entry: `local: true`, no server URL and no credential Secret,
+# which is the documented shape `federation.role=hub` self-registers. It carries
+# the In-cluster reading of the Server cell, the "no credential stored" reading
+# of the drawer's Secret row, and (through its injected status) a guestCount of
+# 0 that must render as 0 and not as "N/A".
+apiVersion: fleet.kubeswift.io/v1alpha1
+kind: Cluster
+metadata:
+  name: e2e-fleet-hub
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  local: true
+  displayName: Hub (this cluster)
+---
+# The healthy remote member, and the drawer case's subject. Every reference it
+# names exists: 145-fleet-references.yaml creates its credential Secret, so its
+# Credential Secret row must be a live link. Its telemetry endpoint is set
+# explicitly, which is what makes its injected PrometheusEndpointResolved
+# condition carry the reason `Explicit` rather than `Discovered`.
+apiVersion: fleet.kubeswift.io/v1alpha1
+kind: Cluster
+metadata:
+  name: e2e-fleet-edge-1
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  server: https://edge-1.kubeswift-e2e.internal:6443
+  displayName: Edge 1 (Milan)
+  credentialSecretRef:
+    name: e2e-fleet-edge-1-credential
+  prometheusEndpoint: https://prometheus.edge-1.kubeswift-e2e.internal
+---
+# The unreachable member, carrying four things at once: the From-kubeconfig
+# reading of the Server cell (no `server`, but a credential Secret that would
+# hold one), the unverified-certificate badge, the Unreachable verdict its
+# injected status produces, and the counter-assert every link case in this suite
+# needs - the Secret it names is deliberately never created, so its Credential
+# Secret row must stay plain text.
+apiVersion: fleet.kubeswift.io/v1alpha1
+kind: Cluster
+metadata:
+  name: e2e-fleet-edge-down
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  displayName: Edge 2 (Turin)
+  insecureSkipTLSVerify: true
+  credentialSecretRef:
+    name: e2e-fleet-edge-down-credential
+---
+# The never-reconciled member: a perfectly ordinary spec and NO status patch at
+# all. It is the cheapest fixture in the repository and it pins the state most
+# real users will see first, because the chart installs this CRD on every
+# KubeSwift cluster while the gateway is deployed only for a hub. Its verdict
+# must be Unknown and its Status column must read the classifier's "no gateway
+# has reported" explanation, not a word like "pending" that would promise a
+# transition which will never come.
+apiVersion: fleet.kubeswift.io/v1alpha1
+kind: Cluster
+metadata:
+  name: e2e-fleet-pending
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  server: https://edge-3.kubeswift-e2e.internal:6443
+  credentialSecretRef:
+    name: e2e-fleet-pending-credential

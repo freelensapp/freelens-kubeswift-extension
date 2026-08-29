@@ -54,4 +54,8 @@ export const KUBESWIFT_VIEWS: KubeSwiftView[] = [
   },
   { menuId: "swiftsandboxes", title: "Sandboxes", fixtureObject: "e2e-sandbox-running" },
   { menuId: "swiftsandboxpools", title: "Sandbox Pools", fixtureObject: "e2e-sandbox-pool" },
+  // The kind is literally `Cluster`; the menu id, the page id and the title are
+  // all qualified so that neither the sidebar nor this pass's failure output is
+  // ambiguous next to the host's own "Cluster" item (SPEC-0009).
+  { menuId: "fleetclusters", title: "Member Clusters", fixtureObject: "e2e-fleet-edge-1" },
 ];

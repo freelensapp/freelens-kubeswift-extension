@@ -1,0 +1,43 @@
+# Merge patch applied to the status subresource of
+# clusters.fleet.kubeswift.io/e2e-fleet-edge-down. See
+# fleetcluster-e2e-fleet-hub.yaml for why these statuses are injected at all and
+# why the file is named after the model's class.
+#
+# The unhealthy branch: the member's API server did not answer, so `Reachable`
+# is False and the verdict is Unreachable, which is an error class rather than a
+# warning because an operator has to act and the cause is outside the gateway
+# (SPEC-0009). There is no kubernetesVersion and no guestCount, since neither
+# can be discovered without reaching the member: both cells must read "N/A",
+# which is the one view in this extension where that combination next to an
+# Unknown or Unreachable badge is a correct steady state rather than a symptom.
+#
+# All three conditions are deliberately ordered against each other in time: the
+# NEWEST is `Reachable: False`, carrying the dial-timeout text the Status column
+# must show, while `Ready: False` and the failed Prometheus resolution are
+# older. That exercises the message ladder's second rung - a problem being
+# reported outranks a success being reported, and among problems the newest wins
+# - for a second CRD family, on a status that has no top-level `message` field
+# at all, which is the shape that makes the M4 ladder degrade to its second rung
+# with no code change.
+status:
+  observedGeneration: 1
+  conditions:
+    - type: PrometheusEndpointResolved
+      status: "False"
+      reason: NotFound
+      message: No Prometheus was discovered in the configured namespaces.
+      lastTransitionTime: "2026-08-29T08:15:00Z"
+      observedGeneration: 1
+    - type: Ready
+      status: "False"
+      reason: ClientUnhealthy
+      message: The gateway has no healthy client for this member.
+      lastTransitionTime: "2026-08-29T08:20:00Z"
+      observedGeneration: 1
+    - type: Reachable
+      status: "False"
+      reason: APIServerUnreachable
+      message: >-
+        dial tcp 10.10.0.9:6443: i/o timeout
+      lastTransitionTime: "2026-08-29T08:40:00Z"
+      observedGeneration: 1

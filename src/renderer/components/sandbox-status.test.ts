@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   classifySandbox,
   classifySandboxPool,
-  conditionMessage,
   sandboxMessage,
   sandboxPoolMessage,
   sandboxPoolStates,
@@ -146,8 +145,14 @@ describe("classifySandboxPool", () => {
   });
 });
 
+// Both selectors are the shared `conditionMessage` ladder (tested on its own in
+// `condition-message.test.ts` since M5 extracted it) with their own
+// classifier's explanation as the last resort. What is worth testing here is
+// therefore only what is specific to this module: that each one reads the
+// controller's words when there are any, and that each one falls back to the
+// right classifier when there are none.
 describe("sandboxMessage", () => {
-  it("prefers the controller's own status message", () => {
+  it("prefers the controller's own words", () => {
     expect(
       sandboxMessage({
         phase: "Running",
@@ -164,91 +169,6 @@ describe("sandboxMessage", () => {
     ).toBe("Claimed a warm slot from pool warm-runners.");
   });
 
-  it("lets a problem being reported outrank a more recent success", () => {
-    // The second rung: the newest condition is the True one, but the False one
-    // is what the operator needs to read.
-    expect(
-      sandboxMessage({
-        phase: "Materializing",
-        conditions: [
-          {
-            type: "RootfsReady",
-            status: "False",
-            message: "Pulling the image failed: unauthorized.",
-            lastTransitionTime: "2026-08-28T10:00:00Z",
-          },
-          {
-            type: "Resolved",
-            status: "True",
-            message: "The kernel profile was resolved.",
-            lastTransitionTime: "2026-08-28T10:05:00Z",
-          },
-        ],
-      }),
-    ).toBe("Pulling the image failed: unauthorized.");
-  });
-
-  it("picks the newest of several conditions that are all reporting a problem", () => {
-    expect(
-      sandboxMessage({
-        conditions: [
-          {
-            type: "Resolved",
-            status: "False",
-            message: "The kernel profile is missing.",
-            lastTransitionTime: "2026-08-28T09:00:00Z",
-          },
-          {
-            type: "ScratchDiskReady",
-            status: "Unknown",
-            message: "The scratch PVC is still pending.",
-            lastTransitionTime: "2026-08-28T10:00:00Z",
-          },
-        ],
-      }),
-    ).toBe("The scratch PVC is still pending.");
-  });
-
-  it("falls back to the newest condition when every one of them is True", () => {
-    expect(
-      sandboxMessage({
-        phase: "Running",
-        conditions: [
-          {
-            type: "Resolved",
-            status: "True",
-            message: "The kernel profile was resolved.",
-            lastTransitionTime: "2026-08-28T09:00:00Z",
-          },
-          {
-            type: "GuestRunning",
-            status: "True",
-            message: "The guest is running.",
-            lastTransitionTime: "2026-08-28T10:00:00Z",
-          },
-        ],
-      }),
-    ).toBe("The guest is running.");
-  });
-
-  it("selects a condition type this extension has never heard of on its merits", () => {
-    // The selector hardcodes no condition type on purpose: the documented ones
-    // are documentation, not API, so a sixth one must work with no code change.
-    expect(
-      sandboxMessage({
-        phase: "Running",
-        conditions: [
-          {
-            type: "SnapshotRestored",
-            status: "False",
-            message: "A brand new condition nobody has seen before.",
-            lastTransitionTime: "2026-08-28T10:00:00Z",
-          },
-        ],
-      }),
-    ).toBe("A brand new condition nobody has seen before.");
-  });
-
   it("falls back to the classifier's explanation when the controller has written nothing", () => {
     expect(sandboxMessage({ phase: "Pending" })).toBe(classifySandbox({ phase: "Pending" }).explanation);
     expect(sandboxMessage(undefined)).toBe(classifySandbox(undefined).explanation);
@@ -263,33 +183,12 @@ describe("sandboxMessage", () => {
       conditions: [{ type: "GuestRunning", status: "False", message: "", lastTransitionTime: "2026-08-28T10:00:00Z" }],
     };
 
-    expect(conditionMessage(status)).toBeUndefined();
     expect(sandboxMessage(status)).toBe(classifySandbox(status).explanation);
-  });
-
-  it("treats a condition with an unparseable timestamp as the oldest one", () => {
-    expect(
-      sandboxMessage({
-        conditions: [
-          { type: "Resolved", status: "False", message: "No timestamp at all.", lastTransitionTime: "" },
-          {
-            type: "RootfsReady",
-            status: "False",
-            message: "Dated, and therefore newer.",
-            lastTransitionTime: "2026-08-28T10:00:00Z",
-          },
-        ],
-      }),
-    ).toBe("Dated, and therefore newer.");
   });
 });
 
-// The pool selector is the same ladder over the other classifier, so what is
-// worth testing here is that it really is the same ladder (rather than a second
-// implementation that could drift) and that its last resort is the pool's own
-// explanation.
 describe("sandboxPoolMessage", () => {
-  it("prefers the controller's own status message", () => {
+  it("prefers the controller's own words", () => {
     expect(
       sandboxPoolMessage({
         phase: "Ready",
@@ -306,30 +205,8 @@ describe("sandboxPoolMessage", () => {
     ).toBe("Two warm slots are ready on one node.");
   });
 
-  it("lets a problem being reported outrank a more recent success", () => {
-    expect(
-      sandboxPoolMessage({
-        phase: "Degraded",
-        conditions: [
-          {
-            type: "Warm",
-            status: "False",
-            message: "No kernel node has a free slot.",
-            lastTransitionTime: "2026-08-28T10:00:00Z",
-          },
-          {
-            type: "Resolved",
-            status: "True",
-            message: "The pool image was resolved.",
-            lastTransitionTime: "2026-08-28T10:05:00Z",
-          },
-        ],
-      }),
-    ).toBe("No kernel node has a free slot.");
-  });
-
   it("falls back to the pool classifier's explanation, not to the sandbox one", () => {
-    // The two ladders differ only in their last rung, and this is the assert
+    // The two selectors differ only in their last rung, and this is the assert
     // that keeps them from being wired to the wrong classifier.
     expect(sandboxPoolMessage({ phase: "Warming" })).toBe(classifySandboxPool({ phase: "Warming" }).explanation);
     expect(sandboxPoolMessage(undefined)).toBe(classifySandboxPool(undefined).explanation);
@@ -343,7 +220,6 @@ describe("sandboxPoolMessage", () => {
       conditions: [{ type: "Warm", status: "False", message: "", lastTransitionTime: "2026-08-28T10:00:00Z" }],
     };
 
-    expect(conditionMessage(status)).toBeUndefined();
     expect(sandboxPoolMessage(status)).toBe(classifySandboxPool(status).explanation);
   });
 });

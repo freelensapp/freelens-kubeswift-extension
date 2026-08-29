@@ -1,0 +1,35 @@
+# Merge patch applied to the status subresource of
+# clusters.fleet.kubeswift.io/e2e-fleet-edge-1. See
+# fleetcluster-e2e-fleet-hub.yaml for why these statuses are injected at all and
+# why the file is named after the model's class.
+#
+# The healthy remote member: the gateway reached it, discovered its Kubernetes
+# version and counted the SwiftGuests it holds. Its telemetry endpoint was set
+# in the spec, so the resolution reason is `Explicit` and the effective endpoint
+# is the configured one verbatim - the drawer shows both values side by side
+# without ever re-deriving which one won.
+status:
+  kubernetesVersion: v1.34.3
+  guestCount: 7
+  lastConnected: "2026-08-29T09:12:00Z"
+  observedGeneration: 2
+  prometheusEndpoint: https://prometheus.edge-1.kubeswift-e2e.internal
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ClientHealthy
+      message: The gateway holds a healthy client and its informer cache is synced.
+      lastTransitionTime: "2026-08-29T09:08:00Z"
+      observedGeneration: 2
+    - type: Reachable
+      status: "True"
+      reason: APIServerReachable
+      message: The API server answered the last probe.
+      lastTransitionTime: "2026-08-29T09:12:00Z"
+      observedGeneration: 2
+    - type: PrometheusEndpointResolved
+      status: "True"
+      reason: Explicit
+      message: spec.prometheusEndpoint was used verbatim.
+      lastTransitionTime: "2026-08-29T09:08:00Z"
+      observedGeneration: 2

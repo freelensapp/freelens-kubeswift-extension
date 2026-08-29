@@ -52,9 +52,10 @@ E2E_NODE_NAME="${E2E_NODE_NAME:-}"
 KUBESWIFT_CRD_BASE_URL="https://raw.githubusercontent.com/kubeswift-io/kubeswift/${KUBESWIFT_VERSION}/config/crd/bases"
 
 # The 15 CRDs KubeSwift ships, across its 9 API groups. All of them are applied
-# so that the cluster matches a real KubeSwift installation, even though not all
-# of them carry fixtures yet (fleet's Cluster is the last one still waiting for
-# its milestone).
+# so that the cluster matches a real KubeSwift installation. Since M5 every one
+# of them carries fixtures: fleet's Cluster was the last one waiting for its
+# milestone, and it needed no change here because it has always been the first
+# entry of this array.
 KUBESWIFT_CRD_FILES=(
 	fleet.kubeswift.io_clusters.yaml
 	gpu.kubeswift.io_swiftgpunodes.yaml
@@ -111,12 +112,26 @@ E2E_STATUS_PATCHES=(
 	# API server serves from fields this patch writes (SPEC-0008).
 	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool=swiftsandboxpool-e2e-sandbox-pool.yaml"
 	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool-degraded=swiftsandboxpool-e2e-sandbox-pool-degraded.yaml"
+	# Three of the four M5 fleet Clusters. The fourth, e2e-fleet-pending, gets
+	# no patch on purpose: an object no gateway has ever reconciled is the state
+	# most real users see first, and it is the only fixture in this suite whose
+	# point is the absence of a status (SPEC-0009). The patch files are named
+	# after the model's class, FleetCluster, since the kind is literally
+	# `Cluster`.
+	"clusters.fleet.kubeswift.io/e2e-fleet-hub=fleetcluster-e2e-fleet-hub.yaml"
+	"clusters.fleet.kubeswift.io/e2e-fleet-edge-1=fleetcluster-e2e-fleet-edge-1.yaml"
+	"clusters.fleet.kubeswift.io/e2e-fleet-edge-down=fleetcluster-e2e-fleet-edge-down.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
 # server, one significant field per CRD.
 #
 # Format: <resource>/<name>=<jsonpath>=<expected value>
+#
+# The jsonpath may itself contain "=" (a condition filter does), so
+# verify_statuses() takes the expected value from the LAST "=" of the entry and
+# the path from everything in between. An expected value containing an "=" would
+# therefore be ambiguous; none does.
 E2E_STATUS_ASSERTIONS=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-running={.status.phase}=Running"
 	"swiftguests.swift.kubeswift.io/e2e-guest-running={.status.network.primaryIP}=10.244.1.21"
@@ -148,6 +163,17 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool={.status.claimedReplicas}=1"
 	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool-degraded={.status.phase}=Degraded"
 	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool-degraded={.status.warmReplicas}=0"
+	# The hub's literal 0, which is the readback that keeps a dropped zero from
+	# looking like an absent value (the M4 degraded-pool assert applied to a
+	# different field): the schema omits guestCount until the first sync, so 0
+	# and absent are different facts.
+	"clusters.fleet.kubeswift.io/e2e-fleet-hub={.status.guestCount}=0"
+	"clusters.fleet.kubeswift.io/e2e-fleet-edge-1={.status.kubernetesVersion}=v1.34.3"
+	"clusters.fleet.kubeswift.io/e2e-fleet-edge-1={.status.guestCount}=7"
+	# Deliberately the same jsonPath shape the CRD's own Ready printer column
+	# uses, so the assert proves the condition-keyed reading the M5 classifier
+	# depends on survives the API server (SPEC-0009).
+	'clusters.fleet.kubeswift.io/e2e-fleet-edge-down={.status.conditions[?(@.type=="Reachable")].status}=False'
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the

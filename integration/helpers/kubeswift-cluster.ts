@@ -100,6 +100,7 @@ export function fixturesReady(): boolean {
     ["swiftgpunodes.gpu.kubeswift.io", "e2e-gpu-node-absent"],
     ["swiftsandboxes.sandbox.kubeswift.io", "e2e-sandbox-running"],
     ["swiftsandboxpools.sandbox.kubeswift.io", "e2e-sandbox-pool"],
+    ["clusters.fleet.kubeswift.io", "e2e-fleet-edge-1"],
   ];
 
   return probes.every(([resource, name]) => {

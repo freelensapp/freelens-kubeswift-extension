@@ -175,14 +175,30 @@ repositories.
   `filter: invert()` hacks (they break the light theme).
 - Titles come from the model: the `crd` static block (`title`, `plural`)
   is the single source of truth feeding the menu title, the page header
-  and the `tableId`.
+  and the `tableId`. **Exception (decision of 2026-08-29, SPEC-0009):**
+  core persists sort preferences under a **globally keyed**
+  `table_settings` map shared by itself and every extension, so a
+  `tableId` derived from a plural that another extension could plausibly
+  pick (`clusters`, `nodes`, `events`...) is written as a qualified
+  literal instead (`fleetclustersTable`). The sveltos extension's
+  `capiclustersTable` is the precedent. Only the id changes; the menu
+  title and the page header still come from `crd.title`.
 - **Fix (decision of 2026-08-28, issues #24, #29):** navigation display
   names (`crd.title`) are humanized Title Case with spaces, dropping the
   redundant "Swift" prefix (e.g. "Guest Pools", not "SwiftGuestPools") -
   the KubeSwift root already gives the context, and this is how core
   spells its own sidebar ("Replica Sets", "Config Maps"). The kind stays
   technical everywhere it is a kind: drawer titles (`Kind: name`) and
-  other data contexts are unaffected.
+  other data contexts are unaffected. **When the humanized kind would
+  collide with a name the host already uses in the same sidebar
+  (`Cluster`, `Node`, `Event`, `Service`...), the title is qualified with
+  the resource's own domain word taken from its schema, not left
+  ambiguous** (decision of 2026-08-29, SPEC-0009: `fleet.kubeswift.io`'s
+  `Cluster` is titled "Member Clusters", the schema's own first words,
+  because core registers a root sidebar item titled exactly "Cluster").
+  The rule and its exception are the same rule stated once: a navigation
+  title says which resource this is, in the vocabulary of the sidebar it
+  lives in.
 
 ## 5. Theming
 

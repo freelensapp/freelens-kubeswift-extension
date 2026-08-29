@@ -1,0 +1,22 @@
+# The one core object the fleet fixtures point at, so that the Credential
+# Secret row of the fleet Cluster drawer resolves to an object that really
+# exists and renders as a link rather than degrading to plain text (DESIGN.md
+# section 3, issue #23).
+#
+# It carries NO credential-shaped data at all, on purpose. This is the
+# 125-sandbox-references.yaml pattern with a stricter rule about what goes
+# inside: the extension names this Secret and never reads it (SPEC-0009), so
+# the fixture only has to exist, and a repository that ships an MIT extension
+# has no business carrying a plausible-looking kubeconfig or bearer token in
+# its test data. A real join credential would hold either a `kubeconfig` key or
+# a `token` key plus an optional `ca.crt`; none of the three is here, and
+# nothing in the E2E cluster ever connects to a member.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-fleet-edge-1-credential
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+type: Opaque
+data: {}
