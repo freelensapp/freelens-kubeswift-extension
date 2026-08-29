@@ -45,9 +45,9 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| SwiftSandbox list + detail | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | In PR |
-| SwiftSandboxPool list + detail | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | In PR |
-| Launcher pod logs from the sandbox drawer | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | In PR |
+| SwiftSandbox list + detail | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done |
+| SwiftSandboxPool list + detail | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done |
+| Launcher pod logs from the sandbox drawer | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done |
 
 M4 ships in two slices: SwiftSandbox (with the launcher-pod logs affordance and
 the new Sandboxes sidebar group) first, SwiftSandboxPool second. See

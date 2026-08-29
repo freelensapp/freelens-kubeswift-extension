@@ -1,7 +1,7 @@
 # SPEC-0008: Read-only sandbox views (M4)
 
-- **Status:** Approved (Roberto, 2026-08-29, in chat); slice 1 of 2 merged,
-  slice 2 of 2 in PR
+- **Status:** Implemented (PRs #62 and #63, merged 2026-08-29, main CI
+  green; Verified pending the milestone review)
 - **Milestone:** M4
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Claude with Roberto, 2026-08-29
