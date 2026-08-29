@@ -65,7 +65,20 @@ owns.
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| Cluster (fleet.kubeswift.io) list + detail | — | Planned |
+| Cluster (fleet.kubeswift.io) list + detail | [SPEC-0009](../specs/SPEC-0009-m5-fleet-read-only-views.md) | Spec in PR |
+
+M5 is one CRD and ships in a single slice. It is the view of the KubeSwift
+fleet that the Kubernetes API can serve on its own: which member clusters a
+hub has registered and what the gateway last recorded about each. It is not
+the cross-cluster inventory of the kubeswift-ui `/fleet` screen, which is
+excluded below and is gateway-only besides — see "Gateway-only information"
+in SPEC-0009 for the full boundary.
+
+Two facts about this CRD shape the milestone and are argued in the spec: its
+kind is literally `Cluster`, which collides with the host's own vocabulary in
+the same sidebar (the leaf is therefore titled "Member Clusters"), and its
+reconciler is the kubeswift-gateway rather than the controller-manager, so on
+a cluster without a gateway the page exists, stays empty, and is right to.
 
 ### M6 — Actions and creation forms
 
