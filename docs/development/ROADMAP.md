@@ -39,7 +39,7 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 | Feature | Spec | Status |
 | --- | --- | --- |
 | SwiftGPUProfile list + detail | [SPEC-0007](../specs/SPEC-0007-m3-gpu-read-only-views.md) | Done |
-| SwiftGPUNode list + detail (per-node inventory) | [SPEC-0007](../specs/SPEC-0007-m3-gpu-read-only-views.md) | In PR |
+| SwiftGPUNode list + detail (per-node inventory) | [SPEC-0007](../specs/SPEC-0007-m3-gpu-read-only-views.md) | Done |
 
 ### M4 — Sandbox views (read-only)
 

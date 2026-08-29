@@ -1,6 +1,6 @@
 # SPEC-0007: Read-only GPU views (M3)
 
-- **Status:** Approved (Roberto, 2026-08-29, in chat)
+- **Status:** Implemented (PRs #55 and #56, merged 2026-08-29, main CI green; Verified pending the milestone manual review session)
 - **Milestone:** M3
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Claude with Roberto, 2026-08-29
