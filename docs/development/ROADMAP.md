@@ -87,12 +87,33 @@ means (each item needs its own spec before implementation):
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| Guest actions: start/stop (runPolicy), delete | — | Planned |
+| Guest actions: start/stop (runPolicy), delete | [SPEC-0010](../specs/SPEC-0010-m6-guest-actions.md) | Spec in PR |
 | Create SwiftGuest (form) | — | Planned |
 | Create SwiftGuestClass / Pool / Image / Kernel / SeedProfile (forms) | — | Planned |
 | Snapshot now / restore dialogs | — | Planned |
 | Start migration dialog | — | Planned |
 | Sandbox / SandboxPool creation | — | Planned |
+
+M6 is where the extension starts writing. Everything through M5 reads, so the
+first row carries more than its own feature: SPEC-0010 sets the ground rules
+for every action and form of this milestone (confirmation dialogs that
+enumerate the writes they perform, no optimistic UI, explicit patch types,
+failures reported rather than swallowed, no dead controls), to be absorbed into
+[DESIGN.md](DESIGN.md) as a new section by the implementation PR.
+
+Two findings shape the first row and are argued in the spec. Stopping a guest
+is **two** writes, not one: patching `spec.runPolicy` to `Stopped` only stops
+the controller from recreating the launcher pod, so the pod has to be deleted
+as well, exactly as `swiftctl stop` does. And Delete is already there - Freelens
+renders its own Edit and Delete for every kind an extension registers a store
+for - so the spec adds the KubeSwift-specific consequences of deleting a guest
+(what cascades, what is retained, and that a pool-owned guest comes back)
+rather than a second Delete entry.
+
+Restart (recreate the launcher pod without changing the policy) is deliberately
+not in SPEC-0010: it is a third verb with its own guard, `swiftctl` has it and
+kubeswift-ui does not. It is left for a spec of its own, which adds its row
+here when it is written.
 
 ### M7 — Console and exec
 
