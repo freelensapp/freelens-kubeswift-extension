@@ -1,7 +1,11 @@
 # SPEC-0009: Read-only fleet views (M5)
 
-- **Status:** Implemented (PR #68, merged 2026-08-29, main CI green;
-  Verified pending the milestone review)
+- **Status:** Verified (2026-08-29: non-regression tests green in CI on
+  main; pre-review pass PASS on 15/15 views in both themes with the 14
+  pre-existing views byte-identical to the M4 report; milestone review
+  by Roberto on the pass artifacts and screenshots, approved; the
+  real-hub checks listed in Manual verification stay open for a session
+  with a running kubeswift-gateway)
 - **Milestone:** M5
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Claude with Roberto, 2026-08-29
