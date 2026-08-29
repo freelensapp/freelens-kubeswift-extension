@@ -1,0 +1,119 @@
+# The full sandbox: every optional block of the spec is populated, so every
+# self-guarding section of the drawer renders and the list shows an image, a
+# node and an address. Its status is injected by cluster-up.sh.
+#
+# gpuProfileRef is the NATIVE SwiftGPU backend. It cannot be combined with
+# gpuResourceClaim (the DRA backend) or with poolRef: the documented webhook
+# rules make all three mutually exclusive, so no fixture may carry more than
+# one of them. The DRA branch is therefore covered by unit tests only, which is
+# a deliberate gap (SPEC-0008).
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandbox
+metadata:
+  name: e2e-sandbox-running
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  # A digest reference, which is what the schema says to prefer and what makes
+  # the Image cell long enough to need its tooltip.
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox@sha256:3f7a1c9e5b2d84a06c1e9f7b3d5a2c8e40b6d9f1a3c7e5b8d2f4a6c0e8b1d3f5
+  cpu: 2
+  memory: 1Gi
+  command:
+    - /usr/bin/python3
+  args:
+    - -c
+    - print("hello from the sandbox")
+  workingDir: /workspace
+  env:
+    - name: SANDBOX_MODE
+      value: interpreter
+    - name: API_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: e2e-sandbox-registry
+          key: token
+    - name: MODEL_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: e2e-sandbox-config
+          key: model
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+  timeout: 30m
+  ttl: 1h
+  rootfsMode: block
+  network:
+    mode: restricted
+  nodeSelector:
+    kubeswift.io/kernel: "true"
+  kernelProfileRef:
+    name: e2e-kernel-6-12
+  imagePullSecret: e2e-sandbox-registry
+  verifyKeySecretRef:
+    name: e2e-sandbox-cosign
+  scratchDisk:
+    blank:
+      size: 100Gi
+      storageClassName: standard
+      volumeMode: Block
+  model:
+    imageRef: ghcr.io/freelensapp/kubeswift-e2e/model@sha256:9c4e2a7f1b8d3506e2a9c7f4b1d8e3a05c6b9d2f7a4e1c8b5d2f9a6c3e0b7d4a
+    mountPath: /model
+  gpuProfileRef:
+    name: e2e-gpu-profile-pcie
+---
+# The minimal sandbox: nothing but the two required fields, plus the network
+# mode that makes the absent address a choice rather than a gap. Every optional
+# section of the drawer must guard itself away on this one, and its IP cell must
+# read "None" rather than "N/A".
+#
+# Its injected status is the failure branch: a non-zero exit code, a terminal
+# timestamp, a status.message the Status column shows verbatim, and a False
+# condition.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandbox
+metadata:
+  name: e2e-sandbox-failed
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox:broken
+  memory: 512Mi
+  network:
+    mode: none
+---
+# The pooled sandbox: satisfied from a warm SwiftSandboxPool instead of the cold
+# materialize+boot path. No GPU and no scratch disk, because a GPU sandbox
+# always boots cold and cannot name a pool.
+#
+# Its injected status.podRef names the CLAIMED SLOT's pod
+# (e2e-sandbox-pool-slot-1), not a pod named after the sandbox: that is what a
+# checkout actually produces, and this is the one fixture that pins the fact.
+# Its phase is Completed with exit code 0 and both timestamps, so the drawer's
+# derived Duration row is exercised.
+#
+# The pool it points at (e2e-sandbox-pool) is created by the second M4 slice,
+# together with the SwiftSandboxPool views. Until then the drawer's Pool row
+# correctly degrades to plain text, which is the same outcome as any reference
+# whose target is not there.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandbox
+metadata:
+  name: e2e-sandbox-pooled
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm
+  memory: 512Mi
+  command:
+    - /usr/bin/env
+  poolRef:
+    name: e2e-sandbox-pool
+  network:
+    mode: restricted

@@ -1,0 +1,43 @@
+# Core objects the sandbox fixtures point at, so that every reference row of the
+# SwiftSandbox drawer resolves to an object that really exists and renders as a
+# link rather than degrading to plain text (DESIGN.md section 3, issue #23).
+#
+# There is nothing sandbox-specific about them: a docker-registry Secret for
+# spec.imagePullSecret, a cosign public key Secret for spec.verifyKeySecretRef,
+# and a ConfigMap for the configMapKeyRef of spec.env. All three carry inert,
+# obviously-fake content - the E2E cluster never pulls an image and never
+# verifies a signature.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-sandbox-registry
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+type: Opaque
+stringData:
+  # Not a docker-registry Secret type on purpose: nothing pulls with it, and an
+  # Opaque Secret keeps the fixture free of a credential-shaped payload. The
+  # same object doubles as the source of the env secretKeyRef below.
+  token: not-a-real-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-sandbox-cosign
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+type: Opaque
+stringData:
+  cosign.pub: not-a-real-public-key
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: e2e-sandbox-config
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+data:
+  model: e2e-demo-model

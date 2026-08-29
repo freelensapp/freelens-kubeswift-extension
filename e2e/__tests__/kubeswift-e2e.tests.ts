@@ -677,6 +677,242 @@ describe("KubeSwift views against the fixture cluster", () => {
   );
 
   it(
+    "lists the SwiftSandboxes with their image, node and condition",
+    async () => {
+      // The node the running sandbox was scheduled on is the E2E cluster's real
+      // (single) node, substituted into the fixture by cluster-up.sh's
+      // inject_statuses() rather than hardcoded (issue #23).
+      const nodeName = cluster.clusterNodeName();
+
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // Image, node, IP and the condition badge, in column order. The Status
+      // column carries the controller's own words - here the message of the
+      // newest condition, since this fixture writes no status.message - which
+      // is what makes M4 the first milestone to implement DESIGN.md section 2's
+      // two-column pattern literally (SPEC-0008).
+      await cluster.expectRow(
+        frame,
+        "e2e-sandbox-running",
+        "kubeswift-e2e/sandbox@sha256:3f7a1c9e",
+        nodeName,
+        "10.244.3.17 Running",
+        "The guest booted and the workload is running",
+      );
+
+      // The minimal sandbox: no node, and an IP cell that reads "None" rather
+      // than "N/A" because network mode "none" means the absent address is a
+      // chosen configuration and not a missing value. Its Status column shows
+      // the controller's own status.message, the first rung of the ladder.
+      await cluster.expectRow(frame, "e2e-sandbox-failed", "N/A None Failed", "Materializing the rootfs failed");
+
+      // The pooled one wrote neither a message nor a condition, so the Status
+      // column falls all the way back to the classifier's own explanation - the
+      // last rung - and Completed is a success, not a warning.
+      await cluster.expectRow(
+        frame,
+        "e2e-sandbox-pooled",
+        "Completed",
+        "The workload ran to completion with exit code 0",
+      );
+
+      // Neither a running nor a completed sandbox is a warning: they share the
+      // host's `success` class and the badge word carries the difference. That
+      // is the SPEC-0008 judgement call, and this is what pins it.
+      //
+      // The badge is found by the class the classifier hands it, not by a
+      // `.Badge` selector: core's `Badge` is a CSS-module component, so its own
+      // class name is hashed at build time and only the `className` the
+      // extension passes survives verbatim. `allInnerTexts` does not wait, so a
+      // regression reports the classes that are there instead of timing out.
+      const successBadges = await frame
+        .locator(".TableRow", { hasText: "e2e-sandbox-pooled" })
+        .first()
+        .locator(".success")
+        .allInnerTexts();
+
+      if (!successBadges.some((text) => text.trim() === "Completed")) {
+        throw new Error(
+          `The Completed badge must carry the host's "success" class, got: ${JSON.stringify(successBadges)}`,
+        );
+      }
+
+      // The full drawer: the rootfs size humanized from the int64 byte count
+      // (1.5Gi, never the raw digit run), the scratch disk named by its source,
+      // the GPU backend stated rather than inferred, the derived Duration the
+      // CRD does not report, and the environment table.
+      await cluster.expectDetails(
+        frame,
+        "e2e-sandbox-running",
+        "SwiftSandbox: e2e-sandbox-running",
+        "1.5Gi",
+        "Blank",
+        "100Gi",
+        "Native SwiftGPU",
+        "0000:41:00.0",
+        "SANDBOX_MODE",
+        "e2e-sandbox-cosign",
+      );
+
+      // The completed one is where the derived Duration renders at all: it is
+      // computed from startedAt and terminalAt, which nothing else reports.
+      await cluster.expectDetails(
+        frame,
+        "e2e-sandbox-pooled",
+        "SwiftSandbox: e2e-sandbox-pooled",
+        "Completed",
+        "48s",
+        // The claimed slot's pod, named after the POOL: a checkout injects this
+        // sandbox into a pre-booted slot, so the launcher pod is not named
+        // after the sandbox and the drawer never derives the name.
+        "e2e-sandbox-pool-slot-1",
+      );
+
+      // Every section of the drawer guards itself, so the sandbox that carries
+      // nothing but its two required fields shows the two that always apply and
+      // none of the six that describe a block it does not have.
+      await pr.openDrawer(frame, "e2e-sandbox-failed");
+
+      const sections = await frame.$$eval(".Drawer.KubeObjectDetails .DrawerTitle", (elements) =>
+        elements.map((element) => element.textContent?.trim() ?? ""),
+      );
+
+      for (const present of ["Sandbox", "Guest"]) {
+        if (!sections.includes(present)) {
+          throw new Error(
+            `The SwiftSandbox drawer should always have a "${present}" section, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      for (const absent of ["Runtime", "Rootfs", "Model", "Scratch Disk", "GPU", "Environment"]) {
+        if (sections.includes(absent)) {
+          throw new Error(
+            `The "${absent}" section must guard itself away on a sandbox that has no such block, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "navigates the SwiftSandbox drawer's kernel, GPU and launcher pod links to objects that actually exist",
+    async () => {
+      // Same shape as the SwiftGuest and SwiftGPUNode cases above, on the four
+      // reference kinds this drawer resolves and whose targets the fixtures
+      // guarantee: the SwiftKernel of spec.kernelProfileRef, the
+      // SwiftGPUProfile of spec.gpuProfileRef, the SwiftGPUNode named by
+      // status.gpu.nodeName, and the launcher Pod named by status.podRef.
+      //
+      // The launcher pod is the one worth spelling out: status.podRef is a
+      // bare string on this CRD, not the ObjectReference SwiftGuest carries, so
+      // nothing in the host would stop the drawer from building a link to a pod
+      // that is not there. The Pool row is deliberately not checked here: the
+      // SwiftSandboxPool kind is registered by the second M4 slice, so until
+      // then that row is correctly plain text.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await pr.openDrawer(frame, "e2e-sandbox-running");
+
+      const reopen = async () => {
+        await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+        await pr.openDrawer(frame, "e2e-sandbox-running");
+      };
+
+      for (const label of ["Kernel Profile", "GPU Profile", "GPU Node", "Node", "Launcher Pod"]) {
+        const row = await pr.waitForDrawerLink(frame, label);
+
+        if (!row) {
+          throw new Error(`The SwiftSandbox drawer has no "${label}" row at all.`);
+        }
+
+        if (!row.href) {
+          throw new Error(
+            `The SwiftSandbox drawer's "${label}" row ("${row.text}") stayed plain text: the fixture makes the referenced object exist, so the row must render as a link.`,
+          );
+        }
+
+        const result = await pr.checkDrawerLink(frame, "swiftsandboxes", row, reopen);
+
+        if (!result.ok) {
+          throw new Error(`The "${label}" link ("${row.text}") did not navigate cleanly: ${result.note}`);
+        }
+      }
+
+      await cluster.closeDetails(frame);
+
+      // The opposite assert, and what makes the fixture pair worth having: the
+      // minimal sandbox names no kernel profile at all, so its row must read
+      // the controller-applied default as plain text rather than link to a
+      // namespace this extension would have had to guess (SPEC-0008).
+      await pr.openDrawer(frame, "e2e-sandbox-failed");
+
+      const rows = await pr.inspectDrawerRows(frame);
+      const kernelRow = rows.find((row) => row.label === "Kernel Profile");
+
+      if (!kernelRow) {
+        throw new Error('The SwiftSandbox drawer has no "Kernel Profile" row at all.');
+      }
+
+      if (kernelRow.href) {
+        throw new Error(
+          `"${kernelRow.text}" is the controller-applied default, which no object in this namespace corresponds to, so it must stay plain text.`,
+        );
+      }
+
+      if (!kernelRow.text.includes("sandbox (default)")) {
+        throw new Error(`The "Kernel Profile" row should read the default, got "${kernelRow.text}".`);
+      }
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "opens the launcher pod's logs from the SwiftSandbox drawer",
+    async () => {
+      // The roadmap's "Sandbox logs" row, and the only place this extension
+      // reaches into the host's dock. `logTabStore.createPodTab` is a
+      // documented export of the renderer extension API that no freelensapp
+      // extension had used before; it was proven live against this very fixture
+      // cluster before the drawer was wired (SPEC-0008), and this case is what
+      // keeps it proven.
+      //
+      // It asserts the tab, not log content: the fixture launcher pods are
+      // deliberately unschedulable, so they have no logs to show. What this
+      // protects is the wiring - the podRef resolves, a container is picked,
+      // and the host API is called with a shape it accepts - which is exactly
+      // the part that can regress silently.
+      //
+      // Last of the view cases on purpose: it leaves the host's dock open, and
+      // the dock covers the lower half of every list page underneath it.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await pr.openDrawer(frame, "e2e-sandbox-running");
+
+      const viewLogs = frame.locator('[data-testid="swiftsandbox-view-logs"]');
+
+      await viewLogs.waitFor({ state: "visible", timeout: 60_000 });
+      await viewLogs.click();
+
+      const logTab = frame.locator(".Dock .Tab", { hasText: "e2e-sandbox-running-launcher" }).first();
+
+      await logTab.waitFor({ state: "visible", timeout: 60_000 });
+
+      // The drawer is deliberately left open. Once the log panel is up the
+      // host's dock owns the keyboard - its own search field handles Escape -
+      // so `closeDetails`, which presses Escape, cannot shut the drawer from
+      // here. That is why this case is the last one that touches the UI:
+      // nothing after it reads the DOM, and the app is torn down immediately
+      // afterwards.
+    },
+    TIMEOUT,
+  );
+
+  it(
     "activates the extension without renderer or process errors",
     async () => {
       const errors = errorCollector.errors();

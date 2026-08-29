@@ -98,6 +98,7 @@ export function fixturesReady(): boolean {
     // cluster's own node name: `kubectl` ignores `--namespace` for a
     // cluster-scoped resource, so the call shape below covers it unchanged.
     ["swiftgpunodes.gpu.kubeswift.io", "e2e-gpu-node-absent"],
+    ["swiftsandboxes.sandbox.kubeswift.io", "e2e-sandbox-running"],
   ];
 
   return probes.every(([resource, name]) => {

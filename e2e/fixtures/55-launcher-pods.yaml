@@ -1,15 +1,21 @@
-# Stand-in for the launcher pod a real KubeSwift controller would create for
-# swiftguest/e2e-guest-running (status.podRef in
-# status/swiftguest-e2e-guest-running.yaml). No controller runs in the E2E
-# cluster, so nothing ever creates this pod unless this fixture does - and
-# without it, the SwiftGuest detail view's Pod reference pointed at an object
-# that did not exist (issue #23).
+# Stand-ins for the launcher pods a real KubeSwift controller would create for
+# the guests and sandboxes whose status.podRef names them. No controller runs in
+# the E2E cluster, so nothing ever creates these pods unless this fixture does -
+# and without the first one, the SwiftGuest detail view's Pod reference pointed
+# at an object that did not exist (issue #23).
 #
-# What the detail view's link needs is for the object to exist, not for it to
-# run: the pod carries a nodeSelector that matches no node, so the scheduler
+# What the detail views need is for the object to exist, not for it to run:
+# every pod here carries a nodeSelector that matches no node, so the scheduler
 # leaves it Pending forever and it never reaches the image-pull step. That
-# keeps the fixture free of any dependency on an image actually being
+# keeps the fixtures free of any dependency on an image actually being
 # available to pull.
+#
+# The two sandbox pods carry an init container as well, because that is the
+# shape a real sandbox launcher pod has (sandbox-materialize pulls, verifies and
+# unpacks the rootfs before the launcher runs) and because the drawer's "View
+# logs" affordance picks its container out of `getAllContainers()`, which
+# includes the init ones. They have no logs to show - nothing ever starts - and
+# the E2E case asserts the log tab, not its content.
 apiVersion: v1
 kind: Pod
 metadata:
@@ -24,4 +30,51 @@ spec:
     - name: launcher
       # Never pulled: the pod is deliberately unschedulable (see nodeSelector
       # above), so this image reference is never resolved.
+      image: launcher.invalid/kubeswift-e2e/unused:none
+---
+# The launcher pod of swiftsandbox/e2e-sandbox-running (status.podRef in
+# status/swiftsandbox-e2e-sandbox-running.yaml), named after the sandbox
+# because that one boots cold.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-sandbox-running-launcher
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+  annotations:
+    # The annotation the drawer's "View logs" affordance reads to decide which
+    # container the log tab opens on. Without it the affordance would fall back
+    # to the first container, which here is the init one.
+    kubectl.kubernetes.io/default-container: launcher
+spec:
+  nodeSelector:
+    kubeswift-e2e.freelensapp.github.io/no-such-node: "true"
+  initContainers:
+    - name: sandbox-materialize
+      image: launcher.invalid/kubeswift-e2e/unused:none
+  containers:
+    - name: launcher
+      image: launcher.invalid/kubeswift-e2e/unused:none
+---
+# The pool slot pod of swiftsandbox/e2e-sandbox-pooled. It is named after the
+# POOL and not after the sandbox on purpose: a warm-pool checkout claims a
+# pre-booted slot, so the sandbox's status.podRef names the slot's pod. Nothing
+# in the drawer derives the name; it is read from the field.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-sandbox-pool-slot-1
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+    sandbox.kubeswift.io/pool: e2e-sandbox-pool
+spec:
+  nodeSelector:
+    kubeswift-e2e.freelensapp.github.io/no-such-node: "true"
+  initContainers:
+    - name: sandbox-materialize
+      image: launcher.invalid/kubeswift-e2e/unused:none
+  containers:
+    - name: launcher
       image: launcher.invalid/kubeswift-e2e/unused:none

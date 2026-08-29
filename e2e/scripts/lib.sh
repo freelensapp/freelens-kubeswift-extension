@@ -52,8 +52,9 @@ E2E_NODE_NAME="${E2E_NODE_NAME:-}"
 KUBESWIFT_CRD_BASE_URL="https://raw.githubusercontent.com/kubeswift-io/kubeswift/${KUBESWIFT_VERSION}/config/crd/bases"
 
 # The 15 CRDs KubeSwift ships, across its 9 API groups. All of them are applied
-# so that the cluster matches a real KubeSwift installation, even though only
-# the six M1 and the four M2 CRDs carry fixtures today.
+# so that the cluster matches a real KubeSwift installation, even though not all
+# of them carry fixtures yet (SwiftSandboxPool and fleet's Cluster are the ones
+# still waiting for their milestone).
 KUBESWIFT_CRD_FILES=(
 	fleet.kubeswift.io_clusters.yaml
 	gpu.kubeswift.io_swiftgpunodes.yaml
@@ -101,6 +102,9 @@ E2E_STATUS_PATCHES=(
 	"swiftmigrations.migration.kubeswift.io/e2e-migration-live=swiftmigration-e2e-migration-live.yaml"
 	"swiftgpunodes.gpu.kubeswift.io/__NODE_NAME__=swiftgpunode-cluster-node.yaml"
 	"swiftgpunodes.gpu.kubeswift.io/e2e-gpu-node-absent=swiftgpunode-e2e-gpu-node-absent.yaml"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running=swiftsandbox-e2e-sandbox-running.yaml"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed=swiftsandbox-e2e-sandbox-failed.yaml"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-pooled=swiftsandbox-e2e-sandbox-pooled.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -125,6 +129,11 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftgpunodes.gpu.kubeswift.io/__NODE_NAME__={.status.vfioReady}=true"
 	"swiftgpunodes.gpu.kubeswift.io/e2e-gpu-node-absent={.status.phase}=Error"
 	"swiftgpunodes.gpu.kubeswift.io/e2e-gpu-node-absent={.status.vfioReady}=false"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.phase}=Running"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.podRef}=e2e-sandbox-running-launcher"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.phase}=Failed"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.exitCode}=1"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-pooled={.status.podRef}=e2e-sandbox-pool-slot-1"
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the
@@ -148,6 +157,8 @@ E2E_NODE_NAME_FIELDS=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-gpu={.status.gpu.nodeName}"
 	"swiftmigrations.migration.kubeswift.io/e2e-migration-completed={.status.destinationNode}"
 	"swiftgpunodes.gpu.kubeswift.io/__NODE_NAME__={.metadata.name}"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.nodeName}"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.gpu.nodeName}"
 )
 
 log() {

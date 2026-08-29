@@ -1,0 +1,29 @@
+# Merge patch applied to the status subresource of
+# swiftsandbox/e2e-sandbox-failed. No KubeSwift controller runs in the E2E
+# cluster, so the status a real controller would write is injected here instead.
+#
+# The failure branch of the pair: a non-zero exit code, a terminal timestamp,
+# and both halves of the Status column's message ladder. `message` is the
+# controller's own summary and is what the column shows (its first rung); the
+# RootfsReady condition below carries the detail behind it, and is what the
+# column would fall back to if a controller ever wrote the condition without the
+# summary (its second rung, unit-tested in sandbox-status.test.ts).
+#
+# There is no nodeName and no podRef: a sandbox whose rootfs never materialized
+# never boots, so nothing was ever scheduled for it. The drawer's Runtime
+# section, its scratch disk, model and GPU sections must all guard themselves
+# away here, and the IP cell must read "None" (network mode "none") rather than
+# "N/A".
+status:
+  phase: Failed
+  message: "Materializing the rootfs failed: the image could not be pulled."
+  exitCode: 1
+  terminalAt: "2026-08-28T09:30:00Z"
+  conditions:
+    - type: RootfsReady
+      status: "False"
+      reason: ImagePullFailed
+      message: >-
+        Pulling ghcr.io/freelensapp/kubeswift-e2e/sandbox:broken failed: unauthorized.
+      lastTransitionTime: "2026-08-28T09:30:00Z"
+      observedGeneration: 1

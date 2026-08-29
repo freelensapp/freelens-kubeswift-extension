@@ -1,0 +1,26 @@
+// Nested table of the sandbox's environment. Column sizing only, in the same
+// shape the list pages use for theirs; everything else (chrome, spacing,
+// colours) comes from the host's own table styles.
+.env {
+  :global(.TableCell) {
+    &.name {
+      flex-grow: 0.8;
+    }
+
+    &.value {
+      flex-grow: 1.2;
+    }
+
+    &.source {
+      flex-grow: 1.2;
+    }
+  }
+}
+
+// The "View logs" affordance sits next to the Launcher Pod link rather than on
+// its own row, so the two need a gap between them.
+.launcherPod {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--unit) / 2);
+}

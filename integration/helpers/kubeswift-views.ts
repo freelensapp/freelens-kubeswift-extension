@@ -52,4 +52,5 @@ export const KUBESWIFT_VIEWS: KubeSwiftView[] = [
       return clusterNodeName();
     },
   },
+  { menuId: "swiftsandboxes", title: "Sandboxes", fixtureObject: "e2e-sandbox-running" },
 ];

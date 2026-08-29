@@ -1,0 +1,27 @@
+.page {
+  :global(.TableCell) {
+    &.image {
+      flex-grow: 1.5;
+    }
+
+    &.node {
+      flex-grow: 1;
+    }
+
+    &.ip {
+      flex-grow: 0.7;
+    }
+
+    &.condition {
+      flex-grow: 0.7;
+    }
+
+    &.status {
+      flex-grow: 1.5;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # SPEC-0008: Read-only sandbox views (M4)
 
-- **Status:** Approved (Roberto, 2026-08-29, in chat)
+- **Status:** Approved (Roberto, 2026-08-29, in chat); slice 1 of 2 in PR
 - **Milestone:** M4
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Claude with Roberto, 2026-08-29
@@ -684,8 +684,151 @@ did. The two judgement calls in the classifier table (`Completed` as success,
 
 ## Notes and deviations
 
-Filled during implementation when reality diverges from the plan. What follows
-is the recon that produced this spec.
+Filled during implementation when reality diverges from the plan. The recon that
+produced this spec follows the implementation notes.
+
+### Implementation slices
+
+The milestone is implemented in two PRs, split along the two kinds rather than
+along the layers, so each slice is a whole working view with its own tests:
+
+- **Slice 1 — SwiftSandbox.** The model, `classifySandbox`, the shared message
+  selector, the container-picking helper, the list page, the detail drawer with
+  the launcher-pod logs affordance, the new **Sandboxes** sidebar group with its
+  single Sandboxes leaf, the three sandbox fixtures with their status patches,
+  the two sandbox launcher pods, and the pre-review entry for the sandbox view.
+- **Slice 2 — SwiftSandboxPool.** The pool model, `classifySandboxPool` and its
+  message selector, the pool list page and drawer, the Sandbox Pools leaf under
+  the group slice 1 created, the two pool fixtures with their status patches,
+  and the pre-review entry for the pool view.
+
+Three consequences inside slice 1, all of them temporary and all closed by
+slice 2:
+
+1. `src/renderer/components/sandbox-status.ts` ships `classifySandbox`,
+   `conditionMessage` and `sandboxMessage` only. `classifySandboxPool` and the
+   pool's own message selector join the same module in slice 2, which is why
+   the shared rungs were factored out from the start (see below).
+2. The **Pool** row of the SwiftSandbox drawer renders `spec.poolRef.name` as
+   plain text with its cold-fallback tooltip. SwiftSandboxPool is not a
+   registered kind until slice 2, so there is no store to resolve the reference
+   in, and plain text is what every unresolvable reference degrades to. Slice 2
+   turns it into an existence-checked link and adds the `e2e-sandbox-pool`
+   fixture that `e2e-sandbox-pooled` already names.
+3. The spec's fourth E2E case ("navigates the SwiftSandbox drawer's pool,
+   kernel and GPU links") therefore covers Kernel Profile, GPU Profile, GPU
+   Node, Node and Launcher Pod in slice 1, and gains the Pool row in slice 2.
+   Its counter-assert — a reference that must stay plain text — is the minimal
+   sandbox's controller-applied `sandbox (default)` kernel row.
+
+### Schema verification (2026-08-29)
+
+`config/crd/bases/sandbox.kubeswift.io_swiftsandboxes.yaml` was re-read at tag
+`v0.13.12` while writing the model. Every field, default, enum and required
+marker this spec's Design section states is what the schema declares; no
+correction was needed. Three details the spec did not spell out, recorded
+because the model types them:
+
+- `spec.verifyKeySecretRef` is **not** a `LocalObjectReference`: its `name` is
+  genuinely `required` and carries no `""` default, unlike every other ref on
+  this CRD. `spec.scratchDisk.blank.size` and `spec.model.imageRef` are required
+  too.
+- `spec.rootfsMode` carries its `enum` twice, nested under an `allOf` — a
+  controller-gen artefact rather than a constraint. It is read as one enum.
+- `spec.env[].valueFrom.fileKeyRef` (the alpha `EnvFiles` gate) is the fifth
+  source the schema declares; the Environment table renders it as
+  `file <volume>/<path> (<key>)`, with no linkable referent.
+
+### Declared deviations and additions (slice 1)
+
+1. **The message selector is exported as two functions, not one.** The Design
+   section names `sandboxMessage(status)` and calls it the selector the two
+   kinds share, but its fourth rung is each kind's own classifier explanation,
+   which cannot be shared. The implementation therefore exports
+   `conditionMessage(status)` — rungs 1 to 3, keyed on no condition type, used
+   by both kinds — and `sandboxMessage(status)`, which is
+   `conditionMessage(status) ?? classifySandbox(status).explanation`. Slice 2's
+   pool selector is the same two lines over `classifySandboxPool`. The ladder
+   itself is unchanged.
+2. **A condition whose `message` is the empty string is skipped**, whatever its
+   `lastTransitionTime` and whatever its `status`. `metav1.Condition` allows an
+   empty message, and selecting one would leave the Status column blank, which
+   is the single outcome the ladder exists to prevent. This is a refinement of
+   rungs 2 and 3, not a change of their order, and it has its own unit test.
+3. **Two Secret rows were added to the SwiftSandbox drawer.** The Design
+   section's drawer list omits `spec.imagePullSecret` and
+   `spec.verifyKeySecretRef`, while the reference table one section below
+   declares `secretsStore` lookups for both — so the drawer would have been
+   loading a store for rows that did not exist. Both are rendered as
+   existence-checked `LinkToSecret` rows at the end of the **Guest** section,
+   which is the same grouping the SwiftSandboxPool's "Slot Shape" section already
+   prescribes for the same two fields, so the two M4 drawers read the same way.
+4. **The derived Duration of a finished sandbox is formatted with
+   `Common.Util.formatDuration`, not with `ReactiveDuration`.** The spec asks
+   for `ReactiveDuration` and for no hand-rolled formatter; the first half is
+   impossible for a terminal sandbox, because `ReactiveDuration` only ever
+   measures a timestamp against *now* and cannot express
+   `terminalAt - startedAt`. `Common.Util.formatDuration` is the host's own
+   formatter and is the very function `ReactiveDuration` calls internally, so
+   the intent of the rule — no formatter written in this repository — holds. A
+   running sandbox still goes through `ReactiveDuration` from `startedAt`, as
+   written.
+5. **Two fixture files the spec did not name.** `125-sandbox-references.yaml`
+   adds two Secrets and a ConfigMap in the fixture namespace, so that the two
+   Secret rows above and the environment table's `secretKeyRef` and
+   `configMapKeyRef` sources resolve to objects that exist and render as links
+   rather than all degrading to text. The two sandbox pods added to
+   `55-launcher-pods.yaml` carry a `sandbox-materialize` init container and the
+   `kubectl.kubernetes.io/default-container` annotation, so the container-picking
+   helper is exercised against the shape a real launcher pod has.
+6. **Which rung each sandbox fixture exercises.** `e2e-sandbox-running` writes
+   no `status.message`, so its Status column is the newest condition's message
+   (rung 3); `e2e-sandbox-failed` writes one, so its column is that summary
+   (rung 1) while its `RootfsReady: False` condition carries the detail behind
+   it; `e2e-sandbox-pooled` writes neither, so its column falls back to the
+   classifier's explanation (rung 4). Rung 2 — a problem outranking a more
+   recent success — is unit-tested only: it needs two conditions in a specific
+   temporal order, which is a shape a static fixture cannot make more convincing
+   than the unit test already does.
+
+No deviation from DESIGN.md was needed: the two-column Condition + Status
+pattern is implemented as written, with the controller's own words in the
+Status column, which is what this milestone was expected to be the reference
+implementation of.
+
+### The `logTabStore` spike: verdict PASS (2026-08-29)
+
+The spec gated this milestone on proving live, before the drawer was wired, that
+`Renderer.Component.logTabStore.createPodTab` works from an extension context —
+it is a documented export of the renderer extension API that no freelensapp
+extension had used before. A throwaway Playwright harness was run against a real
+packed Freelens with the extension installed and the E2E fixture cluster
+connected, and evaluated inside the cluster frame:
+
+```text
+{"hasGlobal":true,"hasRenderer":true,"hasComponent":true,"hasLogTabStore":true,
+ "createPodTabType":"function","hasPodsStore":true,"podFound":true,
+ "containers":["launcher","sandbox-materialize"],
+ "tabId":"log-tab-8b2b30f9-6c78-4237-bf87-6d90bff8445e"}
+```
+
+The host's dock then read `Pod e2e-sandbox-running-launcher` as a tab title,
+with `Namespace kubeswift-e2e / Pod e2e-sandbox-running-launcher / Container
+launcher` and a container selector inside it. Three things are settled by that
+output:
+
+- the call is reachable and returns a real tab id, so the affordance ships as
+  designed and the fallback (the `LinkToPod` row alone) is not needed;
+- `getAllContainers()` really does report the init container next to the
+  launcher, so the `sandbox-materialize` logs are one container switch away
+  inside the tab the button opens — the half of the feasibility question the
+  roadmap cared about;
+- the container the tab opens on is the annotated one, which is what the
+  reimplemented `findDefaultContainer` decides.
+
+The harness was deleted once the verdict was recorded; what keeps it proven is
+the permanent E2E case "opens the launcher pod's logs from the SwiftSandbox
+drawer".
 
 ### Upstream recon (2026-08-29)
 

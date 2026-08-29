@@ -1,0 +1,76 @@
+# Merge patch applied to the status subresource of
+# swiftsandbox/e2e-sandbox-running. No KubeSwift controller runs in the E2E
+# cluster, so the status a real controller would write is injected here instead.
+#
+# nodeName and gpu.nodeName are __NODE_NAME__, substituted by cluster-up.sh's
+# inject_statuses() with the real (single) node of whatever cluster this is
+# applied to (see the comment in swiftguest-e2e-guest-running.yaml and issue
+# #23). podRef is the launcher pod's NAME - a bare string on this CRD, not the
+# ObjectReference SwiftGuest carries - and it names the Pod fixture in
+# 55-launcher-pods.yaml.
+#
+# There is deliberately no top-level `message` here: this sandbox exercises the
+# third rung of the Status column's ladder (the newest condition's own message,
+# GuestRunning below), while e2e-sandbox-failed exercises the first one.
+status:
+  phase: Running
+  nodeName: __NODE_NAME__
+  podRef: e2e-sandbox-running-launcher
+  startedAt: "2026-08-28T09:45:00Z"
+  network:
+    primaryIP: 10.244.3.17
+  runtime:
+    hypervisor: cloud-hypervisor
+    pid: 8123
+  rootfs:
+    digest: sha256:3f7a1c9e5b2d84a06c1e9f7b3d5a2c8e40b6d9f1a3c7e5b8d2f4a6c0e8b1d3f5
+    # An int64 byte count (1.5Gi), which the views humanize rather than showing
+    # as a raw digit run - the very thing the pre-review pass checks for.
+    sizeBytes: 1610612736
+    cachePath: /var/lib/kubeswift/sandbox/rootfs/3f7a1c9e
+  model:
+    digest: sha256:9c4e2a7f1b8d3506e2a9c7f4b1d8e3a05c6b9d2f7a4e1c8b5d2f9a6c3e0b7d4a
+    mountPath: /model
+    cachePath: /var/lib/kubeswift/sandbox/models/9c4e2a7f
+  scratchDisk:
+    bound: true
+    # No PVC of this name is ever created: a blank scratch disk is owned by the
+    # sandbox and deleted with it, so the drawer's PVC row degrading to plain
+    # text is the correct outcome here, not a defect (SPEC-0008).
+    pvcName: e2e-sandbox-running-scratch
+    devicePath: /dev/kubeswift-data-scratch
+  gpu:
+    # Quoted: unquoted, YAML reads a PCI address as a sexagesimal number.
+    devices:
+      - "0000:41:00.0"
+    hypervisor: cloud-hypervisor
+    nodeName: __NODE_NAME__
+    numaNodes:
+      - 0
+    # -1 is the "no partition" sentinel, which the views drop instead of showing.
+    partitionId: -1
+  conditions:
+    - type: Resolved
+      status: "True"
+      reason: ReferencesResolved
+      message: The kernel profile and the GPU profile were resolved.
+      lastTransitionTime: "2026-08-28T09:44:00Z"
+      observedGeneration: 1
+    - type: RootfsReady
+      status: "True"
+      reason: Materialized
+      message: The OCI rootfs was verified and materialized on the node.
+      lastTransitionTime: "2026-08-28T09:44:30Z"
+      observedGeneration: 1
+    - type: GPUAllocated
+      status: "True"
+      reason: DevicesBound
+      message: One GPU was allocated and bound to vfio-pci.
+      lastTransitionTime: "2026-08-28T09:44:45Z"
+      observedGeneration: 1
+    - type: GuestRunning
+      status: "True"
+      reason: Booted
+      message: The guest booted and the workload is running.
+      lastTransitionTime: "2026-08-28T09:45:00Z"
+      observedGeneration: 1

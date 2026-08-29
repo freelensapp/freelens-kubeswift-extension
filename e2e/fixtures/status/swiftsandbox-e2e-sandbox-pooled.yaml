@@ -1,0 +1,25 @@
+# Merge patch applied to the status subresource of
+# swiftsandbox/e2e-sandbox-pooled. No KubeSwift controller runs in the E2E
+# cluster, so the status a real controller would write is injected here instead.
+#
+# Two facts only this fixture carries:
+#
+# - podRef names the CLAIMED SLOT's pod (e2e-sandbox-pool-slot-1 in
+#   55-launcher-pods.yaml), not a pod named after the sandbox. A warm-pool
+#   checkout injects this sandbox's command into a pre-booted slot, so the
+#   launcher pod belongs to the pool. The drawer reads the name from the field
+#   and never derives it.
+# - startedAt and terminalAt are both set on a Completed sandbox, which is what
+#   makes the drawer's derived Duration row (48s) render at all: neither the CRD
+#   nor `kubectl` reports how long a sandbox ran.
+#
+# There is deliberately no `message` and no condition: this is the fixture that
+# exercises the last rung of the Status column's ladder, where the column falls
+# back to the classifier's own explanation because the controller has written
+# nothing.
+status:
+  phase: Completed
+  exitCode: 0
+  podRef: e2e-sandbox-pool-slot-1
+  startedAt: "2026-08-28T09:50:00Z"
+  terminalAt: "2026-08-28T09:50:48Z"
