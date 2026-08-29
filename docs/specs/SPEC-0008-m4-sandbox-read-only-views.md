@@ -1,7 +1,10 @@
 # SPEC-0008: Read-only sandbox views (M4)
 
-- **Status:** Implemented (PRs #62 and #63, merged 2026-08-29, main CI
-  green; Verified pending the milestone review)
+- **Status:** Verified (2026-08-29: non-regression tests green in CI on
+  main; pre-review pass PASS on 14/14 views in both themes; milestone
+  review by Roberto on the pass artifacts and screenshots with one
+  coherence ruling, applied in PR #65; KVM-only checks listed in Manual
+  verification stay open for a real-cluster session)
 - **Milestone:** M4
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Claude with Roberto, 2026-08-29
