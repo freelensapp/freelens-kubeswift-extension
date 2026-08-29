@@ -800,7 +800,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   );
 
   it(
-    "navigates the SwiftSandbox drawer's kernel, GPU and launcher pod links to objects that actually exist",
+    "navigates the SwiftSandbox drawer's pool, kernel, GPU and launcher pod links to objects that actually exist",
     async () => {
       // Same shape as the SwiftGuest and SwiftGPUNode cases above, on the four
       // reference kinds this drawer resolves and whose targets the fixtures
@@ -811,9 +811,12 @@ describe("KubeSwift views against the fixture cluster", () => {
       // The launcher pod is the one worth spelling out: status.podRef is a
       // bare string on this CRD, not the ObjectReference SwiftGuest carries, so
       // nothing in the host would stop the drawer from building a link to a pod
-      // that is not there. The Pool row is deliberately not checked here: the
-      // SwiftSandboxPool kind is registered by the second M4 slice, so until
-      // then that row is correctly plain text.
+      // that is not there.
+      //
+      // The Pool row is checked further down, on e2e-sandbox-pooled: poolRef is
+      // exclusive with both GPU backends by the documented webhook rules, so
+      // the sandbox that has a pool is never the one that has a GPU and the two
+      // halves cannot share a fixture.
       await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
       await pr.openDrawer(frame, "e2e-sandbox-running");
 
@@ -844,6 +847,40 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       await cluster.closeDetails(frame);
 
+      // The Pool row, on the sandbox that has one. M4 slice 1 rendered it as
+      // plain text because SwiftSandboxPool was not a registered kind yet;
+      // slice 2 registers it and adds the e2e-sandbox-pool fixture this
+      // sandbox's spec.poolRef already named, so the row must now be a live
+      // link. A pooled sandbox routinely outlives the pool it claimed a slot
+      // from, which is exactly why the row is existence-checked rather than
+      // linked unconditionally.
+      await pr.openDrawer(frame, "e2e-sandbox-pooled");
+
+      const reopenPooled = async () => {
+        await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+        await pr.openDrawer(frame, "e2e-sandbox-pooled");
+      };
+
+      const poolRow = await pr.waitForDrawerLink(frame, "Pool");
+
+      if (!poolRow) {
+        throw new Error('The SwiftSandbox drawer has no "Pool" row at all.');
+      }
+
+      if (!poolRow.href) {
+        throw new Error(
+          `The SwiftSandbox drawer's "Pool" row ("${poolRow.text}") stayed plain text: the fixture makes the pool exist, so the row must render as a link.`,
+        );
+      }
+
+      const poolResult = await pr.checkDrawerLink(frame, "swiftsandboxes", poolRow, reopenPooled);
+
+      if (!poolResult.ok) {
+        throw new Error(`The "Pool" link ("${poolRow.text}") did not navigate cleanly: ${poolResult.note}`);
+      }
+
+      await cluster.closeDetails(frame);
+
       // The opposite assert, and what makes the fixture pair worth having: the
       // minimal sandbox names no kernel profile at all, so its row must read
       // the controller-applied default as plain text rather than link to a
@@ -855,6 +892,217 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       if (!kernelRow) {
         throw new Error('The SwiftSandbox drawer has no "Kernel Profile" row at all.');
+      }
+
+      if (kernelRow.href) {
+        throw new Error(
+          `"${kernelRow.text}" is the controller-applied default, which no object in this namespace corresponds to, so it must stay plain text.`,
+        );
+      }
+
+      if (!kernelRow.text.includes("sandbox (default)")) {
+        throw new Error(`The "Kernel Profile" row should read the default, got "${kernelRow.text}".`);
+      }
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "lists the SwiftSandboxPools with their warm and claimed counts",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // Image, then the three counts in the CRD's own printer-column order -
+      // desired, actual, in use - then the condition badge. The gap between the
+      // first two is the health of the pool, which is why they are adjacent
+      // (SPEC-0008). Warm plus claimed is not a conserved total: a claimed slot
+      // is never returned to the pool, so 2 warm and 1 claimed is not a
+      // contradiction.
+      await cluster.expectRow(
+        frame,
+        "e2e-sandbox-pool",
+        "kubeswift-e2e/sandbox:warm",
+        "2 2 1 Ready",
+        "Two warm slots are ready and one is checked out",
+      );
+
+      // The degraded one holds no warm slot at all against the minWarm of 1 the
+      // API server defaulted (the fixture declares none, which is what makes
+      // this row also the assert that the default arrives). Its Status column is
+      // the second rung of the message ladder, and the only place in this suite
+      // that exercises it: the newest condition is the True one, and the False
+      // one is still what an operator needs to read.
+      await cluster.expectRow(frame, "e2e-sandbox-pool-degraded", "1 0 0 Degraded", "No schedulable kernel node");
+
+      // Degraded is an error, not a warning: the pool's whole purpose is the
+      // sub-second checkout, and one that is not holding its warm buffer is not
+      // delivering it. That is the SPEC-0008 judgement call, and this is what
+      // pins it.
+      //
+      // The badge is found by the class the classifier hands it, not by a
+      // `.Badge` selector: core's `Badge` is a CSS-module component, so its own
+      // class name is hashed at build time and only the `className` the
+      // extension passes survives verbatim.
+      const errorBadges = await frame
+        .locator(".TableRow", { hasText: "e2e-sandbox-pool-degraded" })
+        .first()
+        .locator(".error")
+        .allInnerTexts();
+
+      if (!errorBadges.some((text) => text.trim() === "Degraded")) {
+        throw new Error(`The Degraded badge must carry the host's "error" class, got: ${JSON.stringify(errorBadges)}`);
+      }
+
+      // "Sandboxes Using This Pool" renders only once the SwiftSandbox store
+      // reports isLoaded for this namespace (the SPEC-0007 pattern: a section
+      // that renders nothing while the store fills, rather than claiming the
+      // pool is unused), so its row is waited for instead of being read in one
+      // shot, which would race that load on a slow runner.
+      await pr.openDrawer(frame, "e2e-sandbox-pool");
+      await frame
+        .locator(".Drawer.KubeObjectDetails .TableRow", { hasText: "e2e-sandbox-pooled" })
+        .first()
+        .waitFor({ state: "visible", timeout: 60_000 });
+      await cluster.closeDetails(frame);
+
+      // The full drawer: the shared rootfs size humanized from the int64 byte
+      // count (768Mi, never the raw digit run), the slot selector the scale
+      // subresource exposes, the image environment split on the FIRST `=` of
+      // each entry, and the sandbox that claimed a slot.
+      await cluster.expectDetails(
+        frame,
+        "e2e-sandbox-pool",
+        "SwiftSandboxPool: e2e-sandbox-pool",
+        "Ready",
+        "Every warm slot of this image on the same node",
+        "768Mi",
+        "sandbox.kubeswift.io/pool=e2e-sandbox-pool",
+        "Image Environment",
+        // Splitting this entry on its last `=` would corrupt it into
+        // "SANDBOX_OPTS=--warm" plus "true".
+        "SANDBOX_OPTS",
+        "--warm=true",
+        "Sandboxes Using This Pool",
+        "e2e-sandbox-pooled",
+      );
+
+      // The minimal pool: maxWarm is absent, which the schema defines as "no
+      // cap beyond minWarm" rather than as a missing value, so the row must
+      // read the sentinel and not a bare 0. Nothing references it, so the last
+      // section says so explicitly instead of rendering an empty table.
+      await cluster.expectDetails(
+        frame,
+        "e2e-sandbox-pool-degraded",
+        "SwiftSandboxPool: e2e-sandbox-pool-degraded",
+        "Degraded",
+        "No cap",
+        "No sandbox in this namespace references this pool",
+      );
+
+      // Every section of the drawer guards itself, so the pool that carries
+      // nothing but its two required fields and a phase shows the two that
+      // always apply and none of the four that describe a block it does not
+      // have.
+      await pr.openDrawer(frame, "e2e-sandbox-pool-degraded");
+
+      const sections = await frame.$$eval(".Drawer.KubeObjectDetails .DrawerTitle", (elements) =>
+        elements.map((element) => element.textContent?.trim() ?? ""),
+      );
+
+      for (const present of ["Pool", "Slot Shape"]) {
+        if (!sections.includes(present)) {
+          throw new Error(
+            `The SwiftSandboxPool drawer should always have a "${present}" section, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      for (const absent of ["Rootfs", "Model", "GPU", "Image Environment"]) {
+        if (sections.includes(absent)) {
+          throw new Error(
+            `The "${absent}" section must guard itself away on a pool that has no such block, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "navigates the SwiftSandboxPool drawer's kernel, secret and sandbox links to objects that actually exist",
+    async () => {
+      // The three reference kinds this drawer resolves through a DrawerItem row
+      // and whose targets the fixtures guarantee: the SwiftKernel of
+      // spec.kernelProfileRef and the two Secrets of spec.imagePullSecret and
+      // spec.verifyKeySecretRef, which 125-sandbox-references.yaml creates for
+      // the sandbox fixtures and this pool deliberately reuses.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+      await pr.openDrawer(frame, "e2e-sandbox-pool");
+
+      const reopen = async () => {
+        await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+        await pr.openDrawer(frame, "e2e-sandbox-pool");
+      };
+
+      for (const label of ["Kernel Profile", "Image Pull Secret", "Verify Key Secret"]) {
+        const row = await pr.waitForDrawerLink(frame, label);
+
+        if (!row) {
+          throw new Error(`The SwiftSandboxPool drawer has no "${label}" row at all.`);
+        }
+
+        if (!row.href) {
+          throw new Error(
+            `The SwiftSandboxPool drawer's "${label}" row ("${row.text}") stayed plain text: the fixture makes the referenced object exist, so the row must render as a link.`,
+          );
+        }
+
+        const result = await pr.checkDrawerLink(frame, "swiftsandboxpools", row, reopen);
+
+        if (!result.ok) {
+          throw new Error(`The "${label}" link ("${row.text}") did not navigate cleanly: ${result.note}`);
+        }
+      }
+
+      // The sandbox link lives in the nested "Sandboxes Using This Pool" table
+      // rather than in a `DrawerItem` row, so it is read from the drawer
+      // directly rather than through the row helpers. The wait is the same
+      // bounded one those helpers do: the link appears once the SwiftSandbox
+      // store has filled.
+      const sandboxLink = frame.locator(".Drawer.KubeObjectDetails a", { hasText: "e2e-sandbox-pooled" }).first();
+
+      await sandboxLink.waitFor({ state: "visible", timeout: 60_000 });
+
+      const sandboxHref = await sandboxLink.getAttribute("href");
+      const sandboxResult = await pr.checkDrawerLink(
+        frame,
+        "swiftsandboxpools",
+        { label: "Sandboxes Using This Pool", text: "e2e-sandbox-pooled", href: sandboxHref },
+        reopen,
+      );
+
+      if (!sandboxResult.ok) {
+        throw new Error(`The pooled sandbox link did not navigate cleanly: ${sandboxResult.note}`);
+      }
+
+      await cluster.closeDetails(frame);
+
+      // The opposite assert: the minimal pool names no kernel profile at all,
+      // so its row must read the controller-applied default as plain text
+      // rather than link to a namespace this extension would have had to guess
+      // (SPEC-0008), exactly as the minimal sandbox's does.
+      await pr.openDrawer(frame, "e2e-sandbox-pool-degraded");
+
+      const rows = await pr.inspectDrawerRows(frame);
+      const kernelRow = rows.find((row) => row.label === "Kernel Profile");
+
+      if (!kernelRow) {
+        throw new Error('The SwiftSandboxPool drawer has no "Kernel Profile" row at all.');
       }
 
       if (kernelRow.href) {

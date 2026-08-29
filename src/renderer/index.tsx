@@ -14,6 +14,7 @@ import { SwiftKernel as SwiftKernelV1alpha1 } from "./api/kubeswift/swiftkernel-
 import { SwiftMigration as SwiftMigrationV1alpha1 } from "./api/kubeswift/swiftmigration-v1alpha1";
 import { SwiftRestore as SwiftRestoreV1alpha1 } from "./api/kubeswift/swiftrestore-v1alpha1";
 import { SwiftSandbox as SwiftSandboxV1alpha1 } from "./api/kubeswift/swiftsandbox-v1alpha1";
+import { SwiftSandboxPool as SwiftSandboxPoolV1alpha1 } from "./api/kubeswift/swiftsandboxpool-v1alpha1";
 import { SwiftSeedProfile as SwiftSeedProfileV1alpha1 } from "./api/kubeswift/swiftseedprofile-v1alpha1";
 import { SwiftSnapshot as SwiftSnapshotV1alpha1 } from "./api/kubeswift/swiftsnapshot-v1alpha1";
 import { SwiftSnapshotSchedule as SwiftSnapshotScheduleV1alpha1 } from "./api/kubeswift/swiftsnapshotschedule-v1alpha1";
@@ -27,6 +28,7 @@ import { SwiftKernelDetails as SwiftKernelDetailsV1alpha1 } from "./details/swif
 import { SwiftMigrationDetails as SwiftMigrationDetailsV1alpha1 } from "./details/swiftmigration-details-v1alpha1";
 import { SwiftRestoreDetails as SwiftRestoreDetailsV1alpha1 } from "./details/swiftrestore-details-v1alpha1";
 import { SwiftSandboxDetails as SwiftSandboxDetailsV1alpha1 } from "./details/swiftsandbox-details-v1alpha1";
+import { SwiftSandboxPoolDetails as SwiftSandboxPoolDetailsV1alpha1 } from "./details/swiftsandboxpool-details-v1alpha1";
 import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./details/swiftseedprofile-details-v1alpha1";
 import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
 import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
@@ -41,6 +43,7 @@ import { SwiftKernelsPage as SwiftKernelsPageV1alpha1 } from "./pages/swiftkerne
 import { SwiftMigrationsPage as SwiftMigrationsPageV1alpha1 } from "./pages/swiftmigrations-page-v1alpha1";
 import { SwiftRestoresPage as SwiftRestoresPageV1alpha1 } from "./pages/swiftrestores-page-v1alpha1";
 import { SwiftSandboxesPage as SwiftSandboxesPageV1alpha1 } from "./pages/swiftsandboxes-page-v1alpha1";
+import { SwiftSandboxPoolsPage as SwiftSandboxPoolsPageV1alpha1 } from "./pages/swiftsandboxpools-page-v1alpha1";
 import { SwiftSeedProfilesPage as SwiftSeedProfilesPageV1alpha1 } from "./pages/swiftseedprofiles-page-v1alpha1";
 import { SwiftSnapshotsPage as SwiftSnapshotsPageV1alpha1 } from "./pages/swiftsnapshots-page-v1alpha1";
 import { SwiftSnapshotSchedulesPage as SwiftSnapshotSchedulesPageV1alpha1 } from "./pages/swiftsnapshotschedules-page-v1alpha1";
@@ -184,6 +187,16 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         ),
       },
     },
+    {
+      kind: SwiftSandboxPoolV1alpha1.kind,
+      apiVersions: SwiftSandboxPoolV1alpha1.crd.apiVersions,
+      priority: 10,
+      components: {
+        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
+          <SwiftSandboxPoolDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
   ];
 
   clusterPages = [
@@ -263,6 +276,12 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       id: "swiftsandboxes",
       components: {
         Page: () => <SwiftSandboxesPageV1alpha1 extension={this} />,
+      },
+    },
+    {
+      id: "swiftsandboxpools",
+      components: {
+        Page: () => <SwiftSandboxPoolsPageV1alpha1 extension={this} />,
       },
     },
   ];
@@ -420,13 +439,19 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
     },
     // Sandboxes come first inside the group (and are therefore its target): the
     // sandbox is the object a user creates, watches and troubleshoots, while a
-    // pool is infrastructure consulted when checkouts are slow. The Sandbox
-    // Pools leaf joins this group in the second M4 slice.
+    // pool is infrastructure consulted when checkouts are slow.
     {
       id: "swiftsandboxes",
       parentId: "kubeswift-sandboxes",
       title: SwiftSandboxV1alpha1.crd.title,
       target: { pageId: "swiftsandboxes" },
+      components: {},
+    },
+    {
+      id: "swiftsandboxpools",
+      parentId: "kubeswift-sandboxes",
+      title: SwiftSandboxPoolV1alpha1.crd.title,
+      target: { pageId: "swiftsandboxpools" },
       components: {},
     },
   ];

@@ -1,0 +1,33 @@
+.page {
+  :global(.TableCell) {
+    &.image {
+      flex-grow: 1.5;
+    }
+
+    // The three counts sit side by side on purpose: the gap between the
+    // desired one and the actual one is the health of the pool.
+    &.minWarm {
+      flex-grow: 0.5;
+    }
+
+    &.warm {
+      flex-grow: 0.5;
+    }
+
+    &.claimed {
+      flex-grow: 0.5;
+    }
+
+    &.condition {
+      flex-grow: 0.7;
+    }
+
+    &.status {
+      flex-grow: 1.5;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

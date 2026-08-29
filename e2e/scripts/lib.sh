@@ -53,8 +53,8 @@ KUBESWIFT_CRD_BASE_URL="https://raw.githubusercontent.com/kubeswift-io/kubeswift
 
 # The 15 CRDs KubeSwift ships, across its 9 API groups. All of them are applied
 # so that the cluster matches a real KubeSwift installation, even though not all
-# of them carry fixtures yet (SwiftSandboxPool and fleet's Cluster are the ones
-# still waiting for their milestone).
+# of them carry fixtures yet (fleet's Cluster is the last one still waiting for
+# its milestone).
 KUBESWIFT_CRD_FILES=(
 	fleet.kubeswift.io_clusters.yaml
 	gpu.kubeswift.io_swiftgpunodes.yaml
@@ -105,6 +105,12 @@ E2E_STATUS_PATCHES=(
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running=swiftsandbox-e2e-sandbox-running.yaml"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed=swiftsandbox-e2e-sandbox-failed.yaml"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-pooled=swiftsandbox-e2e-sandbox-pooled.yaml"
+	# SwiftSandboxPool declares a `scale` subresource next to its `status` one,
+	# which changes nothing here: `kubectl patch --subresource=status` addresses
+	# the status subresource by name, and `scale` is a separate projection the
+	# API server serves from fields this patch writes (SPEC-0008).
+	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool=swiftsandboxpool-e2e-sandbox-pool.yaml"
+	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool-degraded=swiftsandboxpool-e2e-sandbox-pool-degraded.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -134,6 +140,14 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.phase}=Failed"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.exitCode}=1"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-pooled={.status.podRef}=e2e-sandbox-pool-slot-1"
+	# The two counts the pool list puts side by side, because the gap between
+	# them is the health of the pool. The degraded one reads back a literal 0,
+	# which is the assert that keeps a dropped zero from looking like an absent
+	# value.
+	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool={.status.warmReplicas}=2"
+	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool={.status.claimedReplicas}=1"
+	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool-degraded={.status.phase}=Degraded"
+	"swiftsandboxpools.sandbox.kubeswift.io/e2e-sandbox-pool-degraded={.status.warmReplicas}=0"
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the

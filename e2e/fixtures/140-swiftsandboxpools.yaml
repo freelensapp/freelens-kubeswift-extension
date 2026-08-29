@@ -1,0 +1,69 @@
+# The warm pool e2e-sandbox-pooled checks a slot out of (see its spec.poolRef in
+# 130-swiftsandboxes.yaml). Its image and slot shape are deliberately the ones
+# that sandbox requests: a claiming SwiftSandbox must match the pool's image and
+# slot shape, so a fixture pair that did not match would describe a checkout
+# that cannot happen.
+#
+# Every optional block of the spec is populated apart from gpuProfileRef, so
+# every section of the drawer renders except the GPU one. A warm GPU pool is a
+# valid and documented configuration (it trades an idle GPU per slot for the
+# sub-second checkout), but making this pool one would contradict the pooled
+# sandbox above, which has no GPU and could then never claim a slot from it. The
+# pool's GPU section is therefore covered by unit tests only, which is the same
+# deliberate gap the sandbox's DRA branch has and for the same reason
+# (SPEC-0008).
+#
+# Its status is injected by cluster-up.sh.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandboxPool
+metadata:
+  name: e2e-sandbox-pool
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm
+  cpu: 1
+  memory: 512Mi
+  # Two desired warm slots and a cap of four: the list's Min Warm and Warm
+  # columns then agree (2 and 2), which is what a healthy pool looks like, and
+  # the drawer's Max Warm row shows a real cap rather than the no-cap sentinel.
+  minWarm: 2
+  maxWarm: 4
+  rootfsMode: block
+  network:
+    mode: restricted
+  nodeSelector:
+    kubeswift.io/kernel: "true"
+  kernelProfileRef:
+    name: e2e-kernel-6-12
+  # Both Secrets already exist: 125-sandbox-references.yaml creates them for the
+  # sandbox fixtures, and the pool names the same two so its Slot Shape rows
+  # render as links rather than degrading to text.
+  imagePullSecret: e2e-sandbox-registry
+  verifyKeySecretRef:
+    name: e2e-sandbox-cosign
+  model:
+    imageRef: ghcr.io/freelensapp/kubeswift-e2e/model@sha256:9c4e2a7f1b8d3506e2a9c7f4b1d8e3a05c6b9d2f7a4e1c8b5d2f9a6c3e0b7d4a
+    mountPath: /model
+---
+# The minimal pool: nothing but the two required fields. maxWarm is absent, so
+# the drawer's Max Warm row must read "No cap" rather than a bare 0 - the
+# sentinel the schema defines, not a count. Every optional section of the drawer
+# must guard itself away except the ones its injected status fills.
+#
+# Its injected status is the unhealthy branch: phase Degraded with zero warm
+# slots, which is an error class rather than a warning because a pool that is
+# not holding its warm buffer is not delivering the one thing it exists for
+# (SPEC-0008). No sandbox references it, so its "Sandboxes Using This Pool"
+# section must say so explicitly instead of rendering an empty table.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandboxPool
+metadata:
+  name: e2e-sandbox-pool-degraded
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold
+  memory: 512Mi

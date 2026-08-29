@@ -1,0 +1,41 @@
+# Merge patch applied to the status subresource of
+# swiftsandboxpool/e2e-sandbox-pool-degraded. No KubeSwift controller runs in
+# the E2E cluster, so the status a real controller would write is injected here
+# instead.
+#
+# The unhealthy branch: zero warm slots against the minWarm of 1 the API server
+# defaulted, so the pool is Degraded. That is an error class rather than a
+# warning (SPEC-0008): the pool's whole purpose is the sub-second checkout, and
+# one that is not holding its warm buffer is not delivering it. The badge word
+# and the message together say the checkout still runs, on the cold path, so the
+# colour is never read as an outage.
+#
+# The two conditions are deliberately ordered against each other in time: the
+# True one is the NEWER, and the False one is still what the Status column must
+# show. That is the second rung of the message ladder - a problem being reported
+# outranks a success being reported - and this is the only fixture in the suite
+# that exercises it, since slice 1's three sandboxes cover the first, third and
+# fourth rungs only.
+#
+# There is no rootfs, no imageEnv and no selector: every block of the status is
+# independently optional in the schema, so the drawer may not assume that
+# counting slots implies having materialized an image.
+status:
+  phase: Degraded
+  warmReplicas: 0
+  claimedReplicas: 0
+  observedGeneration: 1
+  conditions:
+    - type: Warm
+      status: "False"
+      reason: NoKernelNode
+      message: >-
+        No schedulable kernel node accepted a warm slot, so a checkout will fall back to the cold path.
+      lastTransitionTime: "2026-08-28T09:35:00Z"
+      observedGeneration: 1
+    - type: Resolved
+      status: "True"
+      reason: ReferencesResolved
+      message: The pool image was resolved.
+      lastTransitionTime: "2026-08-28T09:38:00Z"
+      observedGeneration: 1

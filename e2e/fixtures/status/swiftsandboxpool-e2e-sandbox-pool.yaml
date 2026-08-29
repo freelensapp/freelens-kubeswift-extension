@@ -1,0 +1,52 @@
+# Merge patch applied to the status subresource of
+# swiftsandboxpool/e2e-sandbox-pool. No KubeSwift controller runs in the E2E
+# cluster, so the status a real controller would write is injected here instead.
+#
+# The healthy branch: two warm slots for the two the spec asks for, and one of
+# them checked out to swiftsandbox/e2e-sandbox-pooled. Warm and claimed are not
+# a conserved total - a claimed slot is never returned to the pool, which is the
+# consume-and-replenish rule - so 2 warm plus 1 claimed is not a contradiction.
+#
+# The selector is what the scale subresource exposes so that `kubectl scale` and
+# an HPA can target the pool. It is shown and never parsed: the schema promises
+# only "serialized as a string", so the drawer displays it rather than deriving
+# a warm-slot pod list from it (SPEC-0008).
+#
+# There is deliberately no top-level `message` here: this pool exercises the
+# third rung of the Status column's ladder (the newest condition's own message,
+# Warm below), while e2e-sandbox-pool-degraded exercises the second.
+status:
+  phase: Ready
+  warmReplicas: 2
+  claimedReplicas: 1
+  observedGeneration: 1
+  selector: sandbox.kubeswift.io/pool=e2e-sandbox-pool
+  rootfs:
+    digest: sha256:6b1e4d8a2f7c5309b4d1e6a8c3f0b7d2e5a9c4f1b8d3e6a0c7f2b5d9e4a1c8f3
+    # An int64 byte count (768Mi), which the views humanize rather than showing
+    # as a raw digit run - the very thing the pre-review pass checks for.
+    # `docs/crds.md` omits this field from the pool's status table; the schema
+    # does define it, and the schema wins.
+    sizeBytes: 805306368
+    cachePath: /var/lib/kubeswift/sandbox/rootfs/6b1e4d8a
+  # The pool image's own config environment, which a checkout merges the
+  # claiming sandbox's spec.env over. The third entry carries an `=` inside its
+  # value on purpose: the drawer splits on the FIRST one, and splitting on the
+  # last would corrupt exactly this line.
+  imageEnv:
+    - PATH=/usr/local/bin:/usr/bin:/bin
+    - PYTHONUNBUFFERED=1
+    - SANDBOX_OPTS=--warm=true
+  conditions:
+    - type: Resolved
+      status: "True"
+      reason: ReferencesResolved
+      message: The pool image and the kernel profile were resolved.
+      lastTransitionTime: "2026-08-28T09:40:00Z"
+      observedGeneration: 1
+    - type: Warm
+      status: "True"
+      reason: BufferFull
+      message: Two warm slots are ready and one is checked out.
+      lastTransitionTime: "2026-08-28T09:42:00Z"
+      observedGeneration: 1

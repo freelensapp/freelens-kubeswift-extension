@@ -21,10 +21,11 @@
 // explanation survives only as its last resort, for an object whose controller
 // has not written anything yet.
 //
-// SwiftSandboxPool is the second half of M4 and lands in the next slice: its
-// classifier joins this module, and its message selector is `conditionMessage`
-// with the pool classifier's explanation as the fallback, exactly as
-// `sandboxMessage` is below.
+// The module holds two classifiers because the two M4 CRDs have different phase
+// vocabularies, and one shared message selector because the ladder that picks
+// the controller's words is identical for both: `sandboxMessage` and
+// `sandboxPoolMessage` are `conditionMessage` with their own classifier's
+// explanation as the last resort.
 
 /** The host's global status classes, defined in core's `app.scss`. */
 export type SandboxStatusClass = "success" | "warning" | "error" | "info";
@@ -46,6 +47,21 @@ export const sandboxStates = {
   unknown: "Unknown",
 } as const;
 
+/** The phases the SwiftSandboxPool schema's enum allows today. */
+export const sandboxPoolPendingPhase = "Pending";
+export const sandboxPoolWarmingPhase = "Warming";
+export const sandboxPoolReadyPhase = "Ready";
+export const sandboxPoolDegradedPhase = "Degraded";
+
+/** The state names the pool classifier can produce on its own. */
+export const sandboxPoolStates = {
+  pending: "Pending",
+  warming: "Warming",
+  ready: "Ready",
+  degraded: "Degraded",
+  unknown: "Unknown",
+} as const;
+
 /** What one condition must look like for the message selector to read it. */
 export interface SandboxConditionFacts {
   type?: string;
@@ -59,6 +75,18 @@ export interface SandboxStatusFacts {
   phase?: string;
   message?: string;
   exitCode?: number;
+  conditions?: SandboxConditionFacts[];
+}
+
+/**
+ * What a SwiftSandboxPool's status must look like. The counts are deliberately
+ * not read by the classifier - see `classifySandboxPool` for why the phase is
+ * the only input to the verdict - so the shape is the message ladder's plus the
+ * phase.
+ */
+export interface SandboxPoolStatusFacts {
+  phase?: string;
+  message?: string;
   conditions?: SandboxConditionFacts[];
 }
 
@@ -156,6 +184,79 @@ export function classifySandbox(status?: SandboxStatusFacts): SandboxCondition {
   };
 }
 
+/**
+ * Classifies a SwiftSandboxPool.
+ *
+ * One judgement call, approved with SPEC-0008 and recorded there: **`Degraded`
+ * is `error`, not `warning`**. A degraded pool still works, because a checkout
+ * that finds no free slot falls back to the cold materialize and boot path
+ * automatically, so the case for `warning` is real. It is rejected because the
+ * pool's entire purpose is the sub-second checkout, and a pool that is not
+ * holding its warm buffer is not delivering it. The consequence is named in the
+ * explanation, so the colour can never be read as an outage.
+ *
+ * The counts stay out of the verdict for the same reason the sandbox
+ * classifier keeps the exit code out of its own: `warmReplicas` below `minWarm`
+ * is what the controller weighs when it writes `Degraded` rather than `Warming`,
+ * and re-deriving that verdict here would produce a second opinion that
+ * contradicts the controller's on every pool that is mid-warm. The numbers are
+ * side by side in the list, which is where the gap between them is meant to be
+ * read.
+ *
+ * A phase this extension does not know is displayed as it arrived, the same
+ * stance every classifier in this repository takes.
+ */
+export function classifySandboxPool(status?: SandboxPoolStatusFacts): SandboxCondition {
+  const phase = status?.phase;
+
+  if (!phase) {
+    return {
+      state: sandboxPoolStates.unknown,
+      className: "info",
+      explanation: "The controller has not reported a phase for this pool yet",
+    };
+  }
+
+  if (phase === sandboxPoolReadyPhase) {
+    return {
+      state: sandboxPoolStates.ready,
+      className: "success",
+      explanation: "The pool is holding its warm buffer, so a checkout gets a pre-booted slot",
+    };
+  }
+
+  if (phase === sandboxPoolWarmingPhase) {
+    return {
+      state: sandboxPoolStates.warming,
+      className: "warning",
+      explanation: "The pool is booting slots to reach its warm buffer",
+    };
+  }
+
+  if (phase === sandboxPoolPendingPhase) {
+    return {
+      state: sandboxPoolStates.pending,
+      className: "warning",
+      explanation: "The pool has been accepted and no slot has been warmed yet",
+    };
+  }
+
+  if (phase === sandboxPoolDegradedPhase) {
+    return {
+      state: sandboxPoolStates.degraded,
+      className: "error",
+      explanation:
+        "The pool is not holding its warm buffer: a checkout that finds no free slot still runs, on the cold path",
+    };
+  }
+
+  return {
+    state: phase,
+    className: "info",
+    explanation: `The controller reported the phase "${phase}", which this extension does not know`,
+  };
+}
+
 /** The condition status that means "this aspect is fine". */
 const trueConditionStatus = "True";
 
@@ -231,4 +332,13 @@ export function conditionMessage(status?: {
  */
 export function sandboxMessage(status?: SandboxStatusFacts): string {
   return conditionMessage(status) ?? classifySandbox(status).explanation;
+}
+
+/**
+ * What the SwiftSandboxPool `Status` column shows. The same two lines as
+ * `sandboxMessage` over the other classifier: the ladder that reads the
+ * controller's words is shared, only its last resort differs.
+ */
+export function sandboxPoolMessage(status?: SandboxPoolStatusFacts): string {
+  return conditionMessage(status) ?? classifySandboxPool(status).explanation;
 }

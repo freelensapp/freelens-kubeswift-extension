@@ -218,6 +218,16 @@ export interface SwiftSandboxStatus {
 /** What an absent `spec.command` means: the image's own `Entrypoint`+`Cmd` run. */
 export const imageEntrypointLabel = "Image entrypoint";
 
+/**
+ * What an unset `kernelProfileRef` resolves to. Shared with SwiftSandboxPool,
+ * whose schema documents the same controller-applied default for the same
+ * field, so both M4 drawers say it the same way.
+ */
+export const defaultKernelLabel = "sandbox (default)";
+export const defaultKernelTooltip =
+  "The controller boots the well-known sandbox kernel when no profile is named. It is not linked here because " +
+  "the schema declares no default and this extension cannot know which namespace the controller resolves it in";
+
 /** What an absent IP means on a `network: none` sandbox: a choice, not a gap. */
 export const noNetworkLabel = "None";
 

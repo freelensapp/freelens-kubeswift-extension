@@ -1,0 +1,26 @@
+// Nested tables of the pool drawer. Column sizing only, in the same shape the
+// list pages use for theirs; everything else (chrome, spacing, colours) comes
+// from the host's own table styles.
+.imageEnv {
+  :global(.TableCell) {
+    &.name {
+      flex-grow: 0.8;
+    }
+
+    &.value {
+      flex-grow: 1.6;
+    }
+  }
+}
+
+.sandboxes {
+  :global(.TableCell) {
+    &.condition {
+      flex-grow: 0.5;
+    }
+
+    &.node {
+      flex-grow: 0.8;
+    }
+  }
+}

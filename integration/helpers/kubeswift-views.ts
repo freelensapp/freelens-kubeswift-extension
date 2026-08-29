@@ -53,4 +53,5 @@ export const KUBESWIFT_VIEWS: KubeSwiftView[] = [
     },
   },
   { menuId: "swiftsandboxes", title: "Sandboxes", fixtureObject: "e2e-sandbox-running" },
+  { menuId: "swiftsandboxpools", title: "Sandbox Pools", fixtureObject: "e2e-sandbox-pool" },
 ];

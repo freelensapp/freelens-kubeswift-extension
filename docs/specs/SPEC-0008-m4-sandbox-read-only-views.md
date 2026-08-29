@@ -1,6 +1,7 @@
 # SPEC-0008: Read-only sandbox views (M4)
 
-- **Status:** Approved (Roberto, 2026-08-29, in chat); slice 1 of 2 in PR
+- **Status:** Approved (Roberto, 2026-08-29, in chat); slice 1 of 2 merged,
+  slice 2 of 2 in PR
 - **Milestone:** M4
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Claude with Roberto, 2026-08-29
@@ -524,6 +525,12 @@ three of those rows are links from the first commit of this milestone. This is
 worth stating because it is the reason M4 is a smaller change than M3 despite
 having the larger schema.
 
+The one reach that does happen is **inside** the milestone rather than back into
+a shipped one: slice 2 turns the SwiftSandbox drawer's Pool row into a link once
+SwiftSandboxPool is a registered kind (see "Implementation slices" in the
+Notes). It is the same shape of change M3 made to the SwiftGuest drawer, one
+slice apart instead of one milestone apart.
+
 ### Non-happy states
 
 - **Loading**: the `KubeObjectListLayout` spinner, unchanged.
@@ -702,8 +709,8 @@ along the layers, so each slice is a whole working view with its own tests:
   the group slice 1 created, the two pool fixtures with their status patches,
   and the pre-review entry for the pool view.
 
-Three consequences inside slice 1, all of them temporary and all closed by
-slice 2:
+Three consequences inside slice 1, all of them temporary and all now closed by
+slice 2 (each one is recorded below with what closed it):
 
 1. `src/renderer/components/sandbox-status.ts` ships `classifySandbox`,
    `conditionMessage` and `sandboxMessage` only. `classifySandboxPool` and the
@@ -721,7 +728,7 @@ slice 2:
    Its counter-assert — a reference that must stay plain text — is the minimal
    sandbox's controller-applied `sandbox (default)` kernel row.
 
-### Schema verification (2026-08-29)
+### Schema verification: SwiftSandbox (2026-08-29)
 
 `config/crd/bases/sandbox.kubeswift.io_swiftsandboxes.yaml` was re-read at tag
 `v0.13.12` while writing the model. Every field, default, enum and required
@@ -789,7 +796,92 @@ because the model types them:
    classifier's explanation (rung 4). Rung 2 — a problem outranking a more
    recent success — is unit-tested only: it needs two conditions in a specific
    temporal order, which is a shape a static fixture cannot make more convincing
-   than the unit test already does.
+   than the unit test already does. **Superseded by slice 2**, whose degraded
+   pool fixture carries exactly that pair, so rung 2 is now covered end to end
+   as well.
+
+### Schema verification: SwiftSandboxPool (2026-08-29)
+
+`config/crd/bases/sandbox.kubeswift.io_swiftsandboxpools.yaml` was re-read at
+tag `v0.13.12` while writing the pool model. Every field, default, enum and
+required marker this spec's Design section states is what the schema declares;
+no correction was needed. Four details recorded because the model types them:
+
+- The **`scale` subresource surfaced in no view.** It is an API-server-side
+  projection of three fields the model already types (`spec.minWarm`,
+  `status.warmReplicas`, `status.selector`), it adds no field of its own, and
+  M4 never writes. `kubectl patch --subresource=status` addresses the status
+  subresource by name and is unaffected by it, so the fixture mechanism needed
+  no change either. Its only trace in the code is the comment saying so on the
+  model and on the Slot Selector row, which explains why a pool publishes a
+  serialized selector at all. What `scale` makes possible — `kubectl scale`, an
+  HPA, and the inline stepper upstream's drawer has — belongs to M6.
+- `spec.verifyKeySecretRef` is **not** a `LocalObjectReference` here either: its
+  `name` is genuinely `required`. `spec.model.imageRef` is required too, and
+  `spec.image` and `spec.memory` are the only required fields of the spec.
+- `spec.rootfsMode` carries the same doubled `enum` under an `allOf` that the
+  sandbox schema does, and the same `restricted | open | none` network modes.
+  The pool schema says in as many words that these are "the same modes as
+  SwiftSandbox", so the pool drawer reads their humanized readings from the
+  sandbox model rather than restating them.
+- The pool status has **no `model` block**, unlike the sandbox: its Model
+  section is the spec's two fields only. It does have `observedGeneration`,
+  which the sandbox status does not.
+
+### Declared deviations and additions (slice 2)
+
+1. **The pool's Kernel Profile row reads the controller-applied default.** The
+   Design section lists "Kernel Profile" under Slot Shape without saying what an
+   unset one renders as. It renders `sandbox (default)` as unlinked text, with
+   the same tooltip the SwiftSandbox drawer uses, because the pool schema
+   documents the same controller-applied default for the same field and the same
+   reasoning applies: the schema declares no default, so a guessed namespace
+   would be a dead link. The two constants moved from the sandbox drawer to the
+   sandbox model so both drawers say it in one place.
+2. **Three rows the Design section did not name.** The Rootfs section opens with
+   a **Shared By** row stating that the rootfs is materialized once per node and
+   shared by every slot of the image — the spec asks for that fact "in the
+   section's first row", and it is what makes a single size correct for a pool
+   of N slots. The GPU section's line of sizing context is a **Sizing** row
+   rather than a tooltip, for the same reason: a fact an operator cannot recover
+   from the numbers should not be reachable only by hovering (DESIGN.md section
+   7). The Slot Shape section's CPU and Memory rows carry a tooltip saying the
+   values are per slot, which is the whole point of the section's name.
+3. **`getMinWarm` does not apply the schema's default of 1.** The schema
+   defaults `minWarm` to `1`, but the default is applied by the API server, so
+   an object that reached this extension always carries it and one that did not
+   is better reported as absent than as an invented `1`. This is the stance the
+   SwiftSandbox model already takes for its own defaulted fields (`cpu`,
+   `rootfsMode`), and it differs from `SwiftGuestPool.getDesiredReplicas`, which
+   does default. The M1 model is the outlier; nothing is changed there in this
+   slice.
+4. **The pool fixtures carry no `gpuProfileRef`, so the pool's GPU section has
+   no E2E coverage.** A warm GPU pool is valid and documented, but making
+   `e2e-sandbox-pool` one would contradict `e2e-sandbox-pooled`, which has no
+   GPU and could then never claim a slot from it — a claiming sandbox must match
+   the pool's image and slot shape. The fixture pair that pins the
+   pooled-sandbox relationship is worth more than the section's link check, so
+   the GPU section is covered by unit tests only. This is the same deliberate
+   gap the sandbox's DRA branch has, for the same kind of reason.
+5. **The pool fixtures match the pooled sandbox's image and slot shape.** The
+   spec's fixture description names only `minWarm`, `maxWarm`, the model and the
+   image pull secret. The implementation additionally gives `e2e-sandbox-pool`
+   the image (`...sandbox:warm`), CPU and memory `e2e-sandbox-pooled` requests,
+   so the pair describes a checkout that could really happen rather than one the
+   webhook would reject.
+6. **Which rung each pool fixture exercises.** `e2e-sandbox-pool` writes no
+   `status.message` and two `True` conditions, so its Status column is the
+   newest condition's message (rung 3). `e2e-sandbox-pool-degraded` writes no
+   message either and two conditions ordered against each other in time — the
+   `True` one newer, the `False` one still the one that matters — so its column
+   is **rung 2**, which slice 1 could only unit-test.
+7. **The Sandboxes Using This Pool table shows a classifier badge, not a raw
+   phase.** The Design section says "Name, Condition and Node", and the
+   SPEC-0007 table it reuses shows a raw Phase because SwiftGuest has no
+   classifier. SwiftSandbox does, so the column is the same `Badge` the list
+   renders, with the classifier's explanation in its tooltip.
+
+No deviation from DESIGN.md was needed in this slice either.
 
 No deviation from DESIGN.md was needed: the two-column Condition + Status
 pattern is implemented as written, with the controller's own words in the

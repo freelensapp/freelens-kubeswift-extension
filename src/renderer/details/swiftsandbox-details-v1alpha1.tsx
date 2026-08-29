@@ -5,12 +5,15 @@ import { SwiftGPUNode } from "../api/kubeswift/swiftgpunode-v1alpha1";
 import { describeTier, SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
 import {
+  defaultKernelLabel,
+  defaultKernelTooltip,
   describeEnvSource,
   describeNetworkMode,
   describeRootfsMode,
   imageEntrypointLabel,
   SwiftSandbox,
 } from "../api/kubeswift/swiftsandbox-v1alpha1";
+import { SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import { formatQuantity } from "../api/kubeswift/types";
 import { withErrorPage } from "../components/error-page";
 import { existingObjectRef, objectExists } from "../components/object-existence";
@@ -51,12 +54,6 @@ const {
 
 const notAvailable = "N/A";
 
-/** What an unset `kernelProfileRef` resolves to, applied by the controller and not by the schema. */
-const defaultKernelLabel = "sandbox (default)";
-const defaultKernelTooltip =
-  "The controller boots the well-known sandbox kernel when no profile is named. It is not linked here because " +
-  "the schema declares no default and this extension cannot know which namespace the controller resolves it in";
-
 /** The single fact that stops a pooled sandbox that booted cold from being misread. */
 const poolTooltip =
   "A checkout that finds no free warm slot falls back to the cold materialize and boot path automatically: " +
@@ -79,8 +76,11 @@ interface SectionProps {
  * The sandbox itself: the verdict, what it was asked to run, and when it ran.
  * Always rendered, because a sandbox always has an image and a phase to report
  * (or the absence of one, which is itself the "Unknown" verdict).
+ *
+ * An observer since M4 slice 2: the Pool row resolves a reference, so the
+ * section has to re-render when the SwiftSandboxPool store fills.
  */
-function SandboxSection({ object }: SectionProps) {
+const SandboxSection = observer(({ object }: SectionProps) => {
   const spec = object.spec;
   const condition = classifySandbox(object.status);
   const command = SwiftSandbox.getCommand(object);
@@ -90,6 +90,8 @@ function SandboxSection({ object }: SectionProps) {
   const terminalAt = SwiftSandbox.getTerminalAt(object);
   const durationMs = SwiftSandbox.getRunDurationMs(object);
   const poolName = spec?.poolRef?.name;
+  const poolStore = maybe(() => SwiftSandboxPool.getStore<SwiftSandboxPool>());
+  const poolRef = existingObjectRef(poolStore, SwiftSandboxPool.kind, poolName, object.getNs());
 
   return (
     <>
@@ -126,13 +128,18 @@ function SandboxSection({ object }: SectionProps) {
       <DrawerItem name="Working Dir" hidden={!spec?.workingDir}>
         <WithTooltip>{spec?.workingDir}</WithTooltip>
       </DrawerItem>
-      {/* The pool this sandbox was checked out of. The link itself is added by
-          the second M4 slice, together with the SwiftSandboxPool views: until
-          the kind is registered there is no store to resolve it in, so the row
-          renders the name as the plain text every unresolvable reference
-          degrades to. */}
+      {/* The pool this sandbox was checked out of, existence-checked like every
+          other reference: a pooled sandbox routinely outlives the pool it
+          claimed a slot from, and a link to a deleted pool would be a dead one.
+          The tooltip carries the cold-fallback rule either way, since that is
+          the single fact that stops a pooled sandbox which booted cold from
+          being misread as a failure, and it is worth reading whether or not the
+          pool is still there (the same `WithTooltip` wrapping the Environment
+          section's linked sources use). */}
       <DrawerItem name="Pool" hidden={!poolName}>
-        <WithTooltip tooltip={poolTooltip}>{poolName}</WithTooltip>
+        <WithTooltip tooltip={poolTooltip}>
+          {poolRef ? <LinkToObject objectRef={poolRef} object={object} /> : poolName}
+        </WithTooltip>
       </DrawerItem>
       {/* Terminal phases only, and `0` is kept: a run that succeeded is a fact. */}
       <DrawerItem name="Exit Code" hidden={exitCode === undefined}>
@@ -167,7 +174,7 @@ function SandboxSection({ object }: SectionProps) {
       </DrawerItem>
     </>
   );
-}
+});
 
 /** The shape of the microVM the image is booted in. */
 const GuestSection = observer(({ object }: SectionProps) => {
@@ -574,12 +581,14 @@ export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) =>
     const gpuNodeName = object.status?.gpu?.nodeName;
     const gpuProfileName = object.spec?.gpuProfileRef?.name;
     const kernelName = object.spec?.kernelProfileRef?.name;
+    const poolName = object.spec?.poolRef?.name;
     const secretNames = SwiftSandbox.getSecretNames(object);
     const configMapNames = SwiftSandbox.getConfigMapNames(object);
     const pvcNames = SwiftSandbox.getPvcNames(object);
     const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
     const gpuNodeStore = maybe(() => SwiftGPUNode.getStore<SwiftGPUNode>());
     const kernelStore = maybe(() => SwiftKernel.getStore<SwiftKernel>());
+    const poolStore = maybe(() => SwiftSandboxPool.getStore<SwiftSandboxPool>());
 
     // This drawer resolves more kinds than any other in the extension, so the
     // request list is assembled conditionally: a store whose references are all
@@ -647,6 +656,19 @@ export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) =>
         store: kernelStore,
         namespaces: [namespace],
         lookups: [{ name: kernelName, namespace }],
+      });
+    }
+
+    // `poolRef` is a `LocalObjectReference`, so the pool can only be in this
+    // sandbox's own namespace. A GPU sandbox never carries one - the documented
+    // webhook rules make `poolRef` exclusive with both GPU backends - so this
+    // request and the two below are mutually exclusive in practice.
+    if (poolName) {
+      requests.push({
+        label: SwiftSandboxPool.crd.plural,
+        store: poolStore,
+        namespaces: [namespace],
+        lookups: [{ name: poolName, namespace }],
       });
     }
 

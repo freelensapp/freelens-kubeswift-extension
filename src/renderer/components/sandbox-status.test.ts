@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { classifySandbox, conditionMessage, sandboxMessage, sandboxStates } from "./sandbox-status";
+import {
+  classifySandbox,
+  classifySandboxPool,
+  conditionMessage,
+  sandboxMessage,
+  sandboxPoolMessage,
+  sandboxPoolStates,
+  sandboxStates,
+} from "./sandbox-status";
 
 // One case per row of the SPEC-0008 classifier table, plus the two cases that
 // keep an unexpected cluster from breaking a view: a phase this extension does
@@ -70,6 +78,71 @@ describe("classifySandbox", () => {
     expect(condition.state).toBe(sandboxStates.completed);
     expect(condition.className).toBe("success");
     expect(condition.explanation).toContain("exit code 3");
+  });
+});
+
+// One case per row of the SPEC-0008 pool classifier table, plus the same two
+// cases that keep an unexpected cluster from breaking a view.
+describe("classifySandboxPool", () => {
+  it("reports a ready pool as healthy", () => {
+    const condition = classifySandboxPool({ phase: "Ready" });
+
+    expect(condition.state).toBe(sandboxPoolStates.ready);
+    expect(condition.className).toBe("success");
+  });
+
+  it("reports a warming pool as a warning", () => {
+    const condition = classifySandboxPool({ phase: "Warming" });
+
+    expect(condition.state).toBe(sandboxPoolStates.warming);
+    expect(condition.className).toBe("warning");
+  });
+
+  it("reports a pending pool as a warning", () => {
+    const condition = classifySandboxPool({ phase: "Pending" });
+
+    expect(condition.state).toBe(sandboxPoolStates.pending);
+    expect(condition.className).toBe("warning");
+  });
+
+  it("reports a degraded pool as an error, naming the cold fallback in the explanation", () => {
+    // The judgement call recorded in SPEC-0008: a pool that is not holding its
+    // warm buffer is not delivering the one thing it exists for, so the class
+    // is `error`. The explanation says a checkout still runs, so the colour is
+    // never read as an outage.
+    const condition = classifySandboxPool({ phase: "Degraded" });
+
+    expect(condition.state).toBe(sandboxPoolStates.degraded);
+    expect(condition.className).toBe("error");
+    expect(condition.explanation).toContain("cold path");
+  });
+
+  it("reports a pool with no phase at all as unknown", () => {
+    for (const status of [undefined, {}]) {
+      const condition = classifySandboxPool(status);
+
+      expect(condition.state).toBe(sandboxPoolStates.unknown);
+      expect(condition.className).toBe("info");
+    }
+  });
+
+  it("passes an unrecognized phase through opaquely", () => {
+    const condition = classifySandboxPool({ phase: "Draining" });
+
+    expect(condition.state).toBe("Draining");
+    expect(condition.className).toBe("info");
+    expect(condition.explanation).toContain("Draining");
+  });
+
+  it("does not re-derive the verdict from the warm and claimed counts", () => {
+    // The counts are not an input: a pool the controller calls Warming while it
+    // boots its slots is a warning, whatever the gap between the numbers, and a
+    // second opinion computed here would contradict the controller on every
+    // pool that is mid-warm (SPEC-0008).
+    const condition = classifySandboxPool({ phase: "Warming" });
+
+    expect(condition.state).toBe(sandboxPoolStates.warming);
+    expect(condition.className).toBe("warning");
   });
 });
 
@@ -208,5 +281,69 @@ describe("sandboxMessage", () => {
         ],
       }),
     ).toBe("Dated, and therefore newer.");
+  });
+});
+
+// The pool selector is the same ladder over the other classifier, so what is
+// worth testing here is that it really is the same ladder (rather than a second
+// implementation that could drift) and that its last resort is the pool's own
+// explanation.
+describe("sandboxPoolMessage", () => {
+  it("prefers the controller's own status message", () => {
+    expect(
+      sandboxPoolMessage({
+        phase: "Ready",
+        message: "Two warm slots are ready on one node.",
+        conditions: [
+          {
+            type: "Warm",
+            status: "True",
+            message: "The warm buffer is full.",
+            lastTransitionTime: "2026-08-28T10:00:00Z",
+          },
+        ],
+      }),
+    ).toBe("Two warm slots are ready on one node.");
+  });
+
+  it("lets a problem being reported outrank a more recent success", () => {
+    expect(
+      sandboxPoolMessage({
+        phase: "Degraded",
+        conditions: [
+          {
+            type: "Warm",
+            status: "False",
+            message: "No kernel node has a free slot.",
+            lastTransitionTime: "2026-08-28T10:00:00Z",
+          },
+          {
+            type: "Resolved",
+            status: "True",
+            message: "The pool image was resolved.",
+            lastTransitionTime: "2026-08-28T10:05:00Z",
+          },
+        ],
+      }),
+    ).toBe("No kernel node has a free slot.");
+  });
+
+  it("falls back to the pool classifier's explanation, not to the sandbox one", () => {
+    // The two ladders differ only in their last rung, and this is the assert
+    // that keeps them from being wired to the wrong classifier.
+    expect(sandboxPoolMessage({ phase: "Warming" })).toBe(classifySandboxPool({ phase: "Warming" }).explanation);
+    expect(sandboxPoolMessage(undefined)).toBe(classifySandboxPool(undefined).explanation);
+    expect(sandboxPoolMessage({ phase: "Pending" })).not.toBe(classifySandbox({ phase: "Pending" }).explanation);
+  });
+
+  it("never returns an empty string, whatever the conditions carry", () => {
+    const status = {
+      phase: "Ready",
+      message: "",
+      conditions: [{ type: "Warm", status: "False", message: "", lastTransitionTime: "2026-08-28T10:00:00Z" }],
+    };
+
+    expect(conditionMessage(status)).toBeUndefined();
+    expect(sandboxPoolMessage(status)).toBe(classifySandboxPool(status).explanation);
   });
 });

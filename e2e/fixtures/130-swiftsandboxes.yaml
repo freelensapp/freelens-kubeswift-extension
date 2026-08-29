@@ -97,10 +97,11 @@ spec:
 # Its phase is Completed with exit code 0 and both timestamps, so the drawer's
 # derived Duration row is exercised.
 #
-# The pool it points at (e2e-sandbox-pool) is created by the second M4 slice,
-# together with the SwiftSandboxPool views. Until then the drawer's Pool row
-# correctly degrades to plain text, which is the same outcome as any reference
-# whose target is not there.
+# The pool it points at is e2e-sandbox-pool in 140-swiftsandboxpools.yaml, whose
+# image and slot shape are this sandbox's: a claiming SwiftSandbox must match
+# them, so the pair describes a checkout that could really happen. It is what
+# makes the drawer's Pool row a live link and what fills the pool drawer's
+# "Sandboxes Using This Pool" table.
 apiVersion: sandbox.kubeswift.io/v1alpha1
 kind: SwiftSandbox
 metadata:
