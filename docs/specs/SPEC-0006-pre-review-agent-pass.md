@@ -429,3 +429,18 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   the report - the eleven other byte-humanization lines, the header-cell ids,
   the drawer-link results and counts, the conditions sections and the
   for-human-judgment lists - came out identical.
+- 2026-08-29 (M4 milestone review, cosmetic): **row text concatenated the
+  Material Icons ligature.** Freelens core's `Icon` renders a material glyph as
+  a ligature, so the element's own text content is the icon's name and the font
+  turns it into a picture - invisible to a reader, but not to `textContent`.
+  The M4 pass reported the SwiftSandbox drawer's Launcher Pod row as
+  `e2e-sandbox-running-launchersubject`: the pod's name with the View logs
+  icon's `material="subject"` glued on, because the link and the affordance
+  share one `DrawerItem` value. `inspectDrawerRows` now walks the value's text
+  nodes and skips those inside core's `Icon` class (`ICON_SELECTOR`), which the
+  component sets on every variant it renders, so no glyph is named and any
+  future icon in any drawer is covered. Report-only: no assert changed verdict,
+  the affected text is what the report prints and what `checkDrawerLink` slugs
+  its failure screenshots with. The label keeps the plain `textContent` reading,
+  since it is the key `waitForDrawerLink` matches on inside its own
+  `waitForFunction` and the two have to extract it the same way.

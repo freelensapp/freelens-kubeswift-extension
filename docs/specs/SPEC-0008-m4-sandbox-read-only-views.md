@@ -231,6 +231,14 @@ its block is absent, so the drawer reads as a flat declarative list):
    prescribes for arbitrary refs: `existingObjectRef(pvcStore,
    "PersistentVolumeClaim", ...)` into a `LinkToObject`, degrading to plain
    text like every other reference.
+   Storage Class does have a core link component, so
+   `spec.scratchDisk.blank.storageClassName` is an existence-checked
+   `LinkToStorageClass` (`objectExists(storageClassStore, ...)`, cluster-scoped
+   so no namespace), degrading to plain text when the class is gone. It is the
+   same row the SwiftSnapshot drawer's "Captured Guest" section renders the same
+   way, and the same row SwiftGuestClass and SwiftImage link: a Storage Class
+   must read the same in every drawer of this extension (see "Milestone review
+   follow-up" in the Notes).
 7. **GPU** (`spec.gpuProfileRef` or `spec.gpuResourceClaim`, plus
    `status.gpu`): Backend (**Native SwiftGPU** or **DRA ResourceClaim**, stated
    explicitly because the two populate different fields and, with no CEL rule
@@ -486,6 +494,7 @@ an ad-hoc `loadAll()` (DESIGN.md section 3, issue #38).
 | SwiftSandbox | `secretsStore` | the sandbox's own namespace | `spec.imagePullSecret`, `spec.verifyKeySecretRef.name`, every `env[].valueFrom.secretKeyRef.name` |
 | SwiftSandbox | `configMapStore` | the sandbox's own namespace | every `env[].valueFrom.configMapKeyRef.name` |
 | SwiftSandbox | `pvcStore` | the sandbox's own namespace | `status.scratchDisk.pvcName`, `spec.scratchDisk.pvcRef.name` |
+| SwiftSandbox | `storageClassStore` | cluster-wide (omitted) | `spec.scratchDisk.blank.storageClassName` |
 | SwiftSandbox | SwiftSandboxPool | the sandbox's own namespace | `spec.poolRef.name` |
 | SwiftSandbox | SwiftKernel | the sandbox's own namespace | `spec.kernelProfileRef.name` |
 | SwiftSandbox | SwiftGPUProfile | the sandbox's own namespace | `spec.gpuProfileRef.name` |
@@ -610,7 +619,11 @@ did. The two judgement calls in the classifier table (`Completed` as success,
   - "navigates the SwiftSandbox drawer's pool, kernel and GPU links to objects
     that actually exist": the pre-review link helper, as the SwiftGuest and
     SwiftGPUNode cases already do. The pooled sandbox's Pool row must be a live
-    link, and the failed sandbox's absent references must stay plain text.
+    link, and the failed sandbox's absent references must stay plain text. The
+    running sandbox's **Storage Class** row joins the checked labels: its
+    `scratchDisk.blank.storageClassName` is `standard`, the StorageClass every
+    kind cluster ships, so the link resolves (see "Milestone review follow-up"
+    in the Notes).
 - **Fixtures and status injection** (`e2e/fixtures/`, numbering continued):
   - Both CRDs are already applied by `cluster-up.sh`: `KUBESWIFT_CRD_FILES`
     lists all 15 upstream CRDs, so M4 needs no change there — only fixtures.
@@ -887,6 +900,37 @@ No deviation from DESIGN.md was needed: the two-column Condition + Status
 pattern is implemented as written, with the controller's own words in the
 Status column, which is what this milestone was expected to be the reference
 implementation of.
+
+### Milestone review follow-up (2026-08-29)
+
+The M4 milestone review asked for one change, recorded here because it departs
+from what the Design section said when the slices were merged.
+
+1. **The Scratch Disk section's Storage Class row is an existence-checked link,
+   not plain text (Roberto's coherence ruling, 2026-08-29).** As merged, the row
+   rendered `spec.scratchDisk.blank.storageClassName` as a bare `WithTooltip`
+   string. Three other drawers in this extension already render the same field
+   as a link — SwiftGuestClass ("Storage Defaults"), SwiftImage ("Import Storage
+   Class" and "Clone Storage Class") and SwiftSnapshot ("Captured Guest") — and
+   the ruling is that the same row must read the same way in every drawer: a
+   StorageClass is a real cluster object, and a reader who can click through to
+   it from a snapshot should be able to click through to it from a sandbox.
+   The implementation takes the SwiftSnapshot form, which is the strictest of
+   the three and the only one that existence-checks: `objectExists(storageClassStore,
+   ...)` guarding a `LinkToStorageClass`, degrading to the original plain text
+   when the class is gone (DESIGN.md section 3, issue #23). `storageClassStore`
+   is cluster-scoped, so it is requested without namespaces, and it joins the
+   drawer's **conditional** request list rather than its unconditional part
+   (issue #38): only a `blank` scratch disk names a class, so a sandbox with no
+   scratch disk, or one attaching an existing PVC, still asks for exactly what
+   it asked for before. The E2E link case gained the "Storage Class" label,
+   which the fixture's `standard` class — present in every kind cluster — makes
+   a resolvable link.
+
+   The two unlinked Storage Class rows the review did **not** change are the
+   SwiftGuestClass and SwiftImage ones, which link unconditionally rather than
+   existence-checked. Bringing those up to the same check is a separate,
+   pre-existing gap and is not part of this milestone.
 
 ### The `logTabStore` spike: verdict PASS (2026-08-29)
 

@@ -81,14 +81,55 @@ export interface DrawerRow {
 // the byte-humanization assert already excluded it for that same reason.
 const HOST_GENERIC_CR_SECTION_SELECTOR = ".CustomResourceDetails";
 
+// Freelens core's `Icon` component (`packages/ui-components/icon`) renders a
+// Material Icons glyph as a LIGATURE: the element's own text content is the
+// icon name ("subject"), and the icon font turns it into a picture. That text
+// is invisible to a reader but not to `textContent`, so any row holding an icon
+// next to its value used to report the two concatenated - the SwiftSandbox
+// drawer's Launcher Pod row read "e2e-sandbox-running-launchersubject", the
+// pod's name with the View logs icon's `material="subject"` glued to it,
+// because both live in the same `DrawerItem` value.
+//
+// The component always puts `Icon` in its class list (`cssNames("Icon", ...)`
+// in icon.tsx, on every variant: material, svg, link and button), so excluding
+// that class covers every icon any drawer can render, ours or the host's,
+// without naming a specific glyph.
+const ICON_SELECTOR = ".Icon";
+
 /** Reads every `DrawerItem` row the extension itself renders in the currently open detail drawer. */
 export async function inspectDrawerRows(frame: Frame): Promise<DrawerRow[]> {
   return frame.$$eval(
     ".Drawer.KubeObjectDetails .DrawerItem",
-    (elements, hostSectionSelector) =>
-      elements
+    (elements, { hostSectionSelector, iconSelector }) => {
+      // The text a reader actually sees: every text node of `root` except
+      // those inside an icon, whose text is the ligature name rather than
+      // content (see ICON_SELECTOR above).
+      const readableText = (root: Element | null | undefined) => {
+        if (!root) {
+          return "";
+        }
+
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode: (node) =>
+            node.parentElement?.closest(iconSelector) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+        });
+
+        const parts: string[] = [];
+
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          parts.push(node.textContent ?? "");
+        }
+
+        return parts.join("").replace(/\s+/g, " ").trim();
+      };
+
+      return elements
         .filter((element) => !element.closest(hostSectionSelector))
         .map((element) => {
+          // The label keeps the plain `textContent` reading on purpose: it is
+          // the key `waitForDrawerLink` matches on inside its own
+          // `waitForFunction`, so the two must extract it the same way, and no
+          // drawer row label in this extension holds an icon.
           const label = element.querySelector(".name")?.textContent?.trim() ?? "";
           const valueElement = element.querySelector(".value");
           // Only the first link of a row is inspected: DrawerItem rows with
@@ -98,11 +139,12 @@ export async function inspectDrawerRows(frame: Frame): Promise<DrawerRow[]> {
 
           return {
             label,
-            text: (valueElement?.textContent ?? "").replace(/\s+/g, " ").trim(),
+            text: readableText(valueElement),
             href: link ? link.getAttribute("href") : null,
           };
-        }),
-    HOST_GENERIC_CR_SECTION_SELECTOR,
+        });
+    },
+    { hostSectionSelector: HOST_GENERIC_CR_SECTION_SELECTOR, iconSelector: ICON_SELECTOR },
   );
 }
 

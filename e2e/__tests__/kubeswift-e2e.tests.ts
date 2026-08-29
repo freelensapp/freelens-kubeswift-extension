@@ -813,6 +813,12 @@ describe("KubeSwift views against the fixture cluster", () => {
       // nothing in the host would stop the drawer from building a link to a pod
       // that is not there.
       //
+      // Storage Class is the fifth kind, added by the M4 milestone review: the
+      // scratch disk's spec.scratchDisk.blank.storageClassName is "standard",
+      // the StorageClass every kind cluster ships, so the row must be a live
+      // link rather than the plain text it rendered when the slice merged
+      // (SPEC-0008, "Milestone review follow-up").
+      //
       // The Pool row is checked further down, on e2e-sandbox-pooled: poolRef is
       // exclusive with both GPU backends by the documented webhook rules, so
       // the sandbox that has a pool is never the one that has a GPU and the two
@@ -825,7 +831,7 @@ describe("KubeSwift views against the fixture cluster", () => {
         await pr.openDrawer(frame, "e2e-sandbox-running");
       };
 
-      for (const label of ["Kernel Profile", "GPU Profile", "GPU Node", "Node", "Launcher Pod"]) {
+      for (const label of ["Kernel Profile", "GPU Profile", "GPU Node", "Node", "Launcher Pod", "Storage Class"]) {
         const row = await pr.waitForDrawerLink(frame, label);
 
         if (!row) {

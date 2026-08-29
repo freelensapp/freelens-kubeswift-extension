@@ -40,6 +40,7 @@ const {
     LinkToObject,
     LinkToPod,
     LinkToSecret,
+    LinkToStorageClass,
     LocaleDate,
     logTabStore,
     ReactiveDuration,
@@ -49,7 +50,7 @@ const {
     TableRow,
     WithTooltip,
   },
-  K8sApi: { configMapStore, nodesStore, podsStore, pvcStore, secretsStore },
+  K8sApi: { configMapStore, nodesStore, podsStore, pvcStore, secretsStore, storageClassStore },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -378,7 +379,12 @@ function ModelSection({ object }: SectionProps) {
  * to infer from which of the two spec blocks is set.
  *
  * Core exports no `LinkToPersistentVolumeClaim`, so the PVC row is the generic
- * path DESIGN.md section 3 prescribes for arbitrary refs.
+ * path DESIGN.md section 3 prescribes for arbitrary refs. The Storage Class
+ * does have a core link component, so it takes the existence-checked
+ * `LinkToStorageClass` path the SwiftSnapshot drawer's captured Storage Class
+ * row uses - the same row in a different drawer must read the same way
+ * (Roberto's coherence ruling, 2026-08-29; SPEC-0008 "Milestone review
+ * follow-up").
  */
 const ScratchDiskSection = observer(({ object }: SectionProps) => {
   const spec = object.spec?.scratchDisk;
@@ -391,6 +397,10 @@ const ScratchDiskSection = observer(({ object }: SectionProps) => {
   const blank = spec?.blank;
   const pvcName = SwiftSandbox.getScratchDiskPvcName(object);
   const pvcRef = existingObjectRef(pvcStore, "PersistentVolumeClaim", pvcName, object.getNs());
+  // StorageClass is cluster-scoped: no namespace argument. A blank scratch disk
+  // may well name a class that was removed since, so the row degrades to plain
+  // text like every other reference in this drawer.
+  const storageClassIsLinkable = objectExists(storageClassStore, blank?.storageClassName);
 
   return (
     <>
@@ -402,7 +412,11 @@ const ScratchDiskSection = observer(({ object }: SectionProps) => {
         <WithTooltip>{formatQuantity(blank?.size)}</WithTooltip>
       </DrawerItem>
       <DrawerItem name="Storage Class" hidden={!blank?.storageClassName}>
-        <WithTooltip>{blank?.storageClassName}</WithTooltip>
+        {storageClassIsLinkable ? (
+          <LinkToStorageClass name={blank?.storageClassName} />
+        ) : (
+          <WithTooltip>{blank?.storageClassName}</WithTooltip>
+        )}
       </DrawerItem>
       <DrawerItem name="Volume Mode" hidden={!blank?.volumeMode}>
         <WithTooltip>{blank?.volumeMode}</WithTooltip>
@@ -585,6 +599,7 @@ export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) =>
     const secretNames = SwiftSandbox.getSecretNames(object);
     const configMapNames = SwiftSandbox.getConfigMapNames(object);
     const pvcNames = SwiftSandbox.getPvcNames(object);
+    const scratchStorageClassName = object.spec?.scratchDisk?.blank?.storageClassName;
     const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
     const gpuNodeStore = maybe(() => SwiftGPUNode.getStore<SwiftGPUNode>());
     const kernelStore = maybe(() => SwiftKernel.getStore<SwiftKernel>());
@@ -647,6 +662,18 @@ export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) =>
         store: pvcStore,
         namespaces: [namespace],
         lookups: pvcNames.map((name) => ({ name, namespace })),
+      });
+    }
+
+    // Only a `blank` scratch disk names a StorageClass, and only then is the
+    // store worth loading: a sandbox with no scratch disk, or one attaching an
+    // existing PVC, contributes no request here. `storageClassStore` is
+    // cluster-scoped, so it takes no namespaces (issue #38).
+    if (scratchStorageClassName) {
+      requests.push({
+        label: "storageclasses",
+        store: storageClassStore,
+        lookups: [{ name: scratchStorageClassName }],
       });
     }
 
