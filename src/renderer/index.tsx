@@ -4,6 +4,7 @@
  */
 
 import { Renderer } from "@freelensapp/extensions";
+import { SwiftGPUNode as SwiftGPUNodeV1alpha1 } from "./api/kubeswift/swiftgpunode-v1alpha1";
 import { SwiftGPUProfile as SwiftGPUProfileV1alpha1 } from "./api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest as SwiftGuestV1alpha1 } from "./api/kubeswift/swiftguest-v1alpha1";
 import { SwiftGuestClass as SwiftGuestClassV1alpha1 } from "./api/kubeswift/swiftguestclass-v1alpha1";
@@ -15,6 +16,7 @@ import { SwiftRestore as SwiftRestoreV1alpha1 } from "./api/kubeswift/swiftresto
 import { SwiftSeedProfile as SwiftSeedProfileV1alpha1 } from "./api/kubeswift/swiftseedprofile-v1alpha1";
 import { SwiftSnapshot as SwiftSnapshotV1alpha1 } from "./api/kubeswift/swiftsnapshot-v1alpha1";
 import { SwiftSnapshotSchedule as SwiftSnapshotScheduleV1alpha1 } from "./api/kubeswift/swiftsnapshotschedule-v1alpha1";
+import { SwiftGPUNodeDetails as SwiftGPUNodeDetailsV1alpha1 } from "./details/swiftgpunode-details-v1alpha1";
 import { SwiftGPUProfileDetails as SwiftGPUProfileDetailsV1alpha1 } from "./details/swiftgpuprofile-details-v1alpha1";
 import { SwiftGuestDetails as SwiftGuestDetailsV1alpha1 } from "./details/swiftguest-details-v1alpha1";
 import { SwiftGuestClassDetails as SwiftGuestClassDetailsV1alpha1 } from "./details/swiftguestclass-details-v1alpha1";
@@ -27,6 +29,7 @@ import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./de
 import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
 import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
 import { KubeSwiftIcon } from "./icons/kubeswift";
+import { SwiftGPUNodesPage as SwiftGPUNodesPageV1alpha1 } from "./pages/swiftgpunodes-page-v1alpha1";
 import { SwiftGPUProfilesPage as SwiftGPUProfilesPageV1alpha1 } from "./pages/swiftgpuprofiles-page-v1alpha1";
 import { SwiftGuestClassesPage as SwiftGuestClassesPageV1alpha1 } from "./pages/swiftguestclasses-page-v1alpha1";
 import { SwiftGuestPoolsPage as SwiftGuestPoolsPageV1alpha1 } from "./pages/swiftguestpools-page-v1alpha1";
@@ -158,6 +161,16 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         ),
       },
     },
+    {
+      kind: SwiftGPUNodeV1alpha1.kind,
+      apiVersions: SwiftGPUNodeV1alpha1.crd.apiVersions,
+      priority: 10,
+      components: {
+        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
+          <SwiftGPUNodeDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
   ];
 
   clusterPages = [
@@ -225,6 +238,12 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       id: "swiftgpuprofiles",
       components: {
         Page: () => <SwiftGPUProfilesPageV1alpha1 extension={this} />,
+      },
+    },
+    {
+      id: "swiftgpunodes",
+      components: {
+        Page: () => <SwiftGPUNodesPageV1alpha1 extension={this} />,
       },
     },
   ];
@@ -355,6 +374,16 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       parentId: "kubeswift-gpu",
       title: SwiftGPUProfileV1alpha1.crd.title,
       target: { pageId: "swiftgpuprofiles" },
+      components: {},
+    },
+    // Profiles come first inside the group (and are therefore its target): a
+    // profile is the object a user authors and looks for by name, while the
+    // node inventory is consulted when something does not schedule (SPEC-0007).
+    {
+      id: "swiftgpunodes",
+      parentId: "kubeswift-gpu",
+      title: SwiftGPUNodeV1alpha1.crd.title,
+      target: { pageId: "swiftgpunodes" },
       components: {},
     },
   ];

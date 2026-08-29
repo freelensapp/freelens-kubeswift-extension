@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { objectExists } from "./object-existence";
+import { existingObjectRef, objectExists } from "./object-existence";
 
 describe("objectExists", () => {
   const store = {
@@ -47,5 +47,57 @@ describe("objectExists", () => {
 
   it("returns false when the store is null (the maybe(() => Kind.getStore()) failure case)", () => {
     expect(objectExists(null, "node-1")).toBe(false);
+  });
+});
+
+describe("existingObjectRef", () => {
+  const namespaced = {
+    getByName: (name: string, namespace?: string) =>
+      name === "gpu-4" && namespace === "gpu-lab"
+        ? {
+            apiVersion: "gpu.kubeswift.io/v1alpha1",
+            getName: () => name,
+            getNs: () => namespace,
+          }
+        : undefined,
+  };
+
+  const clusterScoped = {
+    getByName: (name: string) =>
+      name === "gpu-node-1"
+        ? {
+            apiVersion: "gpu.kubeswift.io/v1alpha1",
+            getName: () => name,
+          }
+        : undefined,
+  };
+
+  it("builds the ref from the object the store found", () => {
+    expect(existingObjectRef(namespaced, "SwiftGPUProfile", "gpu-4", "gpu-lab")).toEqual({
+      apiVersion: "gpu.kubeswift.io/v1alpha1",
+      kind: "SwiftGPUProfile",
+      name: "gpu-4",
+      namespace: "gpu-lab",
+    });
+  });
+
+  it("leaves a cluster-scoped ref without a namespace", () => {
+    expect(existingObjectRef(clusterScoped, "SwiftGPUNode", "gpu-node-1")).toEqual({
+      apiVersion: "gpu.kubeswift.io/v1alpha1",
+      kind: "SwiftGPUNode",
+      name: "gpu-node-1",
+      namespace: undefined,
+    });
+  });
+
+  it("returns nothing for an object the store does not hold, so the row degrades to text", () => {
+    expect(existingObjectRef(namespaced, "SwiftGPUProfile", "gpu-4", "other")).toBeUndefined();
+    expect(existingObjectRef(namespaced, "SwiftGPUProfile", "no-such-profile", "gpu-lab")).toBeUndefined();
+  });
+
+  it("returns nothing when there is no name to look up or no store to look it up in", () => {
+    expect(existingObjectRef(namespaced, "SwiftGPUProfile", undefined, "gpu-lab")).toBeUndefined();
+    expect(existingObjectRef(null, "SwiftGPUProfile", "gpu-4", "gpu-lab")).toBeUndefined();
+    expect(existingObjectRef(undefined, "SwiftGPUProfile", "gpu-4", "gpu-lab")).toBeUndefined();
   });
 });

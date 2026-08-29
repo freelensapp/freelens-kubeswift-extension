@@ -44,3 +44,50 @@ export function objectExists<T>(
 
   return store.getByName(name, namespace) !== undefined;
 }
+
+/** The slice of a KubeObject a `LinkToObject` target is built from. */
+export interface ReferenceableObject {
+  apiVersion: string;
+  getName(): string;
+  /** Absent on cluster-scoped kinds, which is exactly what the ref then carries. */
+  getNs?(): string | undefined;
+}
+
+/** What `Renderer.Component.LinkToObject` resolves a link from, structurally. */
+export interface ExistingObjectRef {
+  apiVersion: string;
+  kind: string;
+  name: string;
+  namespace?: string;
+}
+
+/**
+ * The link target of the object named `name`, or `undefined` when the store
+ * does not currently hold it - which is the same rule `objectExists` states,
+ * with the ref built in the same step so a caller cannot check one object and
+ * link another.
+ *
+ * The `apiVersion` and the namespace are read off the object the store found
+ * rather than restated by the caller, so the ref describes what is actually
+ * there. Declared structurally (no `Renderer` import, no `KubeObjectRef`
+ * import) so this module stays a pure, host-free pair of lookups; the returned
+ * shape is what `LinkToObject` takes.
+ */
+export function existingObjectRef<T extends ReferenceableObject>(
+  store: ObjectLookupStore<T> | null | undefined,
+  kind: string,
+  name: string | undefined,
+  namespace?: string,
+): ExistingObjectRef | undefined {
+  if (!store || !name) {
+    return undefined;
+  }
+
+  const object = store.getByName(name, namespace);
+
+  if (!object) {
+    return undefined;
+  }
+
+  return { apiVersion: object.apiVersion, kind, name: object.getName(), namespace: object.getNs?.() };
+}

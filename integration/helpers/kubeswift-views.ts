@@ -16,6 +16,8 @@
 // docs/specs/SPEC-0006-pre-review-agent-pass.md for the plan to close this
 // gap (e.g. a small views manifest emitted at build time).
 
+import { clusterNodeName } from "./kubeswift-cluster";
+
 export interface KubeSwiftView {
   /** `clusterPages`/`clusterPageMenus` id in src/renderer/index.tsx. */
   menuId: string;
@@ -37,4 +39,17 @@ export const KUBESWIFT_VIEWS: KubeSwiftView[] = [
   { menuId: "swiftsnapshotschedules", title: "Snapshot Schedules", fixtureObject: "e2e-schedule-nightly" },
   { menuId: "swiftmigrations", title: "Migrations", fixtureObject: "e2e-migration-completed" },
   { menuId: "swiftgpuprofiles", title: "GPU Profiles", fixtureObject: "e2e-gpu-profile-hgx" },
+  {
+    menuId: "swiftgpunodes",
+    title: "GPU Nodes",
+    // The only fixture object in this list whose name is not a literal: a
+    // SwiftGPUNode is named after the node it describes, so the fixture carries
+    // the cluster's real node name (the pass runs against the demo cluster,
+    // whose node is named after *that* cluster). Read lazily, when the pass
+    // walks the views, because the module is imported before any cluster check
+    // has run.
+    get fixtureObject() {
+      return clusterNodeName();
+    },
+  },
 ];

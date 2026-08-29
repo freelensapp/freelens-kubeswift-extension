@@ -1,0 +1,156 @@
+# Merge patch applied to the status subresource of the SwiftGPUNode named after
+# the cluster's real node (see 120-swiftgpunodes.yaml). The file cannot be named
+# after its object the way every other patch here is, because that name is only
+# known at runtime: E2E_STATUS_PATCHES spells the target as __NODE_NAME__ and
+# cluster-up.sh substitutes it.
+#
+# A healthy HGX node: eight GPUs, five of them handed out, the host ready to
+# bind a device for passthrough, and the whole NVSwitch fabric discovered.
+#
+# The four devices of partition 1 are the ones e2e-guest-gpu reports in its own
+# status, so the two fixtures tell the same story from both ends. Device 4 is
+# allocated to a guest that deliberately does not exist: a GPU stays recorded as
+# allocated to a guest that was just deleted, and that row must degrade to plain
+# text instead of linking nowhere (DESIGN.md section 3). Device 7 is free but
+# still bound to the nvidia driver, so the per-device brick gallery shows all
+# three of its states in one drawer.
+status:
+  phase: Ready
+  lastDiscovery: "2026-08-28T09:15:00Z"
+  gpuCount: 8
+  freeGPUs: 3
+  gpuModel: H200-SXM
+  gpuVendor: NVIDIA
+  vfioReady: true
+  gpus:
+    # Quoted: unquoted, YAML reads a PCI address as a sexagesimal number.
+    - index: 0
+      model: H200-SXM
+      vendor: NVIDIA
+      pciAddress: "0000:41:00.0"
+      deviceId: 10de:2335
+      numaNode: 0
+      iommuGroup: 42
+      driver: vfio-pci
+      allocated: true
+      allocatedTo: kubeswift-e2e/e2e-guest-gpu
+      # A count of MiB, not of bytes: 128Gi of BAR is the case that makes a
+      # guest need noMmap, and the drawer humanizes it instead of showing the
+      # digits.
+      barSizes:
+        - region: 0
+          sizeMi: 16
+        - region: 1
+          sizeMi: 131072
+    - index: 1
+      model: H200-SXM
+      vendor: NVIDIA
+      pciAddress: "0000:42:00.0"
+      deviceId: 10de:2335
+      numaNode: 0
+      iommuGroup: 43
+      driver: vfio-pci
+      allocated: true
+      allocatedTo: kubeswift-e2e/e2e-guest-gpu
+    - index: 2
+      model: H200-SXM
+      vendor: NVIDIA
+      pciAddress: "0000:51:00.0"
+      deviceId: 10de:2335
+      numaNode: 1
+      iommuGroup: 44
+      driver: vfio-pci
+      allocated: true
+      allocatedTo: kubeswift-e2e/e2e-guest-gpu
+    - index: 3
+      model: H200-SXM
+      vendor: NVIDIA
+      pciAddress: "0000:52:00.0"
+      deviceId: 10de:2335
+      numaNode: 1
+      iommuGroup: 45
+      driver: vfio-pci
+      allocated: true
+      allocatedTo: kubeswift-e2e/e2e-guest-gpu
+    - index: 4
+      model: H200-SXM
+      vendor: NVIDIA
+      pciAddress: "0000:53:00.0"
+      deviceId: 10de:2335
+      numaNode: 1
+      iommuGroup: 46
+      driver: vfio-pci
+      allocated: true
+      allocatedTo: kubeswift-e2e/e2e-guest-deleted
+    - index: 5
+      model: H200-SXM
+      vendor: NVIDIA
+      pciAddress: "0000:54:00.0"
+      deviceId: 10de:2335
+      numaNode: 1
+      iommuGroup: 47
+      driver: vfio-pci
+      allocated: false
+    - index: 6
+      model: H200-SXM
+      vendor: NVIDIA
+      pciAddress: "0000:55:00.0"
+      deviceId: 10de:2335
+      numaNode: 1
+      iommuGroup: 48
+      driver: vfio-pci
+      allocated: false
+    - index: 7
+      model: H200-SXM
+      vendor: NVIDIA
+      pciAddress: "0000:56:00.0"
+      deviceId: 10de:2335
+      numaNode: 1
+      iommuGroup: 49
+      driver: nvidia
+      allocated: false
+  host:
+    iommuEnabled: true
+    cpuTopology:
+      sockets: 2
+      coresPerSocket: 48
+      threadsPerCore: 2
+      totalCPUs: 192
+    hugepages1Gi:
+      free: 12
+      total: 64
+    numaNodes:
+      # memoryMi is a count of MiB: 512Gi per node once humanized.
+      - id: 0
+        cpus: 0-47,96-143
+        memoryMi: 524288
+      - id: 1
+        cpus: 48-95,144-191
+        memoryMi: 524288
+  nvSwitches:
+    - pciAddress: "0000:06:00.0"
+      deviceId: 10de:22a3
+      numaNode: 0
+    - pciAddress: "0000:07:00.0"
+      deviceId: 10de:22a3
+      numaNode: 1
+  fabricManager:
+    installed: true
+    running: true
+    version: 560.35.03
+    partitions:
+      - id: 1
+        active: true
+        gpuIndices:
+          - 0
+          - 1
+          - 2
+          - 3
+        allocatedTo: kubeswift-e2e/e2e-guest-gpu
+      - id: 2
+        active: false
+        gpuIndices:
+          - 4
+          - 5
+          - 6
+          - 7

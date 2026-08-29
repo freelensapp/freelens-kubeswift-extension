@@ -1,0 +1,134 @@
+// Column sizing of the nested tables, in the same shape the list pages use for
+// theirs; everything else (chrome, spacing, colours) comes from the host's own
+// table styles.
+.gpus {
+  :global(.TableCell) {
+    &.index {
+      flex-grow: 0.25;
+    }
+
+    &.model {
+      flex-grow: 0.8;
+    }
+
+    &.vendor {
+      flex-grow: 0.5;
+    }
+
+    &.pciAddress {
+      flex-grow: 0.8;
+    }
+
+    &.deviceId {
+      flex-grow: 0.6;
+    }
+
+    &.numa {
+      flex-grow: 0.3;
+    }
+
+    &.iommuGroup {
+      flex-grow: 0.4;
+    }
+
+    &.driver {
+      flex-grow: 0.6;
+    }
+
+    &.bars {
+      flex-grow: 0.5;
+    }
+
+    &.allocated {
+      flex-grow: 0.5;
+    }
+
+    &.allocatedTo {
+      flex-grow: 1;
+    }
+  }
+}
+
+.numaNodes {
+  :global(.TableCell) {
+    &.id {
+      flex-grow: 0.25;
+    }
+
+    &.cpus {
+      flex-grow: 1.3;
+    }
+
+    &.memory {
+      flex-grow: 0.5;
+    }
+  }
+}
+
+.nvSwitches {
+  :global(.TableCell) {
+    &.pciAddress {
+      flex-grow: 0.8;
+    }
+
+    &.deviceId {
+      flex-grow: 0.6;
+    }
+
+    &.numa {
+      flex-grow: 0.3;
+    }
+  }
+}
+
+.partitions {
+  :global(.TableCell) {
+    &.id {
+      flex-grow: 0.25;
+    }
+
+    &.gpuIndices {
+      flex-grow: 0.8;
+    }
+
+    &.active {
+      flex-grow: 0.5;
+    }
+
+    &.allocatedTo {
+      flex-grow: 1;
+    }
+  }
+}
+
+// One brick per GPU of the inventory: the dense per-unit gallery DESIGN.md
+// section 2 reserves `StatusBrick` for. The colour is not decided here - the
+// classifier hands the view one of the host's global status class names and
+// this block does nothing but give that name the matching theme token, so the
+// bricks read the same way as the Condition badge above them and no colour is
+// ever authored (DESIGN.md sections 2 and 5).
+.bricks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--unit) / 2);
+}
+
+.brick {
+  // The host sizes and rounds `.StatusBrick` itself; only the fill is set here.
+  &.success {
+    background-color: var(--colorSuccess);
+  }
+
+  &.info {
+    background-color: var(--colorInfo);
+  }
+
+  &.warning {
+    background-color: var(--colorWarning);
+  }
+
+  &.error {
+    background-color: var(--colorError);
+  }
+}

@@ -1,8 +1,11 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
+import { maybe } from "../../common/utils";
+import { SwiftGPUNode } from "../api/kubeswift/swiftgpunode-v1alpha1";
+import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { withErrorPage } from "../components/error-page";
-import { objectExists } from "../components/object-existence";
+import { existingObjectRef, objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
 
 const { observer } = MobxReact;
@@ -14,6 +17,7 @@ const {
     DrawerTitle,
     KubeObjectConditionsDrawer,
     LinkToNode,
+    LinkToObject,
     LinkToPod,
     LocaleDate,
     WithTooltip,
@@ -34,13 +38,19 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
     const status = object.status;
     const bootSource = SwiftGuest.getBootSource(object);
     const interfaces = status?.network?.interfaces ?? [];
-    const gpuDevices = status?.gpu?.devices ?? [];
+    const gpu = status?.gpu;
+    const gpuDevices = gpu?.devices ?? [];
+    const gpuNumaNodes = gpu?.numaNodes ?? [];
+    const gpuNodeName = gpu?.nodeName;
     const gpuPartitionId = SwiftGuest.getGpuPartitionId(object);
     const gpuProfileName = spec?.gpuProfileRef?.name;
     const seedProfileName = spec?.seedProfileRef?.name;
     const nodeName = SwiftGuest.getNodeName(object);
     const podName = status?.podRef?.name;
     const podNamespace = status?.podRef?.namespace ?? object.getNs();
+    const namespace = object.getNs();
+    const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
+    const gpuNodeStore = maybe(() => SwiftGPUNode.getStore<SwiftGPUNode>());
 
     // A stale or not-yet-reconciled status can name a Node or Pod that is no
     // longer (or not yet) there; `nodesStore`/`podsStore` may also simply not
@@ -52,6 +62,13 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
     // issue #23). `nodesStore` is cluster-scoped and loads cluster-wide;
     // `podsStore` is asked for the launcher pod's own namespace rather than
     // for whatever the namespace filter happens to hold (issue #38).
+    //
+    // The two GPU references became resolvable in M3, when their kinds were
+    // registered (SPEC-0007): the GPU profile lives in the guest's own
+    // namespace, since `gpuProfileRef` is a `LocalObjectReference`, and the GPU
+    // node is cluster-scoped like `nodesStore`. Both rows degrade to plain text
+    // when the object is not there, which on a cluster without the GPU
+    // discovery DaemonSet is the normal outcome rather than a defect.
     useReferenceStores([
       { label: "nodes", store: nodesStore, lookups: [{ name: nodeName }] },
       {
@@ -60,10 +77,19 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
         namespaces: [podNamespace],
         lookups: [{ name: podName, namespace: podNamespace }],
       },
+      {
+        label: SwiftGPUProfile.crd.plural,
+        store: gpuProfileStore,
+        namespaces: [namespace],
+        lookups: [{ name: gpuProfileName, namespace }],
+      },
+      { label: SwiftGPUNode.crd.plural, store: gpuNodeStore, lookups: [{ name: gpuNodeName }] },
     ]);
 
     const nodeIsLinkable = objectExists(nodesStore, nodeName);
     const podIsLinkable = objectExists(podsStore, podName, podNamespace);
+    const gpuProfileRef = existingObjectRef(gpuProfileStore, SwiftGPUProfile.kind, gpuProfileName, namespace);
+    const gpuNodeRef = existingObjectRef(gpuNodeStore, SwiftGPUNode.kind, gpuNodeName);
 
     return (
       <>
@@ -95,7 +121,11 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
           <WithTooltip>{seedProfileName}</WithTooltip>
         </DrawerItem>
         <DrawerItem name="GPU Profile" hidden={!gpuProfileName}>
-          <WithTooltip>{gpuProfileName}</WithTooltip>
+          {gpuProfileRef ? (
+            <LinkToObject objectRef={gpuProfileRef} object={object} />
+          ) : (
+            <WithTooltip>{gpuProfileName}</WithTooltip>
+          )}
         </DrawerItem>
 
         <DrawerTitle>Runtime</DrawerTitle>
@@ -137,9 +167,21 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
           {status?.lastRestartTime ? <LocaleDate date={status.lastRestartTime} /> : null}
         </DrawerItem>
 
-        {gpuDevices.length > 0 || gpuPartitionId !== undefined ? (
+        {/* Everything `SwiftGuestGpuStatus` types, now that M3 gives the node
+            reference somewhere to point (SPEC-0007). The hypervisor row is
+            named after its section rather than "Hypervisor": the Runtime
+            section already has a row by that name, reporting what actually
+            runs the guest, and this one is what the GPU tier forced. */}
+        {gpu ? (
           <>
             <DrawerTitle>GPU</DrawerTitle>
+            <DrawerItem name="GPU Node" hidden={!gpuNodeName}>
+              {gpuNodeRef ? (
+                <LinkToObject objectRef={gpuNodeRef} object={object} />
+              ) : (
+                <WithTooltip>{gpuNodeName}</WithTooltip>
+              )}
+            </DrawerItem>
             <DrawerItem name="Devices" hidden={gpuDevices.length === 0} labelsOnly>
               {gpuDevices.map((device) => (
                 <Badge key={device} label={device} />
@@ -147,6 +189,12 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
             </DrawerItem>
             <DrawerItem name="Partition" hidden={gpuPartitionId === undefined}>
               <WithTooltip>{gpuPartitionId}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="GPU Hypervisor" hidden={!gpu.hypervisor}>
+              <WithTooltip>{gpu.hypervisor}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="NUMA Nodes" hidden={gpuNumaNodes.length === 0}>
+              <WithTooltip>{gpuNumaNodes.join(", ")}</WithTooltip>
             </DrawerItem>
           </>
         ) : null}

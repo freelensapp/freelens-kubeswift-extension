@@ -196,6 +196,67 @@ describe("KubeSwift views against the fixture cluster", () => {
   );
 
   it(
+    "navigates the SwiftGuest drawer's GPU Profile and GPU Node links to the objects M3 registers",
+    async () => {
+      // The rows M1 rendered as plain text because their kinds were not
+      // registered yet, and M3 turned into existence-checked links
+      // (SPEC-0007's "reach into the existing views"). Both are checked here
+      // rather than left to the pre-review pass, because between them they
+      // cover the two shapes of a `LinkToObject` target this extension builds:
+      // GPU Profile is namespaced, GPU Node is the first cluster-scoped one,
+      // and a cluster-scoped ref carries no namespace at all - which core's
+      // `lookupApiLink` fills in from the parent object before handing it to
+      // the api, so nothing but a real click proves the resulting URL is the
+      // cluster-scoped one.
+      //
+      // e2e-guest-gpu is the fixture that has both: a gpuProfileRef to
+      // e2e-gpu-profile-hgx, and an injected status.gpu.nodeName pointing at
+      // the cluster's real node, which is also the name of the SwiftGPUNode
+      // fixture (see 120-swiftgpunodes.yaml).
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await pr.openDrawer(frame, "e2e-guest-gpu");
+
+      const reopen = async () => {
+        await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+        await pr.openDrawer(frame, "e2e-guest-gpu");
+      };
+
+      for (const label of ["GPU Profile", "GPU Node"]) {
+        const row = await pr.waitForDrawerLink(frame, label);
+
+        if (!row) {
+          throw new Error(`The SwiftGuest drawer has no "${label}" row at all.`);
+        }
+
+        if (!row.href) {
+          throw new Error(
+            `The SwiftGuest drawer's "${label}" row ("${row.text}") stayed plain text: the fixture makes the referenced object exist, so the row must render as a link.`,
+          );
+        }
+
+        const result = await pr.checkDrawerLink(frame, "swiftguests", row, reopen);
+
+        if (!result.ok) {
+          throw new Error(`The "${label}" link ("${row.text}") did not navigate cleanly: ${result.note}`);
+        }
+      }
+
+      // The rest of the GPU section, which M1 typed and never showed.
+      await cluster.closeDetails(frame);
+      await cluster.expectDetails(
+        frame,
+        "e2e-guest-gpu",
+        "SwiftGuest: e2e-guest-gpu",
+        "0000:41:00.0",
+        "GPU Hypervisor",
+        "qemu",
+        "0, 1",
+      );
+    },
+    TIMEOUT,
+  );
+
+  it(
     "lists the SwiftGuestClasses with their sizing",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftguestclasses", "Guest Classes");
@@ -459,6 +520,158 @@ describe("KubeSwift views against the fixture cluster", () => {
         "pcie (tier 1",
         "Flat: the guest gets a single NUMA node",
       );
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "lists the SwiftGPUNodes with their inventory and condition",
+    async () => {
+      // The ready node is named after the cluster's real (single) node, since
+      // that is what a SwiftGPUNode is: the substitution happens in
+      // cluster-up.sh's apply_fixtures(), because `metadata.name` cannot be
+      // patched afterwards. Read from the cluster rather than hardcoded, as
+      // the whole row identity depends on it.
+      const nodeName = cluster.clusterNodeName();
+
+      await cluster.openKubeSwiftPage(frame, "swiftgpunodes", "GPU Nodes");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // GPUs, free, model, VFIO and the condition badge, in column order. The
+      // list is cluster-scoped, so there is no Namespace cell between the name
+      // and the counts.
+      await cluster.expectRow(frame, nodeName, "8 3 H200-SXM True Ready", "vfio-pci is loaded");
+
+      // Discovery failed on the other one and reported no inventory at all, so
+      // every domain cell falls back to "N/A" and the condition is the
+      // classifier's Error, with the explanation it generates in place of the
+      // condition message this CRD does not have.
+      await cluster.expectRow(frame, "e2e-gpu-node-absent", "N/A N/A N/A False Error", "Discovery reported an error");
+
+      // The whole drawer of the ready node: the per-device table read against
+      // lspci, the largest BAR and the NUMA memory humanized from the MiB the
+      // schema counts in (128Gi and 512Gi, never the raw digit runs), the
+      // hugepages pair, and the Fabric Manager partition with the guest
+      // holding it.
+      await cluster.expectDetails(
+        frame,
+        nodeName,
+        `SwiftGPUNode: ${nodeName}`,
+        "Ready",
+        "H200-SXM",
+        "12 of 64",
+        "0000:41:00.0",
+        "128Gi",
+        "512Gi",
+        "560.35.03",
+        "kubeswift-e2e/e2e-guest-gpu",
+      );
+
+      // Every section of the drawer guards itself, so the node that reported
+      // nothing but a phase shows the two that always apply and none of the
+      // four that describe an inventory it does not have.
+      await pr.openDrawer(frame, "e2e-gpu-node-absent");
+
+      const sections = await frame.$$eval(".Drawer.KubeObjectDetails .DrawerTitle", (elements) =>
+        elements.map((element) => element.textContent?.trim() ?? ""),
+      );
+
+      for (const present of ["Discovery", "Inventory"]) {
+        if (!sections.includes(present)) {
+          throw new Error(
+            `The SwiftGPUNode drawer should always have a "${present}" section, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      for (const absent of ["GPUs", "Host", "NVSwitches", "Fabric Manager"]) {
+        if (sections.includes(absent)) {
+          throw new Error(
+            `The "${absent}" section must guard itself away on a node that reports no inventory, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "navigates the SwiftGPUNode drawer's Node and guest links to objects that actually exist",
+    async () => {
+      // Same shape as the SwiftGuest case above, on the two reference kinds
+      // this drawer resolves: the Node the object is named after, and the
+      // SwiftGuest an `allocatedTo` value names. Both are guaranteed by the
+      // fixtures, so a row that stays plain text here is a regression.
+      //
+      // The third assert is the opposite one, and it is what makes the fixture
+      // pair worth having: the GPU allocated to a guest that deliberately does
+      // not exist must stay plain text. `allocatedTo` is a "namespace/name"
+      // string rather than an object reference, so nothing in the host would
+      // stop the drawer from rendering a link to a guest that was deleted
+      // (DESIGN.md section 3, the rule issue #23 established for Node and Pod).
+      const nodeName = cluster.clusterNodeName();
+      const allocatedGuest = "kubeswift-e2e/e2e-guest-gpu";
+      const deletedGuest = "kubeswift-e2e/e2e-guest-deleted";
+
+      await cluster.openKubeSwiftPage(frame, "swiftgpunodes", "GPU Nodes");
+      await pr.openDrawer(frame, nodeName);
+
+      const reopen = async () => {
+        await cluster.openKubeSwiftPage(frame, "swiftgpunodes", "GPU Nodes");
+        await pr.openDrawer(frame, nodeName);
+      };
+
+      const nodeRow = await pr.waitForDrawerLink(frame, "Node");
+
+      if (!nodeRow) {
+        throw new Error('The SwiftGPUNode drawer has no "Node" row at all.');
+      }
+
+      if (!nodeRow.href) {
+        throw new Error(
+          `The SwiftGPUNode drawer's "Node" row ("${nodeRow.text}") stayed plain text: the object is named after a node that exists, so the row must render as a link.`,
+        );
+      }
+
+      const nodeResult = await pr.checkDrawerLink(frame, "swiftgpunodes", nodeRow, reopen);
+
+      if (!nodeResult.ok) {
+        throw new Error(`The "Node" link ("${nodeRow.text}") did not navigate cleanly: ${nodeResult.note}`);
+      }
+
+      // The guest links live in the nested per-device table, not in a
+      // `DrawerItem` row, so they are read from the drawer directly rather
+      // than through the row helpers. The wait is the same bounded one those
+      // helpers do: the link appears once the SwiftGuest store has filled.
+      const guestLink = frame.locator(".Drawer.KubeObjectDetails a", { hasText: allocatedGuest }).first();
+
+      await guestLink.waitFor({ state: "visible", timeout: 60_000 });
+
+      const guestHref = await guestLink.getAttribute("href");
+      const guestResult = await pr.checkDrawerLink(
+        frame,
+        "swiftgpunodes",
+        { label: "Allocated To", text: allocatedGuest, href: guestHref },
+        reopen,
+      );
+
+      if (!guestResult.ok) {
+        throw new Error(`The "Allocated To" link ("${allocatedGuest}") did not navigate cleanly: ${guestResult.note}`);
+      }
+
+      const deletedCell = frame.locator(".Drawer.KubeObjectDetails .TableCell", { hasText: deletedGuest }).first();
+
+      await deletedCell.waitFor({ state: "visible", timeout: 60_000 });
+
+      const deletedLinks = await deletedCell.locator("a").count();
+
+      if (deletedLinks !== 0) {
+        throw new Error(`"${deletedGuest}" names a guest the fixtures never create, so it must stay plain text.`);
+      }
+
+      await cluster.closeDetails(frame);
     },
     TIMEOUT,
   );

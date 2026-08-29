@@ -94,6 +94,10 @@ export function fixturesReady(): boolean {
     ["swiftguests.swift.kubeswift.io", "e2e-guest-running"],
     ["swiftmigrations.migration.kubeswift.io", "e2e-migration-completed"],
     ["swiftgpuprofiles.gpu.kubeswift.io", "e2e-gpu-profile-hgx"],
+    // Cluster-scoped, and probed by the one name of the pair that is not the
+    // cluster's own node name: `kubectl` ignores `--namespace` for a
+    // cluster-scoped resource, so the call shape below covers it unchanged.
+    ["swiftgpunodes.gpu.kubeswift.io", "e2e-gpu-node-absent"],
   ];
 
   return probes.every(([resource, name]) => {
@@ -115,6 +119,47 @@ export function fixturesReady(): boolean {
 
     return status === 0;
   });
+}
+
+let cachedNodeName: string | undefined;
+
+/**
+ * The real name of the cluster's single node, read the same way the fixtures
+ * are: `e2e/scripts/cluster-up.sh` substitutes it into every `__NODE_NAME__`
+ * placeholder, so anything named after the node (the SwiftGPUNode fixture) can
+ * only be addressed by asking the cluster. It is `kubeswift-e2e-control-plane`
+ * on the E2E cluster and `kubeswift-demo-control-plane` on the demo one the
+ * pre-review pass uses, which is exactly why it is not a literal here.
+ */
+export function clusterNodeName(): string {
+  if (cachedNodeName) {
+    return cachedNodeName;
+  }
+
+  const { status, stdout } = spawnSync(
+    "kubectl",
+    [
+      "--kubeconfig",
+      kubeconfigPath(),
+      "--context",
+      E2E_KUBE_CONTEXT,
+      "get",
+      "nodes",
+      "--output",
+      "jsonpath={.items[0].metadata.name}",
+    ],
+    { encoding: "utf8" },
+  );
+
+  const name = status === 0 ? stdout.trim() : "";
+
+  if (!name) {
+    throw new Error(`Could not read the node name of ${E2E_CLUSTER_NAME}. Run \`pnpm e2e:cluster:up\` first.`);
+  }
+
+  cachedNodeName = name;
+
+  return name;
 }
 
 /**

@@ -1,0 +1,31 @@
+# SwiftGPUNode is cluster-scoped, so neither object below carries a namespace,
+# and it is status-only: the schema declares no spec at all ("the spec is
+# intentionally empty"), so these manifests are metadata and nothing else.
+# Everything the views render is injected into the status subresource by
+# cluster-up.sh, since no GPU discovery DaemonSet runs in this cluster.
+#
+# The name is the placeholder __NODE_NAME__, substituted by cluster-up.sh's
+# apply_fixtures() with the real (single) node of whatever cluster this is
+# applied to: a SwiftGPUNode is named after the node it describes, so the only
+# way the drawer's Node row can be a live link is for this object to carry that
+# node's actual name. metadata.name cannot be patched after the fact, which is
+# why the substitution happens here rather than with the statuses.
+apiVersion: gpu.kubeswift.io/v1alpha1
+kind: SwiftGPUNode
+metadata:
+  name: __NODE_NAME__
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+---
+# The other branch of every reference this view resolves: a GPU node object
+# whose node is no longer in the cluster (the discovery DaemonSet creates the
+# object, the node is drained and removed, the object outlives it). Its drawer
+# must render the Node row as plain text rather than as a link to a node that
+# is not there. Its status is an Error with no inventory at all, which is also
+# what makes the list show its N/A cells.
+apiVersion: gpu.kubeswift.io/v1alpha1
+kind: SwiftGPUNode
+metadata:
+  name: e2e-gpu-node-absent
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e

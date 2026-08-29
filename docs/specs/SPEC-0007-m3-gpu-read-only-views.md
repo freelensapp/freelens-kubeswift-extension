@@ -372,6 +372,13 @@ them requires a change to DESIGN.md.
     actually exist": reusing the pre-review link helper, as the SwiftGuest
     Node/Pod case does today; the ready node's Node row must be a live link,
     and the GPU allocated to a deleted guest must stay plain text.
+  - "navigates the SwiftGuest drawer's GPU Profile and GPU Node links to the
+    objects M3 registers" (added while implementing slice 2): the same helper
+    on the two rows "reach into the existing views" turns into links, which
+    between them cover both shapes of a `LinkToObject` target - a namespaced
+    one and the extension's first cluster-scoped one, whose ref carries no
+    namespace at all. Nothing short of a real click proves the URL core builds
+    from such a ref is the cluster-scoped one.
 - **Fixtures and status injection** (`e2e/fixtures/`, numbering continued):
   - `110-swiftgpuprofiles.yaml`: `e2e-gpu-profile-pcie` (count 1, tier `pcie`,
     partition mode `isolated`, a model filter, no optional blocks) and
@@ -477,6 +484,81 @@ Details the spec left open, settled while implementing:
 - The `Guests Using This Profile` rows are read straight from the SwiftGuest
   store, so their existence check can only ever pass; it is kept anyway, so
   that every reference in the extension goes through the same rule.
+
+### Implementation, slice 2 of 2: SwiftGPUNode (2026-08-29)
+
+The schema was re-verified against
+`config/crd/bases/gpu.kubeswift.io_swiftgpunodes.yaml` at `v0.13.12` before
+writing the model: everything the "Schema facts" section below states about
+SwiftGPUNode holds, and no field of the design turned out to be missing.
+
+Settled while implementing, none of it changing what the spec asks for:
+
+- **The Phase printer column is not a list column.** The spec's list table
+  omits it and this is why: Phase is what the Condition/Status pair is derived
+  from, so showing it three times on one row would be noise. The raw value is
+  in the drawer, where `kubectl`'s own reading belongs, and the host's
+  printer-column block shows it above our sections anyway (the accepted
+  duplication of DESIGN.md section 3).
+- **The classifier does not format dates.** The Ready explanation ends on the
+  last discovery timestamp, which would have made a pure function either
+  render a date itself or depend on a clock. Instead `classifyGpuNode` returns
+  an optional `lastDiscovery` alongside `{ state, className, explanation }`
+  and the view appends it with `LocaleDate`, so the classifier stays pure and
+  the user's timezone preference is still honoured (DESIGN.md section 3).
+- **The StatusBrick gallery gets its fill from a module class, not from the
+  host's brick vocabulary.** Core's `.StatusBrick` classes are Pod-container
+  words (`running`, `waiting`, `container-creating`); wearing them on a GPU
+  brick would be a lie in the DOM. The classifier hands the view the same
+  global status class it hands the badge, and the details module maps that
+  name to the matching theme token. No colour is authored and the bricks read
+  like the badge above them.
+- **`host.cpuTopology` is a block of its own.** The drawer's Host section
+  reads Sockets, Cores Per Socket, Threads Per Core and Total CPUs from
+  `status.host.cpuTopology`, not from `status.host` directly, and 1Gi
+  hugepages from `status.host.hugepages1Gi` as a "free of total" pair.
+- **The two nested tables name their id column after what it identifies**:
+  "NUMA Node" rather than "ID" in the Host section, "Partition" rather than
+  "ID" in the Fabric Manager one. Neither table carries a title of its own (it
+  follows the section's rows directly), so a bare "ID" would not say what it
+  is the id of.
+- **`existingObjectRef`.** The check and the link target are now built in one
+  step (`components/object-existence.ts`), so a caller cannot check one object
+  and link another, and the `apiVersion` and namespace of the ref are read off
+  the object the store found rather than restated by the caller. The four
+  drawers that resolve a GPU reference use it; `objectExists` stays for the
+  rows that only need the boolean (`LinkToNode`/`LinkToPod`).
+- **SwiftGuest's GPU hypervisor row is called "GPU Hypervisor".** The Runtime
+  section already has a row named Hypervisor, reporting `status.runtime`;
+  `status.gpu.hypervisor` is what the GPU tier forced, and two rows with the
+  same label in one drawer would be ambiguous for a reader and for the
+  pre-review pass's row helpers alike.
+- **The SwiftGuest GPU section is shown whenever `status.gpu` exists**, rather
+  than only when it carries devices or a partition, since it now has five rows
+  to show and any one of them is worth the section.
+- **Cluster-scoped status injection needed no scope marker.** `kubectl`
+  resolves a resource's scope from its own REST mapping and ignores the
+  `--namespace` that `inject_statuses()` and `verify_statuses()` pass
+  unconditionally, verified against the E2E cluster: the SwiftGPUNode patches
+  and their readbacks land through the existing entry format unchanged. What
+  did have to change is `apply_fixtures()`, which now runs the `__NODE_NAME__`
+  substitution over the fixture manifests as well (`metadata.name` cannot be
+  patched afterwards), and the substitution now also applies to the *target
+  name* of an `E2E_STATUS_PATCHES` entry, since the ready node's object is
+  named after the cluster's node. The node name is read once into
+  `E2E_NODE_NAME` and shared by all three steps.
+- **The fixture pair covers the two branches the spec asked for in one go**:
+  the ready node carries the full inventory (including one GPU allocated to a
+  guest the fixtures never create, and one free GPU still bound to `nvidia`,
+  so all three brick states appear in one drawer), and `e2e-gpu-node-absent`
+  reports nothing but an Error phase and `vfioReady: false`, which is what
+  makes the list show its `"N/A"` cells and the drawer's four inventory
+  sections guard themselves away. Its Node row is the degrade-to-text case for
+  a node that is no longer in the cluster.
+- The status patch file of the ready node is named
+  `swiftgpunode-cluster-node.yaml` rather than after its object, which is the
+  one place the fixture naming convention could not be followed: the object's
+  name is only known at runtime.
 
 ### Upstream recon (2026-08-29)
 

@@ -1,0 +1,11 @@
+# Merge patch applied to the status subresource of swiftgpunode/e2e-gpu-node-absent.
+#
+# The other half of the pair: discovery failed on this node and the node itself
+# is gone from the cluster. Nothing but a phase, a stale timestamp and a host
+# that never loaded vfio-pci, so the list renders its N/A cells, its Error badge
+# and the explanation the classifier generates, and the drawer renders the Node
+# row as plain text and hides every section whose block is absent.
+status:
+  phase: Error
+  lastDiscovery: "2026-08-20T22:04:00Z"
+  vfioReady: false

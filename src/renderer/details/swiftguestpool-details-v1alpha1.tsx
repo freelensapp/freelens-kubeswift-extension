@@ -1,13 +1,17 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
+import { maybe } from "../../common/utils";
+import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuestPool } from "../api/kubeswift/swiftguestpool-v1alpha1";
 import { formatQuantity } from "../api/kubeswift/types";
 import { withErrorPage } from "../components/error-page";
+import { existingObjectRef } from "../components/object-existence";
+import { useReferenceStores } from "../components/reference-loader";
 
 const { observer } = MobxReact;
 
 const {
-  Component: { Badge, DrawerItem, DrawerTitle, KubeObjectConditionsDrawer, WithTooltip },
+  Component: { Badge, DrawerItem, DrawerTitle, KubeObjectConditionsDrawer, LinkToObject, WithTooltip },
 } = Renderer;
 
 const notAvailable = "N/A";
@@ -28,6 +32,25 @@ export const SwiftGuestPoolDetails = observer((props: SwiftGuestPoolDetailsProps
     const service = spec?.service;
     const servicePorts = SwiftGuestPool.getServicePorts(object);
     const volumeClaimTemplates = SwiftGuestPool.getVolumeClaimTemplates(object);
+    const namespace = object.getNs();
+    const gpuProfileName = templateSpec?.gpuProfileRef?.name;
+    const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
+
+    // The template's GPU profile became resolvable in M3, when the kind was
+    // registered (SPEC-0007). `gpuProfileRef` is a `LocalObjectReference`, so
+    // the profile lives in the pool's own namespace, which is the one the
+    // store is asked for rather than whatever the namespace filter holds
+    // (DESIGN.md section 3, issue #38).
+    useReferenceStores([
+      {
+        label: SwiftGPUProfile.crd.plural,
+        store: gpuProfileStore,
+        namespaces: [namespace],
+        lookups: [{ name: gpuProfileName, namespace }],
+      },
+    ]);
+
+    const gpuProfileRef = existingObjectRef(gpuProfileStore, SwiftGPUProfile.kind, gpuProfileName, namespace);
 
     return (
       <>
@@ -93,8 +116,12 @@ export const SwiftGuestPoolDetails = observer((props: SwiftGuestPoolDetailsProps
         <DrawerItem name="Seed Profile" hidden={!templateSpec?.seedProfileRef?.name}>
           <WithTooltip>{templateSpec?.seedProfileRef?.name}</WithTooltip>
         </DrawerItem>
-        <DrawerItem name="GPU Profile" hidden={!templateSpec?.gpuProfileRef?.name}>
-          <WithTooltip>{templateSpec?.gpuProfileRef?.name}</WithTooltip>
+        <DrawerItem name="GPU Profile" hidden={!gpuProfileName}>
+          {gpuProfileRef ? (
+            <LinkToObject objectRef={gpuProfileRef} object={object} />
+          ) : (
+            <WithTooltip>{gpuProfileName}</WithTooltip>
+          )}
         </DrawerItem>
         <DrawerItem name="OS Type" hidden={!templateSpec?.osType}>
           <WithTooltip>{templateSpec?.osType}</WithTooltip>
