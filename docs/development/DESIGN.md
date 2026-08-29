@@ -106,6 +106,23 @@ repositories.
   the generic custom-resource item may already include the conditions
   table; before adding a `KubeObjectConditionsDrawer`, verify in a real
   Freelens that conditions are not shown twice.
+- **The host's printer-column block is accepted duplication (decision of
+  2026-08-29, issue #52).** Freelens core injects a generic
+  `.CustomResourceDetails` section into every CR drawer - one plain-text
+  row per `additionalPrinterColumns` entry, above the extension's
+  content, with no hook to suppress or reformat it. The rule for every
+  view is therefore: build the full enriched section, do not trim rows to
+  dodge a host printer-column row, and never hide the host block with CSS
+  (the anti-pattern already rejected in issue #24). A section that tells
+  the whole story of the resource, with links, humanized values and
+  badges, is worth more than a partial deduplication that cannot be
+  completed without the host's cooperation, and it keeps one simple rule
+  across all CRDs instead of a different enriched-vs-plain split per
+  kind. Letting an extension suppress the generic block for the kinds it
+  registers detail items for is candidate upstream feedback, to be
+  proposed after v1.0.0. This exception is about those printer-column
+  rows only; whole sections the host already draws (conditions, metadata)
+  stay covered by the rule above.
 - References to other objects are links, never plain text:
   `LinkToNamespace`, `LinkToNode`, `LinkToPod`, `LinkToSecret`... for
   well-known kinds, `LinkToObject` for arbitrary refs, and
@@ -279,9 +296,12 @@ patterns:
 3. Column order in some views places domain columns after
    phase; re-check each view against the column grammar.
 4. Some cells in `renderTableContents` lack React `key`s.
-5. Details components add `KubeObjectConditionsDrawer`; verify against a
-   real Freelens whether the host's custom-resource item already renders
-   conditions for these CRDs (possible duplication).
+5. Details components add `KubeObjectConditionsDrawer`; the pre-review
+   pass found no drawer with two "Conditions" sections across the 10
+   M1/M2 views (SPEC-0006), so no retrofit is due for the fixtures
+   exercised so far - re-check when a new CRD arrives. The printer-column
+   rows of the same host block are settled by section 3's stance (issue
+   #52): they stay duplicated, the extension's sections stay complete.
 6. No CRD-absent state: pages assume the KubeSwift CRDs exist; add the
    probing panel (section 6).
 7. Both themes were never verified by a human; first milestone review

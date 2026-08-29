@@ -363,6 +363,16 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   already renders" warns about (the same family as gap 5's conditions
   question). Deciding which side wins is a retrofit design call, not part
   of the issue #38 fix.
+- 2026-08-29 (issue #52): that design call is now made and recorded in
+  DESIGN.md section 3. With no Freelens core changes in scope for now, the
+  extension keeps its own sections complete and authoritative and accepts
+  the host block as duplication: no row is trimmed to dodge a printer
+  column, and the host block is not hidden with CSS (rejected in #24).
+  Suppressing the generic printer-column block for the kinds an extension
+  registers detail items for is recorded there as candidate upstream
+  feedback for after v1.0.0. Nothing changes for this pass: the DOM
+  scoping above is what keeps the report about the extension's own rows,
+  and host printer-column rows stay out of "For human judgment".
 - 2026-08-29 (issue #38 follow-up): **the graduated test lost its escape
   hatch.** "navigates the SwiftGuest drawer's Node and Pod links" tolerated a
   row that stayed plain text, logging
