@@ -1,6 +1,7 @@
 # SPEC-0009: Read-only fleet views (M5)
 
-- **Status:** Approved (Roberto, 2026-08-29, in chat); implementation in PR
+- **Status:** Implemented (PR #68, merged 2026-08-29, main CI green;
+  Verified pending the milestone review)
 - **Milestone:** M5
 - **KubeSwift version reviewed:** `v0.13.12`
 - **Author / date:** Claude with Roberto, 2026-08-29

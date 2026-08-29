@@ -65,7 +65,7 @@ owns.
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| Cluster (fleet.kubeswift.io) list + detail | [SPEC-0009](../specs/SPEC-0009-m5-fleet-read-only-views.md) | In PR |
+| Cluster (fleet.kubeswift.io) list + detail | [SPEC-0009](../specs/SPEC-0009-m5-fleet-read-only-views.md) | Done |
 
 M5 is one CRD and ships in a single slice. It is the view of the KubeSwift
 fleet that the Kubernetes API can serve on its own: which member clusters a
