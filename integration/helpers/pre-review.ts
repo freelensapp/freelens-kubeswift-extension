@@ -349,23 +349,85 @@ export function nonHumanizedByteValues(text: string): string[] {
 // raw byte count as a printer column (SwiftSnapshot's `SIZE`, for example),
 // this host section shows it unhumanized and this extension has no hook to
 // change that rendering. See "Notes and deviations" in SPEC-0006.
+//
+// It excludes the host's object metadata block for the same reason (issue
+// #59). Freelens core's `KubeObjectMeta` component
+// (`default-kube-object-meta-details-item`, `orderNumber: 0`, so it is always
+// the first thing in a drawer) renders Created/Name/Namespace/Labels/
+// Annotations/Finalizers/Controlled By/Managed Fields, and its `Annotations`
+// row shows `kubectl.kubernetes.io/last-applied-configuration` - the object's
+// whole manifest, verbatim, inside one badge. Any fixture whose manifest
+// carries a bare run of five or more digits therefore trips the assert no
+// matter what the extension renders: the GPU Profiles drawer was reported as
+// FAIL `262144` because e2e-gpu-profile-hgx's manifest says
+// `"memoryPerSocketMi":262144`, while the extension's own "Memory Per Socket"
+// row read `256Gi` in the very same drawer.
+//
+// Unlike the printer-column section, this block has no wrapper element at all:
+// `KubeObjectMeta` returns a bare fragment, so its rows are plain siblings of
+// the extension's own rows and there is no ancestor for `closest()` to match.
+// It is identified instead by the two things the component does fix - the
+// labels it hardcodes, and where it renders them. Position is part of the test
+// because two of those labels are also the extension's own ("Labels" for the
+// pod-template labels of SwiftGuestPool and SwiftSnapshotSchedule, "Name"
+// inside SwiftImage's "Clone Seed" and SwiftGuestPool's "Service" sections),
+// and those rows are the extension's to humanize. Every section this extension
+// renders opens with a `DrawerTitle` and the host block is rendered before all
+// of them, so a matching row with no `DrawerTitle` sibling before it is the
+// host's, and the same label after one is the extension's.
+const HOST_OBJECT_META_ROW_SELECTOR = ".DrawerItem:not(.DrawerTitle ~ *)";
+const HOST_OBJECT_META_ROW_LABELS = [
+  "Created",
+  "Deleted",
+  "Name",
+  "Namespace",
+  "UID",
+  "Link",
+  "Resource Version",
+  "Labels",
+  "Annotations",
+  "Finalizers",
+  "Controlled By",
+  "Managed Fields",
+];
 
 /**
- * Text content of the open detail drawer, excluding Freelens core's generic
- * `.CustomResourceDetails` printer-column section (see
- * `HOST_GENERIC_CR_SECTION_SELECTOR` above). Walks text nodes directly
- * instead of cloning the subtree, so it does not depend on the clone being
- * laid out (a detached clone's `innerText` is unreliable across browsers).
- * Used by the byte-humanization assert, which only holds the extension
- * responsible for what it renders itself.
+ * Text content of the open detail drawer, excluding both host-rendered blocks
+ * the extension has no hook to change: Freelens core's generic
+ * `.CustomResourceDetails` printer-column section
+ * (`HOST_GENERIC_CR_SECTION_SELECTOR`) and core's object metadata rows
+ * (`HOST_OBJECT_META_ROW_SELECTOR`/`HOST_OBJECT_META_ROW_LABELS`), both
+ * documented above. Walks text nodes directly instead of cloning the subtree,
+ * so it does not depend on the clone being laid out (a detached clone's
+ * `innerText` is unreliable across browsers). Used by the byte-humanization
+ * assert, which only holds the extension responsible for what it renders
+ * itself.
  */
 export async function extensionDrawerText(frame: Frame): Promise<string> {
   return frame.$eval(
     ".Drawer.KubeObjectDetails",
-    (root, hostSectionSelector) => {
+    (root, { hostSectionSelector, hostMetaRowSelector, hostMetaRowLabels }) => {
+      const isHostRendered = (element: Element | null) => {
+        if (!element) {
+          return false;
+        }
+
+        if (element.closest(hostSectionSelector)) {
+          return true;
+        }
+
+        const metaRow = element.closest(hostMetaRowSelector);
+
+        if (!metaRow) {
+          return false;
+        }
+
+        return hostMetaRowLabels.includes(metaRow.querySelector(".name")?.textContent?.trim() ?? "");
+      };
+
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode: (node) =>
-          node.parentElement?.closest(hostSectionSelector) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+          isHostRendered(node.parentElement) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
       });
 
       const parts: string[] = [];
@@ -376,7 +438,11 @@ export async function extensionDrawerText(frame: Frame): Promise<string> {
 
       return parts.join(" ");
     },
-    HOST_GENERIC_CR_SECTION_SELECTOR,
+    {
+      hostSectionSelector: HOST_GENERIC_CR_SECTION_SELECTOR,
+      hostMetaRowSelector: HOST_OBJECT_META_ROW_SELECTOR,
+      hostMetaRowLabels: HOST_OBJECT_META_ROW_LABELS,
+    },
   );
 }
 
@@ -422,7 +488,11 @@ export function renderReport(views: ViewReport[], generatedAt = new Date()): str
       "Freelens core's generic `.CustomResourceDetails` printer-column section (host printer column, upstream " +
       "CRD defines raw bytes - out of extension control), present in every CR drawer regardless of what an " +
       "extension registers. A CRD that publishes a raw byte count as a printer column (SwiftSnapshot's `SIZE`, " +
-      'for example) always shows it unhumanized there; see "Notes and deviations" in SPEC-0006.',
+      "for example) always shows it unhumanized there. It also excludes core's object metadata rows (`Labels`, " +
+      "`Annotations`, `Managed Fields` and the rest of `KubeObjectMeta`): the " +
+      "`kubectl.kubernetes.io/last-applied-configuration` annotation reproduces the object's whole manifest " +
+      'verbatim, so every raw number an author wrote there would be reported. See "Notes and deviations" in ' +
+      "SPEC-0006.",
     "",
   ];
 

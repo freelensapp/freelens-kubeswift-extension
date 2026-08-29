@@ -387,3 +387,45 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   contract. The pass's own reporting is unchanged - a plain-text reference
   still lands in "For human judgment" rather than failing the pass, which is
   what an exploratory layer is for.
+- 2026-08-29 (issue #59): **the byte-humanization assert was reading the host's
+  object metadata block.** `extensionDrawerText` excluded only
+  `.CustomResourceDetails`, but the metadata block core renders above it is a
+  different host section - `KubeObjectMeta`
+  (`default-kube-object-meta-details-item`, `orderNumber: 0`, so always the
+  first thing in a drawer) - and its `Annotations` row shows
+  `kubectl.kubernetes.io/last-applied-configuration`, which is the object's
+  whole manifest reproduced verbatim inside a single badge. The M3 pass
+  therefore reported the GPU Profiles drawer as FAIL `262144`, straight out of
+  the `memoryPerSocketMi: 262144` of the `e2e-gpu-profile-hgx` fixture, while
+  the extension's own "Memory Per Socket" row in that very drawer read `256Gi`
+  (unit-tested, and the built bundle does call the helper). Until this fix, any
+  fixture whose manifest carried a bare run of five or more digits tripped the
+  assert.
+- The exemption could not be written the way the printer-column one was:
+  `KubeObjectMeta` returns a bare React fragment, so its rows are plain
+  siblings of the extension's own rows and there is no wrapper element for
+  `closest()` to match. It is keyed instead on the two things the component
+  does fix - the labels it hardcodes (`HOST_OBJECT_META_ROW_LABELS`: Created,
+  Deleted, Name, Namespace, UID, Link, Resource Version, Labels, Annotations,
+  Finalizers, Controlled By, Managed Fields) and the position it renders them
+  at (`HOST_OBJECT_META_ROW_SELECTOR`, `.DrawerItem:not(.DrawerTitle ~ *)`).
+  The position half is not decoration: two of those labels are also the
+  extension's own, and those rows stay in the scan. Its "Labels" (the
+  pod-template labels of SwiftGuestPool and SwiftSnapshotSchedule) and its
+  "Name" (SwiftImage's "Clone Seed", SwiftGuestPool's "Service") all sit inside
+  titled sections, while the host block is rendered before the drawer's first
+  `DrawerTitle`.
+- Link inspection was checked and deliberately left alone. `inspectDrawerRows`
+  and `waitForDrawerLink` do walk the metadata rows, but nothing there
+  misreports the extension the way the printer-column collisions of issue #38
+  did: the only metadata rows carrying an href are the host's own "Namespace"
+  and "Controlled By", both real references that resolve like any other and are
+  a legitimate thing for the pass to click, and none of those labels collides
+  with a label the helpers are asked for. Widening the exemption to them would
+  have dropped working links from the report for no gain.
+- Verified by a full pass on the demo cluster before and after the change,
+  12/12 views both times: GPU Profiles moved from
+  `FAIL - list: none; drawer: 262144` to PASS, and every other assert result in
+  the report - the eleven other byte-humanization lines, the header-cell ids,
+  the drawer-link results and counts, the conditions sections and the
+  for-human-judgment lists - came out identical.
