@@ -45,9 +45,17 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| SwiftSandbox list + detail | — | Planned |
-| SwiftSandboxPool list + detail | — | Planned |
-| Sandbox logs | — | Planned (feasibility: read via launcher pod) |
+| SwiftSandbox list + detail | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Spec in PR |
+| SwiftSandboxPool list + detail | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Spec in PR |
+| Launcher pod logs from the sandbox drawer | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Spec in PR |
+
+The feasibility question this milestone carried ("Sandbox logs — read via
+launcher pod") is answered in SPEC-0008 and splits in two. The launcher pod's
+own logs, including the `sandbox-materialize` init container, are reachable
+through Freelens' log dock and are in M4. The workload's **console** is not:
+the sandbox writes it to a file inside the launcher pod, so reading it needs a
+`pods/exec` stream — the same machinery as the sandbox shell, which M7 already
+owns.
 
 ### M5 — Fleet view (read-only)
 
@@ -74,7 +82,7 @@ means (each item needs its own spec before implementation):
 | Feature | Spec | Status |
 | --- | --- | --- |
 | VM serial console | — | Planned (feasibility: via launcher pod, no gateway) |
-| Sandbox exec | — | Planned (feasibility study required) |
+| Sandbox exec, and the workload console tail | — | Planned (feasibility study required; lead recorded in [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md)) |
 
 ### Cross-cutting
 
