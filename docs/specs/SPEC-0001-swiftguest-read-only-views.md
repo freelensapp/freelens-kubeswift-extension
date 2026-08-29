@@ -64,16 +64,15 @@ addition for `kubectl get sg -o wide` parity).
   primary IP, boot image). Fixtures: `e2e/fixtures/50-swiftguests.yaml` and
   `e2e/fixtures/status/swiftguest-e2e-guest-running.yaml`.
   "navigates the SwiftGuest drawer's Node and Pod links to objects that
-  actually exist" (added for issue #23) asserts the no-dead-links invariant
-  the fix guarantees, not that the rows always render as links: it waits
-  (bounded) for the existence check to upgrade each row, and only once it
-  did, clicks the link and requires a real, non-error detail drawer on the
-  other end; a row still plain text after the wait is logged as a
-  legitimate degradation rather than failed, since whether the store-backed
-  existence check upgrades a row in time turned out to be
-  environment-dependent (reliable against the local pre-review pass, but
-  the Node row never upgraded on the packed Linux CI build within the
-  bounded wait). Fixture: `e2e/fixtures/55-launcher-pods.yaml`.
+  actually exist" (added for issue #23) asserts two things per row: that the
+  row renders as a link at all, and that clicking it lands on a real,
+  non-error detail drawer (the no-dead-links invariant the fix guarantees).
+  It waits (bounded) for the existence check to upgrade the row before
+  deciding, so a slow runner is not read as a missing link, but a row still
+  plain text after that wait fails the test: both referenced objects are
+  guaranteed by the fixtures (the node name is substituted with the real
+  cluster node, the launcher pod is created), so nothing here has a reason
+  to degrade. Fixture: `e2e/fixtures/55-launcher-pods.yaml`.
 - Manual verification: none required for read-only views against the
   fixture cluster; behavior against a real KVM cluster is a known
   manual-only area (TESTING.md).
@@ -148,3 +147,12 @@ addition for `kubectl get sg -o wide` parity).
   load failure and the store that cannot be resolved are real host
   behaviors, and the per-attempt diagnostics are what made this collision
   provable in the first place.
+- 2026-08-29 (issue #38, follow-up to the two entries above): the E2E
+  degradation allowance for this drawer's Node and Pod rows is removed. It
+  existed only while the platform asymmetry was unexplained; both causes are
+  now fixed, and the CI run of the loader PR on the packed Linux app showed
+  both rows upgrading to links and navigating cleanly, with no
+  "degraded to text" line. A row that stays plain text there is now a test
+  failure. This tightens nothing else: a reference whose target does not
+  exist by fixture design must still render as plain text (DESIGN.md
+  section 3), and the rendering code is untouched.

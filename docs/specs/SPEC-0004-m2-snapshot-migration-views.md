@@ -351,5 +351,14 @@ normally once the store appears.
 
 Rendering is deliberately unchanged: `objectExists` remains the render-time
 lookup and every row still degrades to `WithTooltip` plain text when the
-target is absent, so the E2E degradation allowance stays as it is until a
-CI run confirms the fix (tightening it is a follow-up).
+target is absent.
+
+2026-08-29 (issue #38 follow-up, closing the tightening this section left
+open): the CI run of the loader PR confirmed the fix on the packed Linux
+app, so the E2E degradation allowance is gone for the rows whose target the
+fixtures guarantee - concretely the SwiftGuest drawer's Node and Pod rows,
+the only ones the suite clicks through today (see SPEC-0001). The four
+drawers of this spec are unaffected in behavior: their references still
+degrade to `WithTooltip` plain text when the target is absent, which several
+fixtures make happen on purpose (a "Clone" restore's target guest, a
+finished migration's source node), and that stays the expected rendering.

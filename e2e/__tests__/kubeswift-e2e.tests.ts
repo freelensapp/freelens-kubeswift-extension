@@ -126,29 +126,39 @@ describe("KubeSwift views against the fixture cluster", () => {
       // load-failure detection here (SPEC-0006 scope item 5: a pass assert
       // that proves a real regression graduates into this suite).
       //
-      // What this test actually asserts is the no-dead-links invariant the
-      // fix guarantees: a rendered link never navigates to the host's
-      // "Resource loading has failed" panel. It deliberately does NOT assert
-      // that the Node/Pod rows always render as links: whether the
-      // referencing store fills in time for the existence check
-      // (objectExists against the stores useReferenceStores loads) is
-      // environment-dependent, so a row still plain text after the wait is
-      // treated as legitimate degradation - exactly the fallback DESIGN.md
-      // section 3 asks for when a reference cannot be confirmed - not a
-      // failure: it is logged so CI output still shows it happened, and the
-      // test moves on.
+      // Both rows must be links, and both links must land on real content.
+      // The fixture guarantees the two referenced objects exist: the guest's
+      // status.nodeName is substituted with the E2E cluster's real node by
+      // cluster-up.sh's inject_statuses(), and its status.podRef names the
+      // launcher Pod of e2e/fixtures/55-launcher-pods.yaml. So there are two
+      // stacked asserts here - the row upgraded to a link at all (the
+      // reference store behind objectExists really loaded), and the link
+      // navigates to a real drawer rather than the host's "Resource loading
+      // has failed" panel (the no-dead-links invariant of the fix above).
       //
-      // Until issue #38 the "Node" row here looked like the environment-
-      // dependent case and was blamed on nodesStore never loading on the
-      // packed Linux CI build. It was not: SwiftGuest publishes a printer
-      // column named `Node`, so the host's own generic custom-resource
-      // section renders a second, always-plain-text row with that exact
-      // label above this drawer's body, and the row helpers matched it
-      // instead of ours. They now read the extension's own rows only (see
-      // pre-review.ts), which is why this check finally sees the real Node
-      // row. "Pod" was never affected - no printer column carries that
-      // label - which is exactly why one of the two upgraded and the other
-      // never did.
+      // This test used to let a row that stayed plain text pass, logging it
+      // as environment-dependent degradation, because the "Node" row never
+      // upgraded on the packed Linux CI build and nobody knew why. Issue #38
+      // found two independent reasons and fixed both: the row helpers were
+      // matching the host's own copy of the "Node" label (Freelens core
+      // renders one always-plain-text row per CRD additionalPrinterColumns
+      // entry above this drawer's body, and SwiftGuest publishes a column
+      // named `Node`; "Pod" has no such column, which is exactly why only
+      // one of the two ever looked broken), and the one-shot store load
+      // behind the existence check could silently load nothing. pre-review.ts
+      // now reads the extension's own rows only, and useReferenceStores
+      // retries and subscribes until the store fills. The CI run of that fix
+      // showed both rows upgrading and navigating cleanly, so the allowance
+      // is gone: a missing link here is a regression, not the environment.
+      //
+      // What this does NOT tighten: references that point at objects which
+      // do not exist by fixture design must still degrade to plain text
+      // (DESIGN.md section 3). SwiftMigration's "From" node is the
+      // deliberate case (see the comment in
+      // e2e/fixtures/status/swiftmigration-e2e-migration-completed.yaml and
+      // the SwiftMigration test below); the decision itself is unit-tested
+      // in src/renderer/components/object-existence.test.ts. Only rows whose
+      // target the fixture guarantees are held to the stricter rule here.
       await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
       await pr.openDrawer(frame, "e2e-guest-running");
 
@@ -158,10 +168,9 @@ describe("KubeSwift views against the fixture cluster", () => {
       };
 
       for (const label of ["Node", "Pod"]) {
-        // Gives the existence check's async store load a chance to resolve
-        // and upgrade the row to a link before deciding what it is - see
-        // the comment above for why this does not itself make the row a
-        // link on every environment.
+        // Bounded wait for the existence check's async store load to resolve
+        // and upgrade the row to a link, so a slow runner is not read as a
+        // missing link.
         const row = await pr.waitForDrawerLink(frame, label);
 
         if (!row) {
@@ -169,11 +178,9 @@ describe("KubeSwift views against the fixture cluster", () => {
         }
 
         if (!row.href) {
-          // Legitimate degradation to plain text (see the comment above),
-          // not a failure: there is no link to click and no invariant left
-          // to check for this row in this environment.
-          console.log(`[e2e] "${label}" row degraded to text in this environment (no link to check).`);
-          continue;
+          throw new Error(
+            `The SwiftGuest drawer's "${label}" row ("${row.text}") stayed plain text: the fixture makes the referenced object exist, so the row must render as a link.`,
+          );
         }
 
         const result = await pr.checkDrawerLink(frame, "swiftguests", row, reopen);

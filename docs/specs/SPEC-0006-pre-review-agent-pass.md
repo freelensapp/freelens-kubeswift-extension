@@ -363,3 +363,17 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   already renders" warns about (the same family as gap 5's conditions
   question). Deciding which side wins is a retrofit design call, not part
   of the issue #38 fix.
+- 2026-08-29 (issue #38 follow-up): **the graduated test lost its escape
+  hatch.** "navigates the SwiftGuest drawer's Node and Pod links" tolerated a
+  row that stayed plain text, logging
+  `[e2e] "<label>" row degraded to text in this environment` and moving on,
+  purely because the platform difference above had no explanation. It has one
+  now, and the CI run of the loader PR on the packed Linux app showed both
+  rows upgrading to links and navigating cleanly with no such line, so a
+  missing href on those two rows is a FAIL. This is the standing rule of
+  scope item 5 applied to a graduated test rather than a new one: an assert
+  weakened around an unexplained difference is tightened as soon as the
+  difference is understood, otherwise the weakening quietly becomes the
+  contract. The pass's own reporting is unchanged - a plain-text reference
+  still lands in "For human judgment" rather than failing the pass, which is
+  what an exploratory layer is for.

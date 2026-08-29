@@ -129,6 +129,14 @@ exploratory only until it stabilizes.
 - CI runs all layers on every PR; a red layer blocks merge.
 - When a bug is found (by CI, manual testing, or in the field), the fix PR
   must add a test that fails without the fix. No silent fixes.
+- A test weakened to tolerate an unexplained difference (a platform, a
+  timing, a runner) carries that tolerance only until the difference is
+  explained. Once the cause is found and fixed, the tolerance is removed in
+  the follow-up, or the weakened assert silently becomes the contract. The
+  E2E drawer-link check is the worked example: it accepted a reference row
+  that stayed plain text while the packed Linux build's behavior was a
+  mystery (issue #38), and stopped accepting it the moment the cause was
+  understood.
 
 ## Manual testing
 
