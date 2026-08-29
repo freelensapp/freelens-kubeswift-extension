@@ -27,24 +27,24 @@ export E2E_STATE_DIR="${DEMO_STATE_DIR:-${DEMO_REPO_ROOT}/.demo}"
 source "${DEMO_SCRIPTS_DIR}/lib.sh"
 
 pack_extension() {
-  log "building and packing the extension"
-  (cd "${REPO_ROOT}" && pnpm clean:tgz && pnpm build && pnpm pack >/dev/null)
+	log "building and packing the extension"
+	(cd "${REPO_ROOT}" && pnpm clean:tgz && pnpm build && pnpm pack >/dev/null)
 }
 
 resolve_tgz_path() {
-  local tgz_path
-  tgz_path="$(find "${REPO_ROOT}" -maxdepth 1 -name '*.tgz' | head -n 1)"
-  [ -n "${tgz_path}" ] || die "pnpm pack produced no tarball in ${REPO_ROOT}"
-  printf '%s' "${tgz_path}"
+	local tgz_path
+	tgz_path="$(find "${REPO_ROOT}" -maxdepth 1 -name '*.tgz' | head -n 1)"
+	[ -n "${tgz_path}" ] || die "pnpm pack produced no tarball in ${REPO_ROOT}"
+	printf '%s' "${tgz_path}"
 }
 
 print_summary() {
-  local tgz_path
-  tgz_path="$(resolve_tgz_path)"
+	local tgz_path
+	tgz_path="$(resolve_tgz_path)"
 
-  [ -f "${E2E_KUBECONFIG}" ] || die "no kubeconfig at ${E2E_KUBECONFIG}"
+	[ -f "${E2E_KUBECONFIG}" ] || die "no kubeconfig at ${E2E_KUBECONFIG}"
 
-  cat <<SUMMARY
+	cat <<SUMMARY
 
 Demo cluster ready
 ===================
@@ -70,11 +70,11 @@ SUMMARY
 }
 
 main() {
-  require_command pnpm
+	require_command pnpm
 
-  "${DEMO_SCRIPTS_DIR}/cluster-up.sh"
-  pack_extension
-  print_summary
+	"${DEMO_SCRIPTS_DIR}/cluster-up.sh"
+	pack_extension
+	print_summary
 }
 
 main "$@"

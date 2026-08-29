@@ -50,21 +50,21 @@ KUBESWIFT_CRD_BASE_URL="https://raw.githubusercontent.com/kubeswift-io/kubeswift
 # so that the cluster matches a real KubeSwift installation, even though only
 # the six M1 and the four M2 CRDs carry fixtures today.
 KUBESWIFT_CRD_FILES=(
-  fleet.kubeswift.io_clusters.yaml
-  gpu.kubeswift.io_swiftgpunodes.yaml
-  gpu.kubeswift.io_swiftgpuprofiles.yaml
-  image.kubeswift.io_swiftimages.yaml
-  kernel.kubeswift.io_swiftkernels.yaml
-  migration.kubeswift.io_swiftmigrations.yaml
-  sandbox.kubeswift.io_swiftsandboxes.yaml
-  sandbox.kubeswift.io_swiftsandboxpools.yaml
-  seed.kubeswift.io_swiftseedprofiles.yaml
-  snapshot.kubeswift.io_swiftrestores.yaml
-  snapshot.kubeswift.io_swiftsnapshots.yaml
-  snapshot.kubeswift.io_swiftsnapshotschedules.yaml
-  swift.kubeswift.io_swiftguestclasses.yaml
-  swift.kubeswift.io_swiftguestpools.yaml
-  swift.kubeswift.io_swiftguests.yaml
+	fleet.kubeswift.io_clusters.yaml
+	gpu.kubeswift.io_swiftgpunodes.yaml
+	gpu.kubeswift.io_swiftgpuprofiles.yaml
+	image.kubeswift.io_swiftimages.yaml
+	kernel.kubeswift.io_swiftkernels.yaml
+	migration.kubeswift.io_swiftmigrations.yaml
+	sandbox.kubeswift.io_swiftsandboxes.yaml
+	sandbox.kubeswift.io_swiftsandboxpools.yaml
+	seed.kubeswift.io_swiftseedprofiles.yaml
+	snapshot.kubeswift.io_swiftrestores.yaml
+	snapshot.kubeswift.io_swiftsnapshots.yaml
+	snapshot.kubeswift.io_swiftsnapshotschedules.yaml
+	swift.kubeswift.io_swiftguestclasses.yaml
+	swift.kubeswift.io_swiftguestpools.yaml
+	swift.kubeswift.io_swiftguests.yaml
 )
 
 # Statuses of the fixtures, injected with `kubectl patch --subresource=status`
@@ -75,16 +75,16 @@ KUBESWIFT_CRD_FILES=(
 #
 # Format: <resource>/<name>=<patch file, relative to fixtures/status>
 E2E_STATUS_PATCHES=(
-  "swiftguests.swift.kubeswift.io/e2e-guest-running=swiftguest-e2e-guest-running.yaml"
-  "swiftguestpools.swift.kubeswift.io/e2e-pool=swiftguestpool-e2e-pool.yaml"
-  "swiftimages.image.kubeswift.io/e2e-ubuntu-2404=swiftimage-e2e-ubuntu-2404.yaml"
-  "swiftkernels.kernel.kubeswift.io/e2e-kernel-6-12=swiftkernel-e2e-kernel-6-12.yaml"
-  "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready=swiftsnapshot-e2e-snapshot-ready.yaml"
-  "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-uploading=swiftsnapshot-e2e-snapshot-uploading.yaml"
-  "swiftrestores.snapshot.kubeswift.io/e2e-restore-clone=swiftrestore-e2e-restore-clone.yaml"
-  "swiftsnapshotschedules.snapshot.kubeswift.io/e2e-schedule-nightly=swiftsnapshotschedule-e2e-schedule-nightly.yaml"
-  "swiftmigrations.migration.kubeswift.io/e2e-migration-completed=swiftmigration-e2e-migration-completed.yaml"
-  "swiftmigrations.migration.kubeswift.io/e2e-migration-live=swiftmigration-e2e-migration-live.yaml"
+	"swiftguests.swift.kubeswift.io/e2e-guest-running=swiftguest-e2e-guest-running.yaml"
+	"swiftguestpools.swift.kubeswift.io/e2e-pool=swiftguestpool-e2e-pool.yaml"
+	"swiftimages.image.kubeswift.io/e2e-ubuntu-2404=swiftimage-e2e-ubuntu-2404.yaml"
+	"swiftkernels.kernel.kubeswift.io/e2e-kernel-6-12=swiftkernel-e2e-kernel-6-12.yaml"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready=swiftsnapshot-e2e-snapshot-ready.yaml"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-uploading=swiftsnapshot-e2e-snapshot-uploading.yaml"
+	"swiftrestores.snapshot.kubeswift.io/e2e-restore-clone=swiftrestore-e2e-restore-clone.yaml"
+	"swiftsnapshotschedules.snapshot.kubeswift.io/e2e-schedule-nightly=swiftsnapshotschedule-e2e-schedule-nightly.yaml"
+	"swiftmigrations.migration.kubeswift.io/e2e-migration-completed=swiftmigration-e2e-migration-completed.yaml"
+	"swiftmigrations.migration.kubeswift.io/e2e-migration-live=swiftmigration-e2e-migration-live.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -92,17 +92,17 @@ E2E_STATUS_PATCHES=(
 #
 # Format: <resource>/<name>=<jsonpath>=<expected value>
 E2E_STATUS_ASSERTIONS=(
-  "swiftguests.swift.kubeswift.io/e2e-guest-running={.status.phase}=Running"
-  "swiftguests.swift.kubeswift.io/e2e-guest-running={.status.network.primaryIP}=10.244.1.21"
-  "swiftguestpools.swift.kubeswift.io/e2e-pool={.status.readyReplicas}=2"
-  "swiftimages.image.kubeswift.io/e2e-ubuntu-2404={.status.phase}=Ready"
-  "swiftkernels.kernel.kubeswift.io/e2e-kernel-6-12={.status.kernelDigest}=sha256:9b2c8f0e3a7d41c5b6e8d90a2f14c7b38e5a6d0c9f3b1e7a4d2c8b5f6a0e9d31"
-  "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready={.status.phase}=Ready"
-  "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready={.status.totalSizeBytes}=22548578304"
-  "swiftrestores.snapshot.kubeswift.io/e2e-restore-clone={.status.guestRef.name}=e2e-guest-restored"
-  "swiftsnapshotschedules.snapshot.kubeswift.io/e2e-schedule-nightly={.status.lastScheduleTime}=2026-08-27T02:00:00Z"
-  "swiftmigrations.migration.kubeswift.io/e2e-migration-completed={.status.mode}=offline"
-  "swiftmigrations.migration.kubeswift.io/e2e-migration-live={.status.transferProgress}=64"
+	"swiftguests.swift.kubeswift.io/e2e-guest-running={.status.phase}=Running"
+	"swiftguests.swift.kubeswift.io/e2e-guest-running={.status.network.primaryIP}=10.244.1.21"
+	"swiftguestpools.swift.kubeswift.io/e2e-pool={.status.readyReplicas}=2"
+	"swiftimages.image.kubeswift.io/e2e-ubuntu-2404={.status.phase}=Ready"
+	"swiftkernels.kernel.kubeswift.io/e2e-kernel-6-12={.status.kernelDigest}=sha256:9b2c8f0e3a7d41c5b6e8d90a2f14c7b38e5a6d0c9f3b1e7a4d2c8b5f6a0e9d31"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready={.status.phase}=Ready"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-ready={.status.totalSizeBytes}=22548578304"
+	"swiftrestores.snapshot.kubeswift.io/e2e-restore-clone={.status.guestRef.name}=e2e-guest-restored"
+	"swiftsnapshotschedules.snapshot.kubeswift.io/e2e-schedule-nightly={.status.lastScheduleTime}=2026-08-27T02:00:00Z"
+	"swiftmigrations.migration.kubeswift.io/e2e-migration-completed={.status.mode}=offline"
+	"swiftmigrations.migration.kubeswift.io/e2e-migration-live={.status.transferProgress}=64"
 )
 
 # Status fields whose status patch file spells the cluster's real (single)
@@ -117,40 +117,40 @@ E2E_STATUS_ASSERTIONS=(
 #
 # Format: <resource>/<name>=<jsonpath>
 E2E_NODE_NAME_FIELDS=(
-  "swiftguests.swift.kubeswift.io/e2e-guest-running={.status.nodeName}"
-  "swiftmigrations.migration.kubeswift.io/e2e-migration-completed={.status.destinationNode}"
+	"swiftguests.swift.kubeswift.io/e2e-guest-running={.status.nodeName}"
+	"swiftmigrations.migration.kubeswift.io/e2e-migration-completed={.status.destinationNode}"
 )
 
 log() {
-  printf '[e2e] %s\n' "$*" >&2
+	printf '[e2e] %s\n' "$*" >&2
 }
 
 die() {
-  printf '[e2e] error: %s\n' "$*" >&2
-  exit 1
+	printf '[e2e] error: %s\n' "$*" >&2
+	exit 1
 }
 
 require_command() {
-  local command_name
-  for command_name in "$@"; do
-    command -v "${command_name}" >/dev/null 2>&1 ||
-      die "\`${command_name}\` is not on PATH. See docs/development/TESTING.md for the prerequisites."
-  done
+	local command_name
+	for command_name in "$@"; do
+		command -v "${command_name}" >/dev/null 2>&1 ||
+			die "\`${command_name}\` is not on PATH. See docs/development/TESTING.md for the prerequisites."
+	done
 }
 
 require_docker() {
-  require_command docker
-  docker info >/dev/null 2>&1 ||
-    die "the Docker daemon is not reachable. Start Docker (or Docker Desktop) and try again."
+	require_command docker
+	docker info >/dev/null 2>&1 ||
+		die "the Docker daemon is not reachable. Start Docker (or Docker Desktop) and try again."
 }
 
 kubectl_e2e() {
-  kubectl --kubeconfig "${E2E_KUBECONFIG}" --context "${E2E_KUBE_CONTEXT}" "$@"
+	kubectl --kubeconfig "${E2E_KUBECONFIG}" --context "${E2E_KUBE_CONTEXT}" "$@"
 }
 
 # Turns an upstream CRD file name into the name of the CRD it defines, for
 # example swift.kubeswift.io_swiftguests.yaml -> swiftguests.swift.kubeswift.io
 crd_name_from_file() {
-  local file="${1%.yaml}"
-  printf '%s.%s' "${file#*_}" "${file%%_*}"
+	local file="${1%.yaml}"
+	printf '%s.%s' "${file#*_}" "${file%%_*}"
 }

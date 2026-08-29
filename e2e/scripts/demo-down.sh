@@ -21,8 +21,8 @@ export E2E_STATE_DIR="${DEMO_STATE_DIR:-${DEMO_REPO_ROOT}/.demo}"
 source "${DEMO_SCRIPTS_DIR}/lib.sh"
 
 main() {
-  log "tearing down the demo cluster ${E2E_CLUSTER_NAME}"
-  "${DEMO_SCRIPTS_DIR}/cluster-down.sh"
+	log "tearing down the demo cluster ${E2E_CLUSTER_NAME}"
+	"${DEMO_SCRIPTS_DIR}/cluster-down.sh"
 }
 
 main "$@"
