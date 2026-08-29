@@ -87,7 +87,7 @@ means (each item needs its own spec before implementation):
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| Guest actions: start/stop (runPolicy), delete | [SPEC-0010](../specs/SPEC-0010-m6-guest-actions.md) | Spec in PR |
+| Guest actions: start/stop (runPolicy), delete | [SPEC-0010](../specs/SPEC-0010-m6-guest-actions.md) | In PR |
 | Create SwiftGuest (form) | — | Planned |
 | Create SwiftGuestClass / Pool / Image / Kernel / SeedProfile (forms) | — | Planned |
 | Snapshot now / restore dialogs | — | Planned |

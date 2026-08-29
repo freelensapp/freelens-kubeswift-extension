@@ -1,0 +1,36 @@
+# The one fixture in this repository that cannot be written as a literal.
+#
+# An owner reference carries the owner's `uid`, and a wrong one makes the
+# garbage collector delete the object outright, so this file is applied in a
+# second pass by `cluster-up.sh` with `__POOL_UID__` substituted from the pool it
+# names - the same mechanism as `__NODE_NAME__`, one step later, which is why it
+# lives in this subdirectory instead of next to the other fixtures (the main
+# apply loop is deliberately not recursive).
+#
+# It exists for the Managed By row (SPEC-0010, B13): a guest a SwiftGuestPool
+# owns is recreated by the pool as soon as it is deleted, which is the single
+# most valuable thing the extension can say about deleting a guest and the one
+# outcome a user is most likely to guess wrong. Nothing here relies on a
+# controller: what the drawer reads is the owner reference itself.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-pooled
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+    swift.kubeswift.io/pool: e2e-pool
+  ownerReferences:
+    - apiVersion: swift.kubeswift.io/v1alpha1
+      kind: SwiftGuestPool
+      name: e2e-pool
+      uid: __POOL_UID__
+      controller: true
+      blockOwnerDeletion: true
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Running

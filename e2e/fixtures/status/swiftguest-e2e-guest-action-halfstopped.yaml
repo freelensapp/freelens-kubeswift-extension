@@ -1,0 +1,27 @@
+# Status of the M6 half-stopped subject (SPEC-0010): the state a stop whose
+# second write failed leaves behind, and the one this suite could not create
+# from the UI without first failing a deletion on purpose.
+#
+# The spec already says `Stopped` while the status still reports `Running` and
+# still names a launcher pod, which is exactly the disagreement the `Stopping`
+# derived state is computed from. In a cluster with no reconciler that reading
+# is permanent, which is what makes it cheap to assert.
+status:
+  phase: Running
+  nodeName: __NODE_NAME__
+  restartCount: 0
+  network:
+    primaryIP: 10.244.1.32
+    ready: true
+  podRef:
+    apiVersion: v1
+    kind: Pod
+    name: e2e-guest-action-halfstopped-launcher
+    namespace: kubeswift-e2e
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: GuestRunning
+      message: The guest is running.
+      lastTransitionTime: "2026-08-28T09:05:00Z"
+      observedGeneration: 1

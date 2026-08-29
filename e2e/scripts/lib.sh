@@ -44,6 +44,10 @@ E2E_ARTIFACTS_DIR="${E2E_ARTIFACTS_DIR:-${REPO_ROOT}/e2e-artifacts}"
 # declare it explicitly so that they stay valid when applied by hand.
 E2E_NAMESPACE="kubeswift-e2e"
 
+# The SwiftGuestPool whose uid `cluster-up.sh` substitutes into the owner
+# reference of the pooled guest fixture (`fixtures/owned/`, SPEC-0010).
+E2E_OWNER_POOL_NAME="e2e-pool"
+
 # Real name of the cluster's node, filled in by cluster-up.sh once the cluster
 # exists (see cluster_node_name below). Declared here so that every helper that
 # substitutes it can be read under `set -u`.
@@ -121,6 +125,14 @@ E2E_STATUS_PATCHES=(
 	"clusters.fleet.kubeswift.io/e2e-fleet-hub=fleetcluster-e2e-fleet-hub.yaml"
 	"clusters.fleet.kubeswift.io/e2e-fleet-edge-1=fleetcluster-e2e-fleet-edge-1.yaml"
 	"clusters.fleet.kubeswift.io/e2e-fleet-edge-down=fleetcluster-e2e-fleet-edge-down.yaml"
+	# The four M6 guest action subjects (SPEC-0010). The fifth,
+	# e2e-guest-action-delete, gets no patch on purpose: the case deletes it, and
+	# a guest with no status at all is also what one looks like between creation
+	# and the first reconciliation.
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-running=swiftguest-e2e-guest-action-running.yaml"
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-halfstopped=swiftguest-e2e-guest-action-halfstopped.yaml"
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-orphanref=swiftguest-e2e-guest-action-orphanref.yaml"
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-stopped=swiftguest-e2e-guest-action-stopped.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -174,6 +186,16 @@ E2E_STATUS_ASSERTIONS=(
 	# uses, so the assert proves the condition-keyed reading the M5 classifier
 	# depends on survives the API server (SPEC-0009).
 	'clusters.fleet.kubeswift.io/e2e-fleet-edge-down={.status.conditions[?(@.type=="Reachable")].status}=False'
+	# The M6 subjects (SPEC-0010). The two `{.spec.runPolicy}` entries are the
+	# first in this array to assert a SPEC field rather than a status one,
+	# because they are the ones the E2E suite later overwrites from the UI: they
+	# pin the value each write case starts from, so a case that appears to do
+	# nothing is told apart from one that ran against an already-patched object.
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-running={.spec.runPolicy}=Always"
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-running={.status.podRef.name}=e2e-guest-action-running-launcher"
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-halfstopped={.spec.runPolicy}=Stopped"
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-halfstopped={.status.phase}=Running"
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-stopped={.status.phase}=Stopped"
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the
@@ -199,6 +221,12 @@ E2E_NODE_NAME_FIELDS=(
 	"swiftgpunodes.gpu.kubeswift.io/__NODE_NAME__={.metadata.name}"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.nodeName}"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.gpu.nodeName}"
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-running={.status.nodeName}"
+	# The first entry of this array that reads a SPEC field: the M6 Start subject
+	# pins itself to a node so the Start dialog's context line has a node to name
+	# (B8), and a pin to a node that does not exist would be a different fact
+	# from the one that line is meant to state.
+	"swiftguests.swift.kubeswift.io/e2e-guest-action-stopped={.spec.nodeName}"
 )
 
 log() {

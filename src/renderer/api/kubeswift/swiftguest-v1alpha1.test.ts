@@ -107,4 +107,76 @@ describe("SwiftGuest (v1alpha1)", () => {
       expect(SwiftGuest.getRestartCount(buildSwiftGuest({ guestClassRef }))).toBe(0);
     });
   });
+
+  // The reader behind the drawer's Managed By row (SPEC-0010, B13): a pool sets
+  // a CONTROLLER reference on the guests it creates and recreates any of them
+  // that is deleted on its own, which is the one thing about deleting a guest
+  // that only KubeSwift's ownership model knows.
+  describe("getOwningPool", () => {
+    const withOwner = (owner: Record<string, unknown>) =>
+      new SwiftGuest({
+        apiVersion: "swift.kubeswift.io/v1alpha1",
+        kind: "SwiftGuest",
+        metadata: {
+          name: "demo",
+          namespace: "vms",
+          selfLink: "/apis/swift.kubeswift.io/v1alpha1/namespaces/vms/swiftguests/demo",
+          ownerReferences: [owner],
+        } as never,
+        spec: { guestClassRef },
+      });
+
+    it("reports the pool that controls the guest", () => {
+      const object = withOwner({
+        apiVersion: "swift.kubeswift.io/v1alpha1",
+        kind: "SwiftGuestPool",
+        name: "web",
+        uid: "abc",
+        controller: true,
+      });
+
+      expect(SwiftGuest.getOwningPool(object)).toEqual({ name: "web", namespace: "vms" });
+    });
+
+    it("ignores a pool reference that is not the controller", () => {
+      // A plain owner reference expresses a cascade, not the management
+      // relationship this row is about.
+      const object = withOwner({
+        apiVersion: "swift.kubeswift.io/v1alpha1",
+        kind: "SwiftGuestPool",
+        name: "web",
+        uid: "abc",
+      });
+
+      expect(SwiftGuest.getOwningPool(object)).toBeUndefined();
+    });
+
+    it("ignores a controller of another kind", () => {
+      const object = withOwner({
+        apiVersion: "apps/v1",
+        kind: "ReplicaSet",
+        name: "web-1",
+        uid: "abc",
+        controller: true,
+      });
+
+      expect(SwiftGuest.getOwningPool(object)).toBeUndefined();
+    });
+
+    it("ignores a SwiftGuestPool from another API group", () => {
+      const object = withOwner({
+        apiVersion: "other.example.com/v1",
+        kind: "SwiftGuestPool",
+        name: "web",
+        uid: "abc",
+        controller: true,
+      });
+
+      expect(SwiftGuest.getOwningPool(object)).toBeUndefined();
+    });
+
+    it("reports nothing for a guest with no owners at all", () => {
+      expect(SwiftGuest.getOwningPool(buildSwiftGuest({ guestClassRef }))).toBeUndefined();
+    });
+  });
 });

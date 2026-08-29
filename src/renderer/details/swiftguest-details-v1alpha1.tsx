@@ -4,7 +4,10 @@ import { maybe } from "../../common/utils";
 import { SwiftGPUNode } from "../api/kubeswift/swiftgpunode-v1alpha1";
 import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
+import { SwiftGuestPool } from "../api/kubeswift/swiftguestpool-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { deleteCascade } from "../components/guest-actions";
+import { classifyGuest } from "../components/guest-status";
 import { existingObjectRef, objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
 
@@ -26,6 +29,11 @@ const {
 } = Renderer;
 
 const notAvailable = "N/A";
+
+/** Why the Managed By row matters, in the row itself rather than in a dialog nobody can amend. */
+const managedByTooltip =
+  "This guest is owned by a pool, which recreates it as soon as it is deleted on its own. Delete or scale the " +
+  "pool instead.";
 
 export interface SwiftGuestDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftGuest> {
   extension: Renderer.LensExtension;
@@ -51,6 +59,10 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
     const namespace = object.getNs();
     const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
     const gpuNodeStore = maybe(() => SwiftGPUNode.getStore<SwiftGPUNode>());
+    const condition = classifyGuest(spec, status);
+    const owningPool = SwiftGuest.getOwningPool(object);
+    const guestPoolStore = maybe(() => SwiftGuestPool.getStore<SwiftGuestPool>());
+    const cascade = deleteCascade({ name: object.getName(), namespace, spec, status });
 
     // A stale or not-yet-reconciled status can name a Node or Pod that is no
     // longer (or not yet) there; `nodesStore`/`podsStore` may also simply not
@@ -84,19 +96,40 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
         lookups: [{ name: gpuProfileName, namespace }],
       },
       { label: SwiftGPUNode.crd.plural, store: gpuNodeStore, lookups: [{ name: gpuNodeName }] },
+      {
+        label: SwiftGuestPool.crd.plural,
+        store: guestPoolStore,
+        namespaces: owningPool ? [owningPool.namespace] : [],
+        lookups: [{ name: owningPool?.name, namespace: owningPool?.namespace }],
+      },
     ]);
 
     const nodeIsLinkable = objectExists(nodesStore, nodeName);
     const podIsLinkable = objectExists(podsStore, podName, podNamespace);
     const gpuProfileRef = existingObjectRef(gpuProfileStore, SwiftGPUProfile.kind, gpuProfileName, namespace);
     const gpuNodeRef = existingObjectRef(gpuNodeStore, SwiftGPUNode.kind, gpuNodeName);
+    const owningPoolRef = existingObjectRef(
+      guestPoolStore,
+      SwiftGuestPool.kind,
+      owningPool?.name,
+      owningPool?.namespace,
+    );
 
     return (
       <>
         <DrawerTitle>Guest</DrawerTitle>
-        <DrawerItem name="Phase">
-          <WithTooltip>{SwiftGuest.getPhase(object) ?? notAvailable}</WithTooltip>
+        {/* The Phase row became a Condition row with M6 (SPEC-0010): the badge
+            says everything the phase said plus the one reading the phase cannot
+            express, `Stopping`, and its explanation is where a user finds out
+            why a greyed Start or Stop is greyed - the channel B5 keeps for a
+            user who never hovers a menu. The raw phase is still one row above,
+            in the host's own printer-column block (DESIGN.md section 3). */}
+        <DrawerItem name="Condition" labelsOnly>
+          <Badge className={condition.className} label={condition.state} tooltip={condition.explanation} />
         </DrawerItem>
+        {/* The field the user's own Start and Stop clicks write. A drawer
+            showing `Run Policy: Stopped` next to `Condition: Stopping` is the
+            complete and truthful account of a guest mid-transition. */}
         <DrawerItem name="Run Policy">
           <WithTooltip>{SwiftGuest.getRunPolicy(object) ?? notAvailable}</WithTooltip>
         </DrawerItem>
@@ -105,6 +138,27 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
         </DrawerItem>
         <DrawerItem name="Scheduler" hidden={!spec?.schedulerName}>
           <WithTooltip>{spec?.schedulerName}</WithTooltip>
+        </DrawerItem>
+        {/* What only KubeSwift's ownership model knows: a pool sets a controller
+            reference on the guests it creates and recreates any of them that is
+            deleted on its own, which turns a confusing outcome (the row comes
+            back) into an expected one. The host's own Delete confirmation has no
+            hook for this, so the extension says it where it owns the surface,
+            and permanently rather than only at the moment of deletion
+            (SPEC-0010, B13). */}
+        <DrawerItem name="Managed By" hidden={!owningPool}>
+          <WithTooltip tooltip={managedByTooltip}>
+            {owningPoolRef ? <LinkToObject objectRef={owningPoolRef} object={object} /> : owningPool?.name}
+          </WithTooltip>
+        </DrawerItem>
+        {/* The cascade of this guest's own deletion, computed from its own spec.
+            SwiftGuest carries no finalizers and the reconciler has no deletion
+            branch: everything that goes, goes by owner reference, and a snapshot
+            references its guest by name with no owner reference at all - which
+            is the behaviour a backup deserves and the one a user is most likely
+            to guess wrong. */}
+        <DrawerItem name="On Delete">
+          <WithTooltip>{`Removed: ${cascade.removed.join(", ")}. Kept: ${cascade.retained.join(", ")}.`}</WithTooltip>
         </DrawerItem>
 
         <DrawerTitle>References</DrawerTitle>

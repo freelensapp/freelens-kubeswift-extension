@@ -95,6 +95,16 @@ describe("Pre-review agent pass against the demo cluster", () => {
     let possibleUnlinkedReferences: pr.DrawerRow[] = [];
     let conditionsSectionCount = 0;
     let nonHumanizedDrawerValues: string[] = [];
+    let actionControls: pr.ActionControl[] = [];
+    let actionControlsCollectedAsLinks: string[] = [];
+
+    if (runAsserts) {
+      // Read before anything is clicked, and never hovered: the pass reports
+      // the write actions and their disabled reasons, and asserts that none of
+      // them was collected as a link (SPEC-0010).
+      actionControls = await pr.actionControls(frame);
+      actionControlsCollectedAsLinks = await pr.actionControlsCollectedAsLinks(frame);
+    }
 
     if (runAsserts) {
       const rows = await pr.inspectDrawerRows(frame);
@@ -136,6 +146,8 @@ describe("Pre-review agent pass against the demo cluster", () => {
           conditionsSectionCount,
           nonHumanizedListValues,
           nonHumanizedDrawerValues,
+          actionControls,
+          actionControlsCollectedAsLinks,
         },
       });
     } else {

@@ -87,6 +87,21 @@ and an "Unknown" badge with "N/A" in K8s and Guests is a **correct steady
 state** there rather than a symptom: it is the member no gateway has
 reported on.
 
+**From M6 on the Guests page WRITES** (SPEC-0010), and the demo cluster is
+a real cluster: Start and Stop are in the row kebab and in the drawer
+toolbar, and confirming their dialog really patches `spec.runPolicy` and
+really deletes a launcher pod. Nothing happens on a single click - every
+action opens a dialog that lists the API calls it is about to make, and
+cancelling writes nothing - so the surface is safe to explore, and the
+dialogs are the part worth reading closely: they are where this extension
+is furthest ahead of the upstream UI. Three things to look at that no
+assert covers: the wording of the dialogs, the reason a disabled Start or
+Stop gives (it is in the item's tooltip attribute and, durably, in the
+drawer's Condition row), and whether `Stopping` reads correctly at a
+glance next to `Run Policy: Stopped`. The demo cluster has no KubeSwift
+controller, so a stopped guest stays `Stopping` forever there: that is
+the fixture, not a bug.
+
 Feedback goes into one issue per finding (or one umbrella issue per
 session), referenced from the spec of the feature it concerns; the spec's
 "Manual verification" section records date, tester, and result.

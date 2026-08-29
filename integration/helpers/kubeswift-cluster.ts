@@ -101,6 +101,10 @@ export function fixturesReady(): boolean {
     ["swiftsandboxes.sandbox.kubeswift.io", "e2e-sandbox-running"],
     ["swiftsandboxpools.sandbox.kubeswift.io", "e2e-sandbox-pool"],
     ["clusters.fleet.kubeswift.io", "e2e-fleet-edge-1"],
+    // M6: the guest action subjects the write cases patch and delete
+    // (SPEC-0010). Probing one of them keeps a cluster left over from an older
+    // checkout from being reported as ready.
+    ["swiftguests.swift.kubeswift.io", "e2e-guest-action-running"],
   ];
 
   return probes.every(([resource, name]) => {
@@ -122,6 +126,40 @@ export function fixturesReady(): boolean {
 
     return status === 0;
   });
+}
+
+/**
+ * Runs `kubectl` against the E2E cluster and returns its exit status and
+ * output, without ever touching the developer's own kubeconfig.
+ *
+ * The read-only cases of this suite never needed it - what the UI showed was the
+ * assertion - but the M6 write cases do: the point of a write case is that the
+ * cluster changed, and only the API server can say so (SPEC-0010).
+ */
+export function kubectlE2E(...args: string[]): { status: number; stdout: string; stderr: string } {
+  const { status, stdout, stderr } = spawnSync(
+    "kubectl",
+    ["--kubeconfig", kubeconfigPath(), "--context", E2E_KUBE_CONTEXT, "--namespace", E2E_NAMESPACE, ...args],
+    { encoding: "utf8" },
+  );
+
+  return { status: status ?? 1, stdout: (stdout ?? "").trim(), stderr: (stderr ?? "").trim() };
+}
+
+/** One field of one object, read with a jsonpath. Throws when the object is not there. */
+export function kubectlField(resource: string, name: string, jsonPath: string): string {
+  const { status, stdout, stderr } = kubectlE2E("get", resource, name, "--output", `jsonpath=${jsonPath}`);
+
+  if (status !== 0) {
+    throw new Error(`Could not read ${jsonPath} of ${resource}/${name}: ${stderr || "kubectl failed"}`);
+  }
+
+  return stdout;
+}
+
+/** True when the object is still in the cluster. The negative half of a write assert. */
+export function kubectlExists(resource: string, name: string): boolean {
+  return kubectlE2E("get", resource, name).status === 0;
 }
 
 let cachedNodeName: string | undefined;
@@ -487,6 +525,123 @@ export async function expectDetails(frame: Frame, name: string, ...texts: string
   }
 
   await closeDetails(frame);
+}
+
+/**
+ * Opens a row's kebab menu and waits for its items.
+ *
+ * The menu is rendered through a portal (`MenuActions` passes `usePortal` for
+ * every non-toolbar menu), so its items are not inside the row: they are matched
+ * frame-wide under `.Menu`.
+ */
+export async function openRowMenu(frame: Frame, name: string): Promise<void> {
+  const row = tableRow(frame, name);
+
+  await row.waitFor({ state: "visible", timeout: ELEMENT_TIMEOUT });
+  await row.locator(".TableCell.menu .Icon").first().click();
+  await frame.waitForSelector(".Menu .MenuItem", { state: "visible", timeout: ELEMENT_TIMEOUT });
+}
+
+/** Closes an open row menu without clicking any of its items. */
+export async function closeRowMenu(frame: Frame): Promise<void> {
+  await frame.press("body", "Escape");
+  await frame.waitForSelector(".Menu .MenuItem", { state: "hidden", timeout: ELEMENT_TIMEOUT }).catch(() => {});
+}
+
+/** One action menu item, in whichever surface it was read from. */
+export interface ActionMenuItem {
+  testId: string | null;
+  /** The item's own tooltip text: the verb, or the verb and the guard's reason. */
+  title: string | null;
+  disabled: boolean;
+}
+
+/**
+ * The extension's action items of the currently open menu or toolbar.
+ *
+ * `title` is where the guard's reason is read from: a disabled `MenuItem`
+ * carries `pointer-events: none`, so the host's hover tooltip cannot be shown
+ * for it in either surface (spike S7), and the attribute is the channel that
+ * survives.
+ */
+export async function actionMenuItems(frame: Frame, root: string): Promise<ActionMenuItem[]> {
+  const selector = `${root} .MenuItem[data-testid^="swiftguest-"]`;
+
+  // The host renders its own items and the extension's in the same menu, and in
+  // the toolbar it builds them from a reaction that fires on mount, so a caller
+  // that reads the DOM in the same tick can race an empty list. A caller that
+  // expects none gets one bounded wait and an empty array, which is the same
+  // answer it would have had.
+  await frame.waitForSelector(selector, { state: "attached", timeout: ELEMENT_TIMEOUT }).catch(() => {});
+
+  return frame.$$eval(selector, (elements) =>
+    elements.map((element) => ({
+      testId: element.getAttribute("data-testid"),
+      title: element.getAttribute("title"),
+      disabled: element.classList.contains("disabled"),
+    })),
+  );
+}
+
+/** The text of the open confirmation dialog, as one line. */
+export async function confirmDialogText(frame: Frame): Promise<string> {
+  const dialog = frame.locator('[data-testid="confirmation-dialog"]');
+
+  await dialog.waitFor({ state: "visible", timeout: ELEMENT_TIMEOUT });
+
+  return (await dialog.innerText()).replace(/\s+/g, " ").trim();
+}
+
+/** Confirms the open dialog, and waits for it to go away. */
+export async function confirmDialog(frame: Frame): Promise<void> {
+  await frame.locator('[data-testid="confirm"]').click();
+  await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "hidden", timeout: ELEMENT_TIMEOUT });
+}
+
+/** Dismisses the open dialog without confirming it. */
+export async function cancelDialog(frame: Frame): Promise<void> {
+  await frame.locator('[data-testid="confirmation-dialog"] .cancel').click();
+  await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "hidden", timeout: ELEMENT_TIMEOUT });
+}
+
+/**
+ * Waits for a notification of `status` ("ok" or "error") whose text contains
+ * `expected`, and returns it.
+ *
+ * Every write in M6 ends with one, which is the point: an action that changed
+ * nothing visible must still answer, and a failed one must never be silent.
+ */
+export async function expectNotification(frame: Frame, status: "ok" | "error", expected: string): Promise<string> {
+  const notification = frame.locator(`.Notifications .notification.${status}`, { hasText: expected }).first();
+
+  try {
+    await notification.waitFor({ state: "visible", timeout: ELEMENT_TIMEOUT });
+  } catch {
+    const all = await frame.locator(".Notifications .notification").allInnerTexts();
+    const screenshot = await captureScreenshot(frame, `notification-${status}-${expected.slice(0, 20)}`);
+
+    throw new Error(
+      `No ${status} notification containing "${expected}". Notifications on screen: ` +
+        `${all.length > 0 ? all.map((text) => text.replace(/\s+/g, " ").trim()).join(" | ") : "(none)"}.` +
+        (screenshot ? ` Screenshot: ${screenshot}` : ""),
+    );
+  }
+
+  return (await notification.innerText()).replace(/\s+/g, " ").trim();
+}
+
+/** Closes every notification on screen, so the next case reads its own. */
+export async function clearNotifications(frame: Frame): Promise<void> {
+  const closers = frame.locator(".Notifications .notification .close");
+
+  for (let remaining = await closers.count(); remaining > 0; remaining--) {
+    await closers
+      .first()
+      .click()
+      .catch(() => {});
+  }
+
+  await frame.waitForTimeout(500);
 }
 
 /** Closes the detail panel: the drawer listens for Escape. */

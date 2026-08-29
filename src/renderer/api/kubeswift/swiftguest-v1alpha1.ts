@@ -261,8 +261,12 @@ export interface SwiftGuestStatus {
   storage?: SwiftGuestStorageStatus;
 }
 
+// `NamespaceScopedMetadata` rather than the generic `KubeObjectMetadata` this
+// model was written with, matching every model since M3: a SwiftGuest is always
+// namespaced, so `getNs()` returns a string rather than `string | undefined`,
+// and the views stop carrying a fallback for a case the API cannot produce.
 export class SwiftGuest extends Renderer.K8sApi.LensExtensionKubeObject<
-  Renderer.K8sApi.KubeObjectMetadata,
+  Renderer.K8sApi.NamespaceScopedMetadata,
   SwiftGuestStatus,
   SwiftGuestSpec
 > {
@@ -327,6 +331,30 @@ export class SwiftGuest extends Renderer.K8sApi.LensExtensionKubeObject<
     }
 
     return undefined;
+  }
+
+  /**
+   * The SwiftGuestPool that owns this guest, when one does.
+   *
+   * A pool sets a CONTROLLER reference on the guests it creates, and recreates
+   * any of them that is deleted on its own, which is the one thing about
+   * deleting a guest that only KubeSwift's ownership model knows (SPEC-0010,
+   * the Managed By row). A plain (non-controller) owner reference is ignored:
+   * it expresses a cascade, not the management relationship this row is about.
+   *
+   * The kind is matched together with its API group, the same rule the detail
+   * and menu registrations use, so an unrelated `SwiftGuestPool` from another
+   * project could never be reported as this guest's manager.
+   */
+  static getOwningPool(object: SwiftGuest): { name: string; namespace: string } | undefined {
+    const owner = object.metadata?.ownerReferences?.find(
+      (reference) =>
+        reference.controller === true &&
+        reference.kind === "SwiftGuestPool" &&
+        reference.apiVersion?.startsWith("swift.kubeswift.io/"),
+    );
+
+    return owner?.name ? { name: owner.name, namespace: object.getNs() } : undefined;
   }
 
   /**

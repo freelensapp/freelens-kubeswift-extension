@@ -32,6 +32,48 @@ spec:
       # above), so this image reference is never resolved.
       image: launcher.invalid/kubeswift-e2e/unused:none
 ---
+# The launcher pod of swiftguest/e2e-guest-action-running, the M6 Stop subject
+# (SPEC-0010). The E2E case really deletes it, and `cluster-up.sh` re-creates it
+# on the next run, which is what makes the write case repeatable. Same
+# unschedulable pattern as the pod above: what the action needs is for the
+# object to exist, not for it to run.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-guest-action-running-launcher
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+    # The label `swiftctl` selects on. This extension deliberately selects by
+    # `status.podRef` instead (SPEC-0010, spike S6); the label is here because a
+    # real launcher pod carries it, so nothing in this fixture set quietly
+    # depends on its absence.
+    swift.kubeswift.io/guest: e2e-guest-action-running
+spec:
+  nodeSelector:
+    kubeswift-e2e.freelensapp.github.io/no-such-node: "true"
+  containers:
+    - name: launcher
+      image: launcher.invalid/kubeswift-e2e/unused:none
+---
+# The launcher pod of swiftguest/e2e-guest-action-halfstopped: the pod a stop
+# whose second write failed left behind, and the one the B4 case deletes without
+# patching anything.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-guest-action-halfstopped-launcher
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+    swift.kubeswift.io/guest: e2e-guest-action-halfstopped
+spec:
+  nodeSelector:
+    kubeswift-e2e.freelensapp.github.io/no-such-node: "true"
+  containers:
+    - name: launcher
+      image: launcher.invalid/kubeswift-e2e/unused:none
+---
 # The launcher pod of swiftsandbox/e2e-sandbox-running (status.podRef in
 # status/swiftsandbox-e2e-sandbox-running.yaml), named after the sandbox
 # because that one boots cold.

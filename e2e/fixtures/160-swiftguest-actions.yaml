@@ -1,0 +1,117 @@
+# Subjects of the M6 guest action cases (SPEC-0010). Dedicated objects, not the
+# M1 guests: these are patched and destroyed by the suite, while every earlier
+# case reads e2e-guest-running and would start failing the moment its run policy
+# changed under it. `e2e/scripts/cluster-up.sh` is idempotent and re-applies
+# everything, so a second run starts from these values again.
+#
+# One subject per branch the cases need, and each one is also a fixture the
+# classifier reads: the half-stopped guest renders `Stopping` before any test has
+# clicked anything, which is the cheapest possible check of the derived state.
+# The Stop subject, and the only fixture that exercises the two-write sequence,
+# the auto-restart warning (B6) and the address line (B7) at once: `Always` is
+# the policy a stop replaces irreversibly, `nat` is the binding under which the
+# address goes with the pod, and the status names a launcher pod the fixtures
+# really create.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-action-running
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Always
+  network:
+    binding: nat
+    ports:
+      - name: ssh
+        port: 22
+        targetPort: 22
+        protocol: TCP
+        expose: ClusterIP
+---
+# The state a failed second write leaves behind: the policy is already `Stopped`
+# while the launcher pod is still there and the status still reports Running.
+# It is the B4 subject (the dialog drops the no-op patch and offers only the
+# deletion) and the one object that renders `Stopping` with nothing having
+# clicked anything.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-action-halfstopped
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Stopped
+---
+# The B3 "already gone" subject: its status names a launcher pod the fixtures
+# deliberately never create, so the click-time read finds nothing and the dialog
+# reports the pod as already gone instead of offering to delete it. The same
+# "name something that does not exist" idiom the M5 credential-Secret
+# counter-assert uses, with no `kubectl` setup and no ordering dependency.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-action-orphanref
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Running
+---
+# The Start subject, and the Stop-disabled subject: policy `Stopped`, phase
+# `Stopped`, no launcher pod recorded. It is pinned to a node and asks for a GPU
+# profile so that the Start dialog's context line (B8) has all three of its
+# facts to say.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-action-stopped
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-large
+  imageRef:
+    name: e2e-ubuntu-2404
+  gpuProfileRef:
+    name: e2e-gpu-profile-hgx
+  nodeName: __NODE_NAME__
+  osType: linux
+  runPolicy: Stopped
+---
+# The Delete subject and, after it, the stale-object subject: the case deletes
+# it through the host's own Delete and then fires Stop from the row that has not
+# gone yet. It carries no status at all, which is also what a guest looks like
+# between creation and the first reconciliation.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-action-delete
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Running

@@ -1,19 +1,23 @@
 .page {
   :global(.TableCell) {
-    &.phase {
-      flex-grow: 0.5;
-    }
-
     &.node {
-      flex-grow: 0.8;
+      flex-grow: 1;
     }
 
     &.ip {
-      flex-grow: 0.6;
+      flex-grow: 1;
     }
 
     &.restarts {
-      flex-grow: 0.3;
+      flex-grow: 0.5;
+    }
+
+    &.condition {
+      flex-grow: 0.7;
+    }
+
+    &.status {
+      flex-grow: 1.5;
     }
 
     &.age {

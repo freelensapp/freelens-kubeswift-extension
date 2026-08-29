@@ -69,7 +69,7 @@ describe("KubeSwift views against the fixture cluster", () => {
   }, TIMEOUT);
 
   it(
-    "lists the SwiftGuests with their phase, node and address",
+    "lists the SwiftGuests with their condition, node and address",
     async () => {
       await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
 
@@ -84,6 +84,8 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       // The guest whose status was injected: running, scheduled, addressable,
       // and restarted twice (the IP and the restart count are adjacent cells).
+      // "Running" is read from the Condition badge since M6 replaced the plain
+      // Phase column with the classifier's Condition/Status pair (SPEC-0010).
       // The node name is the E2E cluster's real (single) node, substituted
       // into the fixture by cluster-up.sh's inject_statuses() (issue #23);
       // it is "kubeswift-e2e-control-plane" here because that is what kind
@@ -1299,6 +1301,360 @@ describe("KubeSwift views against the fixture cluster", () => {
       }
 
       await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  // ---------------------------------------------------------------------------
+  // M6 (SPEC-0010): the first cases in this suite that WRITE.
+  //
+  // What the fixture cluster proves: the CRDs are real and the API server
+  // validates and stores patches exactly as it would in production, so these
+  // cases prove the patch is well formed and accepted, that the object changed,
+  // that the pod was deleted, that the watch carried the change back into the
+  // list without a reload, and that the derived `Stopping` state renders. They
+  // also prove the negatives that matter most: that cancelling writes nothing,
+  // that a disabled action cannot be clicked, and that a failed write is
+  // reported.
+  //
+  // What it cannot prove, and what therefore stays in the spec's manual
+  // verification list: anything a controller would do next. No reconciler runs
+  // here, so a stopped guest never reaches `phase: Stopped` and a started one
+  // never boots. These cases must not assert otherwise - and the `Stopping`
+  // badge a real cluster would show for a few seconds is PERMANENT here, which
+  // is what makes it cheap to assert. Nobody should later "fix" the missing
+  // phase change.
+  //
+  // They run in this order because they mutate their own subjects: the cancel
+  // case needs e2e-guest-action-running untouched, and the stale-object case
+  // deletes e2e-guest-action-orphanref after its own read-only case is done.
+  // `e2e/scripts/cluster-up.sh` is idempotent, so a second run starts clean.
+  it(
+    "shows the guest actions in the row menu and in the drawer toolbar",
+    async () => {
+      // One registration reaches both surfaces (W5), and the guard decides per
+      // object, in both of them. No writes here.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-action-running");
+
+      const runningRowItems = await cluster.actionMenuItems(frame, ".Menu");
+
+      expect(runningRowItems.map((item) => item.testId).sort()).toEqual([
+        "swiftguest-start-action",
+        "swiftguest-stop-action",
+      ]);
+
+      const runningStart = runningRowItems.find((item) => item.testId === "swiftguest-start-action");
+      const runningStop = runningRowItems.find((item) => item.testId === "swiftguest-stop-action");
+
+      // A guest that is set to run cannot be started, and says why (B5). The
+      // reason is read from the item's own tooltip attribute rather than from a
+      // hover: a disabled `MenuItem` carries `pointer-events: none`, so the
+      // host's hover tooltip cannot be shown for it in either surface (spike
+      // S7, recorded in SPEC-0010).
+      expect(runningStart?.disabled).toBe(true);
+      expect(runningStart?.title).toContain("already set to run");
+      expect(runningStop?.disabled).toBe(false);
+
+      // The E2E half of W4: the click is stopped by the stylesheet, not only by
+      // the handler, so Playwright's actionability check refuses it.
+      let clickWasRefused = false;
+
+      try {
+        await frame.locator('.Menu [data-testid="swiftguest-start-action"]').click({ timeout: 3000 });
+      } catch {
+        clickWasRefused = true;
+      }
+
+      if (!clickWasRefused) {
+        throw new Error("A disabled action item must not be clickable.");
+      }
+
+      await cluster.closeRowMenu(frame);
+
+      // The same registration, in the drawer toolbar.
+      await pr.openDrawer(frame, "e2e-guest-action-running");
+
+      const toolbarItems = await cluster.actionMenuItems(frame, ".Drawer.KubeObjectDetails .MenuActions");
+
+      expect(toolbarItems.map((item) => item.testId).sort()).toEqual([
+        "swiftguest-start-action",
+        "swiftguest-stop-action",
+      ]);
+      expect(toolbarItems.find((item) => item.testId === "swiftguest-start-action")?.disabled).toBe(true);
+      expect(toolbarItems.find((item) => item.testId === "swiftguest-start-action")?.title).toContain(
+        "already set to run",
+      );
+
+      await cluster.closeDetails(frame);
+
+      // And the reverse verdict on the stopped subject: Start offered, Stop
+      // refused with the reason that makes the refusal legible.
+      await cluster.openRowMenu(frame, "e2e-guest-action-stopped");
+
+      const stoppedRowItems = await cluster.actionMenuItems(frame, ".Menu");
+      const stoppedStop = stoppedRowItems.find((item) => item.testId === "swiftguest-stop-action");
+
+      expect(stoppedRowItems.find((item) => item.testId === "swiftguest-start-action")?.disabled).toBe(false);
+      expect(stoppedStop?.disabled).toBe(true);
+      expect(stoppedStop?.title).toContain("already stopped, and no launcher pod is recorded");
+
+      await cluster.closeRowMenu(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "cancels an action without writing anything",
+    async () => {
+      // The cheapest honest test of "nothing happens on a single click": the
+      // dialog is not decoration, it is the gate.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-action-running");
+      await frame.locator('.Menu [data-testid="swiftguest-stop-action"]').click();
+      await cluster.confirmDialogText(frame);
+      await cluster.cancelDialog(frame);
+
+      expect(
+        cluster.kubectlField("swiftguests.swift.kubeswift.io", "e2e-guest-action-running", "{.spec.runPolicy}"),
+      ).toBe("Always");
+      expect(cluster.kubectlExists("pods", "e2e-guest-action-running-launcher")).toBe(true);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "stops a guest, patching the run policy and deleting the launcher pod",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+      await cluster.openRowMenu(frame, "e2e-guest-action-running");
+      await frame.locator('.Menu [data-testid="swiftguest-stop-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      // Both writes, each with its field path and value transition or its kind
+      // and name (W1).
+      expect(dialog).toContain("spec.runPolicy: Always -> Stopped");
+      expect(dialog).toContain("Delete Pod kubeswift-e2e/e2e-guest-action-running-launcher");
+      // The pod was READ before being offered for deletion (B3), so the dialog
+      // describes the cluster rather than the status. The phase it names is
+      // Pending rather than Running because the fixture launcher pods are
+      // deliberately unschedulable (55-launcher-pods.yaml) - what this asserts
+      // is that a real read happened, not a phase this cluster cannot produce.
+      expect(dialog).toContain("will be deleted");
+      // What the stop costs (B6, B7), each line true of this subject.
+      expect(dialog).toContain("run policy Always is replaced");
+      expect(dialog).toContain("10.244.1.31 goes with the pod");
+      expect(dialog).toContain("stopping is not deleting");
+
+      await cluster.confirmDialog(frame);
+
+      // The success notification names what was written, not what is hoped for
+      // (B11).
+      await cluster.expectNotification(frame, "ok", "Run policy set to Stopped and launcher pod");
+
+      // The cluster really changed: both writes landed.
+      expect(
+        cluster.kubectlField("swiftguests.swift.kubeswift.io", "e2e-guest-action-running", "{.spec.runPolicy}"),
+      ).toBe("Stopped");
+      expect(cluster.kubectlExists("pods", "e2e-guest-action-running-launcher")).toBe(false);
+
+      // And the derived state renders, from the watch, with no reload (B12).
+      // It is permanent here because no controller ever writes `phase: Stopped`
+      // in this cluster - see the note above this block.
+      await cluster.expectRow(frame, "e2e-guest-action-running", "Stopping");
+
+      const stoppingBadges = await frame
+        .locator(".TableRow", { hasText: "e2e-guest-action-running" })
+        .first()
+        .locator(".warning")
+        .allInnerTexts();
+
+      if (!stoppingBadges.some((text) => text.trim() === "Stopping")) {
+        throw new Error(
+          `The Stopping badge must carry the host's "warning" class, got: ${JSON.stringify(stoppingBadges)}`,
+        );
+      }
+
+      // The drawer tells the whole story without a toast: the field the click
+      // wrote, next to the state that field produced.
+      await pr.openDrawer(frame, "e2e-guest-action-running");
+
+      const rows = await pr.inspectDrawerRows(frame);
+
+      expect(rows.find((row) => row.label === "Run Policy")?.text).toBe("Stopped");
+      expect(rows.find((row) => row.label === "Condition")?.text).toBe("Stopping");
+
+      await cluster.closeDetails(frame);
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "offers only the missing write when a guest is already half-stopped",
+    async () => {
+      // The state a stop whose second write failed leaves behind, which the
+      // fixtures ship directly (`runPolicy: Stopped` with the launcher pod still
+      // there): re-stopping it must patch nothing and delete the pod, which is
+      // what makes "run it again, it will finish the job" a true statement
+      // rather than a hopeful one (B4, W9).
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-action-halfstopped");
+
+      const items = await cluster.actionMenuItems(frame, ".Menu");
+
+      expect(items.find((item) => item.testId === "swiftguest-stop-action")?.disabled).toBe(false);
+
+      await frame.locator('.Menu [data-testid="swiftguest-stop-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("Delete Pod kubeswift-e2e/e2e-guest-action-halfstopped-launcher");
+      expect(dialog).not.toContain("spec.runPolicy");
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", "Launcher pod e2e-guest-action-halfstopped-launcher deleted");
+
+      expect(cluster.kubectlExists("pods", "e2e-guest-action-halfstopped-launcher")).toBe(false);
+      expect(
+        cluster.kubectlField("swiftguests.swift.kubeswift.io", "e2e-guest-action-halfstopped", "{.spec.runPolicy}"),
+      ).toBe("Stopped");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "says the launcher pod is already gone when it is",
+    async () => {
+      // The counter-case of the stop above: this subject's `status.podRef` names
+      // a pod the fixtures deliberately never create, so the click-time read
+      // finds nothing and the dialog lists only the patch (B3). Together the two
+      // pin the rule that the dialog describes the cluster, not the status.
+      // Nothing is written: the case cancels.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-action-orphanref");
+      await frame.locator('.Menu [data-testid="swiftguest-stop-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("already gone");
+      expect(dialog).toContain("spec.runPolicy: Running -> Stopped");
+      expect(dialog).not.toContain("Delete Pod");
+
+      await cluster.cancelDialog(frame);
+
+      expect(
+        cluster.kubectlField("swiftguests.swift.kubeswift.io", "e2e-guest-action-orphanref", "{.spec.runPolicy}"),
+      ).toBe("Running");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "starts a stopped guest",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+      await cluster.openRowMenu(frame, "e2e-guest-action-stopped");
+      await frame.locator('.Menu [data-testid="swiftguest-start-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("spec.runPolicy: Stopped -> Running");
+      // What the start will schedule (B8): the guest class that decides the
+      // sizing, the GPU the profile will claim, and the node the guest is
+      // pinned to.
+      expect(dialog).toContain("guest class e2e-large");
+      expect(dialog).toContain("claim a GPU through the profile e2e-gpu-profile-hgx");
+      expect(dialog).toContain(`pinned to the node ${cluster.clusterNodeName()}`);
+
+      await cluster.confirmDialog(frame);
+
+      // The whole point of B11 is here: without this notification the case
+      // would be asserting that a successful action produced no visible change
+      // at all.
+      await cluster.expectNotification(frame, "ok", "Run policy set to Running");
+
+      expect(
+        cluster.kubectlField("swiftguests.swift.kubeswift.io", "e2e-guest-action-stopped", "{.spec.runPolicy}"),
+      ).toBe("Running");
+
+      // The honest assert: nothing in this cluster boots a VM, so the badge
+      // still reads Stopped. The action changed the policy and nothing else.
+      await cluster.expectRow(frame, "e2e-guest-action-stopped", "Stopped");
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "reports a failed action instead of failing silently",
+    async () => {
+      // The case that pins W9, and the one behaviour no sibling extension has
+      // today: they `await store.patch(...)` with no `try`/`catch`, so a
+      // rejected write is an unhandled promise rejection and a UI that appears
+      // to have done nothing.
+      //
+      // The object is deleted from under an OPEN dialog rather than before it,
+      // which is both deterministic and the real shape of the race: the row
+      // itself disappears within a watch round-trip, so a stale row cannot be
+      // clicked reliably, while a dialog built from a snapshot stays.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+      await cluster.openRowMenu(frame, "e2e-guest-action-orphanref");
+      await frame.locator('.Menu [data-testid="swiftguest-stop-action"]').click();
+      await cluster.confirmDialogText(frame);
+
+      expect(cluster.kubectlE2E("delete", "swiftguests.swift.kubeswift.io", "e2e-guest-action-orphanref").status).toBe(
+        0,
+      );
+
+      await cluster.confirmDialog(frame);
+
+      // The API server's own words, prefixed with the one sentence that says
+      // what happens next (B10), never replaced by ours.
+      const message = await cluster.expectNotification(frame, "error", "not found");
+
+      expect(message).toContain("gone from the cluster");
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "deletes a guest and drops its row",
+    async () => {
+      // Through the HOST's Delete, which it renders in both surfaces for every
+      // kind this extension registers a store for - proven live before the
+      // implementation (spike S3), which is why the extension registers no
+      // Delete of its own.
+      //
+      // Honest because SwiftGuest has no finalizers: in a cluster with no
+      // controller a finalized kind would hang in `Terminating` forever, and
+      // this case would be asserting the opposite of what a real cluster does.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-action-delete");
+      await frame.locator(".Menu .MenuItem", { hasText: "Delete" }).first().click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("Delete SwiftGuest kubeswift-e2e/e2e-guest-action-delete");
+
+      await cluster.confirmDialog(frame);
+
+      // The row goes when the DELETED watch event arrives, through the host's
+      // own one-second debounce, which is why this waits rather than reads.
+      await frame
+        .locator(".TableRow", { hasText: "e2e-guest-action-delete" })
+        .first()
+        .waitFor({ state: "detached", timeout: 60_000 });
+      await cluster.expectNoRow(frame, "e2e-guest-action-delete");
+
+      expect(cluster.kubectlExists("swiftguests.swift.kubeswift.io", "e2e-guest-action-delete")).toBe(false);
     },
     TIMEOUT,
   );

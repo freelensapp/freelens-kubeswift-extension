@@ -74,6 +74,17 @@ VMs), driven through a real Freelens by Playwright's Electron API.
   namespace, then opens every KubeSwift page and asserts the fixture rows and
   one detail panel per CRD.
 
+**Since M6 the suite also writes** (SPEC-0010): a handful of cases patch
+`spec.runPolicy`, delete a launcher pod and delete a guest, for real, against
+dedicated fixtures nothing else reads (`160-swiftguest-actions.yaml`). They
+assert the UI **and** read the result back with `kubectl`, because the point of
+a write case is that the cluster changed. What they must never assert is what a
+controller would do next: no reconciler runs here, so a stopped guest never
+reaches `phase: Stopped` and the derived `Stopping` badge is permanent - which
+is what makes it cheap to assert, and what nobody should later "fix". The
+pre-review pass (layer 4) stays read-only by construction and by assert, because
+it runs against the demo cluster a human reviewer is about to walk through.
+
 A freshly connected cluster shows the `default` namespace only, not all of
 them, so the suite moves the namespace filter once after connecting.
 Otherwise every namespaced list looks empty while cluster-scoped ones (the

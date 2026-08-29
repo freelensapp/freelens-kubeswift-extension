@@ -38,6 +38,8 @@ import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./de
 import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
 import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
 import { KubeSwiftIcon } from "./icons/kubeswift";
+import { SwiftGuestStartMenuItem as SwiftGuestStartMenuItemV1alpha1 } from "./menus/swiftguest-start-menu-item-v1alpha1";
+import { SwiftGuestStopMenuItem as SwiftGuestStopMenuItemV1alpha1 } from "./menus/swiftguest-stop-menu-item-v1alpha1";
 import { FleetClustersPage as FleetClustersPageV1alpha1 } from "./pages/fleetclusters-page-v1alpha1";
 import { SwiftGPUNodesPage as SwiftGPUNodesPageV1alpha1 } from "./pages/swiftgpunodes-page-v1alpha1";
 import { SwiftGPUProfilesPage as SwiftGPUProfilesPageV1alpha1 } from "./pages/swiftgpuprofiles-page-v1alpha1";
@@ -215,6 +217,44 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       components: {
         Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
           <FleetClusterDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+  ];
+
+  // The extension's first write surface (M6, SPEC-0010). Two registrations
+  // rather than one component emitting two items: the host's optional `visible`
+  // flag is a registration-level `IComputedValue` with no access to the object,
+  // so it cannot express a per-object guard anyway, and one file per verb keeps
+  // each guard, each dialog and each error message next to the code that uses
+  // it. The host renders one registration in BOTH surfaces - the list row kebab
+  // (`renderItemMenu`) and the detail drawer's toolbar (`toolbar={true}`) - so
+  // the two can never drift apart.
+  //
+  // No Delete of our own: the host already renders one for every kind this
+  // extension registers a store for, in both surfaces, and two items labelled
+  // Delete in one kebab is a worse outcome than one generic message. What the
+  // extension adds instead - who owns this guest, and what its deletion
+  // cascades to - lives in the drawer, where it owns the surface.
+  //
+  // Matching is on kind AND full apiVersion, so no other project's SwiftGuest
+  // could ever receive these.
+  kubeObjectMenuItems = [
+    {
+      kind: SwiftGuestV1alpha1.kind,
+      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
+      components: {
+        MenuItem: (props: { object: any; toolbar?: boolean }) => (
+          <SwiftGuestStartMenuItemV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    {
+      kind: SwiftGuestV1alpha1.kind,
+      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
+      components: {
+        MenuItem: (props: { object: any; toolbar?: boolean }) => (
+          <SwiftGuestStopMenuItemV1alpha1 {...props} extension={this} />
         ),
       },
     },

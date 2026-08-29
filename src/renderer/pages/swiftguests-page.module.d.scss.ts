@@ -1,10 +1,11 @@
 declare const classNames: {
   readonly page: "page";
   readonly tableCell: "tableCell";
-  readonly phase: "phase";
   readonly node: "node";
   readonly ip: "ip";
   readonly restarts: "restarts";
+  readonly condition: "condition";
+  readonly status: "status";
   readonly age: "age";
 };
 export = classNames;

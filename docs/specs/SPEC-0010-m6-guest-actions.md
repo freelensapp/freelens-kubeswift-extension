@@ -2,7 +2,7 @@
 
 - **Status:** Approved (Roberto, 2026-08-29, in chat, with the standing
   directive to outdo the upstream UI where possible; better-than-upstream pass
-  folded in before merge)
+  folded in before merge); implementation in PR
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (schema re-read at `main`, see
   "Upstream recon"); UX reference kubeswift-ui `v0.12.3`
@@ -1095,7 +1095,102 @@ org is the **combination**.
 ## Notes and deviations
 
 Filled during implementation when reality diverges from the plan. The recon that
-produced this spec follows.
+produced this spec follows the implementation notes.
+
+### Feasibility gates: the verdicts (2026-08-29)
+
+All seven were run before the implementation was finished, as throwaway
+Playwright suites (`e2e/__tests__/spike-m6.tests.ts`, deleted afterwards)
+against a packed Freelens `v1.10.3` and the `kubeswift-e2e` fixture cluster -
+the SPEC-0008 `logTabStore` precedent. Two of them made the implementation
+change; both changes are the fallback this spec had already named.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| S1 | **PASS.** The whole chain works from an extension menu item | Stop on `e2e-guest-action-running`: the dialog opened from `ConfirmDialog.open`, `store.patch(..., "merge")` was accepted, the pod delete went through, and one `Notifications.ok` said "Run policy set to Stopped and launcher pod e2e-guest-action-running-launcher deleted". `kubectl` read back `{.spec.runPolicy}=Stopped` and the pod gone, 4.3s after the click |
+| S2 | **PASS, and the assumption behind W6 is confirmed rather than assumed** | `kubectl patch --type=merge` on a `swiftguest` is accepted; `--type=strategic` is refused by the API server with "application/strategic-merge-patch+json is not supported by swift.kubeswift.io/v1alpha1, Kind=SwiftGuest"; an out-of-enum value is refused with the enum listed; and the W8 escape hatch (`json` patch with a `test` op) works, which is worth knowing for the M6 forms |
+| S3 | **PASS. The host's Edit and Delete reach the list row kebab too** | The kebab of every guest row holds four items: our Start and Stop, then `menu-action-edit-for-<selfLink>` and `menu-action-delete-for-<selfLink>`. The host's confirmation reads "Delete SwiftGuest kubeswift-e2e/e2e-guest-action-delete from kind-kubeswift-e2e?" and the object was really deleted. **The fallback branch (an extension Delete titled "Delete Guest") is therefore NOT taken**, and no Delete of our own is registered |
+| S4 | **A 403 produces TWO notifications unless the flag is read; the named fallback is implemented** | With a read-only ServiceAccount kubeconfig, a refused pod delete produced exactly one notification once the extension skipped its own: the host's global toast, carrying the API server's own words ("pods ... is forbidden: User ... cannot delete resource ... in the namespace ..."). `isUsedForNotification` is a public property of `JsonApiErrorParsed` and is reachable, so `apiFailureFacts` reads it and the menu items stay quiet when it is set |
+| S5 | **PASS. The watch delivers, and no reload is needed** | After our own write the row read `Stopping` **350 ms** after the click, and the drawer read `Condition: Stopping` next to `Run Policy: Stopped`. A deleted row lingered **1168 ms** before disappearing, which is the host's own one-second debounce (W2's corollary) and not something to fix. `getStore()` was not observed throwing, and the click handler guards it anyway |
+| S6 | **The `podsApi.get` half FAILED as specified, and the named fallback is implemented** | For a `podRef` naming a pod that does not exist, `podsApi.get` **throws** rather than returning `null`: `KubeApi.get` calls `request.get`, and `JsonApi` rejects on every non-2xx, so the documented `null` is only ever an empty body. The first spike run showed the "could not be verified" wording where "already gone" was expected; after reading the caught error's `code` the same subject reads "The launcher pod ... is already gone, so only the run policy will change" and the delete is dropped from the sequence. **The other half of S6 - whether `status.podRef` always names the live launcher pod - cannot be answered on a reconciler-less cluster** and is escalated to Manual verification (item 9); the pod selection therefore stays on `status.podRef`, with B3 catching the stale-name case that this cluster can produce |
+| S7 | **PARTIAL, and the spec's own fallback is refused for a better one** | A disabled `MenuItem` carries `pointer-events: none`, so it cannot be hovered **in either surface**: neither the host `Icon` tooltip (even with `tooltipOverrideDisabled`) nor a native `title` tooltip can appear for it. The enabled toolbar item's tooltip does work ("Start"). The reason is nevertheless carried in the DOM in both surfaces, as the item's `title` attribute ("Start: The guest is already set to run.", "Stop: The guest is already stopped, and no launcher pod is recorded."), which the E2E and the pre-review report read without hovering and which assistive technology announces. See the deviation below for why the toolbar item is not hidden |
+
+### Deviations from the spec, and why
+
+1. **B5's tooltip channel is replaced by the item's `title` attribute plus the
+   drawer's Condition row** (spike S7). The spec's fallback - hide the toolbar
+   item, keep the kebab item disabled with its reason - was refused: the kebab
+   item is affected by exactly the same `pointer-events: none`, so hiding the
+   toolbar item would violate W4's no-hiding rule **and** still leave no
+   hoverable reason anywhere. What ships instead keeps the control visible and
+   disabled in both surfaces, carries the reason in the DOM of both, and relies
+   on B5's own second channel (the Condition row explanation, which the
+   classifier writes for exactly the case that matters: a guest that exited on
+   its own). Candidate upstream feedback, narrow and concrete: core's `MenuItem`
+   should render a reason for a disabled item, since `tooltipOverrideDisabled`
+   cannot work under `pointer-events: none`.
+2. **The launcher pod's "already gone" reading comes from the caught error's
+   status code** rather than from a `null` return (spike S6, the fallback this
+   spec named). Both readings are kept in the code, so a host that starts
+   returning `null` needs no change.
+3. **A third file in `renderer/menus/`**, `guest-action-menu-item.tsx`, holds
+   what the two verbs would otherwise copy verbatim: the host idiom, the live
+   click-time snapshot, the guard re-evaluation, the dialog rendering. Each
+   verb's own file still owns its guard, its dialog facts, its writes and its
+   messages, which is what "one file per verb" was for.
+4. **`SwiftGuest`'s metadata type became `NamespaceScopedMetadata`**, matching
+   every model written since M3. It is a namespaced kind, so `getNs()` now
+   returns a string and the new code carries no fallback for a case the API
+   cannot produce.
+5. **The half-stopped E2E subject is shipped as a fixture rather than produced
+   with `kubectl` inside the case.** The spec suggested patching a subject at
+   run time; a dedicated fixture in that exact state is simpler, has no ordering
+   dependency, and doubles as the cheapest possible check of the `Stopping`
+   derived state (it renders it before any test has clicked anything).
+6. **The stale-object case uses `e2e-guest-action-orphanref` and deletes the
+   object from under an OPEN dialog**, rather than firing from a stale row of
+   `e2e-guest-action-delete`. A stale row cannot be clicked reliably - it
+   disappears within a watch round-trip (S5: 1168 ms) - while a dialog built
+   from a snapshot stays, which is both deterministic and the real shape of the
+   race. `e2e-guest-action-delete` keeps the Delete case to itself.
+7. **The pooled-guest fixture was kept, not dropped.** The spec allowed
+   dropping it if the `__POOL_UID__` substitution proved to be more machinery
+   than the row is worth. It cost ~20 lines in `cluster-up.sh`
+   (`apply_owned_fixtures`, a second apply pass with the owner's uid resolved
+   from the cluster, plus a readback assert), and it buys a live check that the
+   Managed By row resolves and links: the drawer of `e2e-guest-pooled` reads
+   `Managed By: e2e-pool` as a real link to the pool.
+8. **Four status patches, not two.** The spec spoke of "the two patched
+   subjects" in `E2E_STATUS_PATCHES`; four of the five subjects need a status
+   (the fifth has none on purpose). The `{.spec.runPolicy}` readbacks - the
+   first entries in `E2E_STATUS_ASSERTIONS` that assert a spec field - are on
+   the two subjects the suite later overwrites from the UI.
+
+### Readings worth recording
+
+- **The Status column can disagree with the Condition badge, and that is the
+  design working.** A half-stopped guest shows `Condition: Stopping` next to
+  `Status: The guest is running.` - the derived state next to the controller's
+  own last word, which the message ladder always prefers. The extension never
+  replaces the controller's words with its own; on a real cluster the condition
+  catches up seconds later.
+- **The fixture launcher pods are `Pending`, not `Running`** (they are
+  deliberately unschedulable), so the Stop dialog reads
+  "(Pending) will be deleted". The E2E asserts that a real read happened rather
+  than a phase this cluster cannot produce.
+- **The host toasts nothing for its own Delete**, which is why B11's success
+  notification exists for our two verbs and why the delete case asserts the row
+  and the API server rather than a toast.
+
+### Manual verification, item 9 (added by the implementation)
+
+9. **Whether `status.podRef` ever lags behind a recreated launcher pod** (the
+   half of spike S6 a reconciler-less cluster cannot answer), and whether
+   exactly one pod carries `swift.kubeswift.io/guest=<name>`. If a stale
+   `podRef` pointing at an existing but superseded pod turns out to be
+   reachable, the implementation switches to the label selector for the same
+   single request, keeping B3: the read stops being a `GET` by name and becomes
+   a `LIST` by label, and every reading of the four-row table still holds.
 
 ### Upstream recon (2026-08-29)
 

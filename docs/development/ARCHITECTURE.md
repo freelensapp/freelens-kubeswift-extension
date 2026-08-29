@@ -44,13 +44,18 @@ never be copied; views are reimplemented from scratch.
 src/
   main/index.ts              # Extension entry point (main process)
   renderer/index.tsx         # Extension entry point (renderer): registers
-                             # kubeObjectDetailItems, clusterPages,
-                             # clusterPageMenus
+                             # kubeObjectDetailItems, kubeObjectMenuItems,
+                             # clusterPages, clusterPageMenus
   renderer/api/kubeswift/    # One file per CRD: KubeObject + KubeApi +
                              # KubeObjectStore, typed Spec/Status interfaces
                              # (full schema, not only rendered fields)
   renderer/pages/            # Cluster pages (list views)
   renderer/details/          # Detail panels (kubeObjectDetailItems)
+  renderer/menus/            # Write actions (kubeObjectMenuItems): one file
+                             # per verb, rendered by the host in both the list
+                             # row kebab and the detail drawer's toolbar
+  renderer/components/       # Shared pure modules: status classifiers, the
+                             # action guards and payloads, reference loading
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```

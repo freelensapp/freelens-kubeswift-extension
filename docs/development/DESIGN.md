@@ -245,8 +245,14 @@ blank area:
 - Tooltips (`WithTooltip`, `Icon tooltip=`) carry the full value or the
   explanation; nothing important lives only in a tooltip.
 - Destructive or state-changing actions (from M6 on) go through
-  `ConfirmDialog.confirm` and notify outcomes via `Notifications`;
-  buttons disable while an operation is in flight.
+  `ConfirmDialog.open({ ok })` and notify outcomes via `Notifications`;
+  buttons disable while an operation is in flight. **`open` rather than
+  `confirm` (decision of 2026-08-29, SPEC-0010):** `open` keeps the dialog
+  on screen and its OK button in the host's `waiting` state until the
+  promise settles, which is what actually delivers the in-flight
+  disabling this bullet asks for, while `confirm` returns a boolean
+  immediately and would leave the extension to invent an in-flight state
+  of its own. Section 12 states the full rules for every write.
 - Respect platform conventions Freelens already implements (menus,
   shortcuts, scrolling); the extension adds no global key bindings that
   could shadow the host's.
@@ -306,7 +312,13 @@ patterns:
 
 1. Phase/state columns render as plain text; the two-column
    Condition+Status pattern with the tested classifier and `Badge` is
-   missing in all 10 views.
+   missing in all 10 views. **Closed for the Guests view only**
+   (2026-08-29, SPEC-0010): a stop is a policy change that the controller
+   resolves later, the API has no phase for that interval, and without a
+   derived reading the list would show `Running` for a guest the user had
+   just stopped, so M6 gave SwiftGuest its classifier and its
+   Condition/Status pair. Nine views still render a phase as plain text,
+   and this entry stays open for them.
 2. Namespace cells use `LinkToNamespace`; the directive is
    `NamespaceSelectBadge`.
 3. Column order in some views places domain columns after
@@ -322,3 +334,149 @@ patterns:
    probing panel (section 6).
 7. Both themes were never verified by a human; first milestone review
    covers this.
+
+## 12. Write actions
+
+Binding from M6 on, for every action, form and dialog that changes
+anything in a cluster (decision of 2026-08-29, SPEC-0010, which applies
+them to guest start and stop). Sections 1-11 describe views that read;
+this one describes surfaces that write, and it is stricter because a
+misread view is a nuisance while a mistaken write is an outage.
+
+**Standing directive (Roberto, 2026-08-29): parity with kubeswift-ui is
+the floor, not the ceiling.** Where the upstream UI is poor, ambiguous,
+silent or wrong, and the CRD-native position lets this extension do
+better for an operator, it does better and records why (W11).
+
+**W1. Every action is behind a confirmation that enumerates its writes.**
+Not "are you sure": the dialog names the kind, the namespace and the
+name, and then lists one line per API call, with the field path and the
+value transition for a patch (`spec.runPolicy: Always -> Stopped`) and
+the kind and name for a delete. An action that writes two objects says so
+on two lines. The dialog quotes **live facts**, built when the item is
+clicked from the object as the store holds it at that moment - the same
+snapshot the guard is re-evaluated against - it warns when a fact looks
+stale or unverifiable, and a write that would be a no-op is dropped from
+the list rather than shown as `X -> X`. Where one cheap read makes a fact
+certain instead of assumed, the dialog does that read on open (never per
+row, never on render) and degrades to a weaker sentence if the read is
+refused.
+
+**W2. No optimistic UI, ever.** The extension never writes into a store
+to make the screen say what it hopes the cluster will do. What changes
+immediately is what the API server echoed back; everything else arrives
+through the watch. A corollary not to "fix": `KubeObjectStore.remove`
+does not drop the row from `items` - the row disappears when the
+`DELETED` watch event arrives, through a reaction debounced by one
+second, which is the host's behaviour for every kind.
+
+**W3. A state the API cannot express is derived, named, and explained.**
+Where a write leaves the object in an interval the CRD has no vocabulary
+for, the status classifier of section 2 derives a state from the
+disagreement between `spec` and `status`, gives it a name, and explains
+it in the tooltip. It never invents a value that could be mistaken for
+something a controller wrote (`Stopping` is the first one).
+
+**W4. No dead controls, and no control that lies about being dead.** An
+action whose write would change nothing is rendered **disabled with a
+reason**, not hidden. Two host facts come with it: core's `MenuItem`
+accepts `disabled`, but the prop only adds a class and sets
+`tabIndex: -1` - what actually stops the click is the stylesheet's
+`.MenuItem.disabled { pointer-events: none }` - so the extension passes
+`disabled` for the styling and the pointer-events guard, **and the click
+handler re-evaluates the guard before writing anything**. Exception: when
+the object carries a `deletionTimestamp`, action items are absent rather
+than disabled. Unknown or unparseable state permits the action rather
+than blocking it: the guard is a convenience, and the controller and RBAC
+are the authority.
+
+**A guard cannot disable a control without producing the reason.** The
+guard is one pure function returning `{ enabled, reason }`, never a bare
+boolean, and a unit test asserts over every input it distinguishes that a
+disabled outcome always carries a non-empty reason. The reason is
+reachable in both surfaces: the item's own tooltip attribute (a disabled
+`MenuItem` cannot be hovered, so the host's hover tooltip does not show
+for it - SPEC-0010 spike S7), and the drawer's Condition row explanation,
+which is where a user who never hovers anything finds it.
+
+**W5. One registration, both surfaces.** Actions are
+`kubeObjectMenuItems`. The host renders the same registration in the list
+row kebab and in the detail drawer's toolbar, so one component satisfies
+"available from both surfaces" and the two can never drift apart. The
+component receives exactly `{ object, toolbar }` and uses the host idiom:
+`<Icon interactive={toolbar} tooltip={title} />` plus a
+`<span className="title">` that the toolbar layout hides.
+
+**W6. The patch type is always explicit, and it is `merge`.** Both host
+defaults are wrong for custom resources: `KubeApi.patch` defaults to
+`strategic`, which the API server rejects for CRs, and
+`KubeObjectStore.patch` defaults to `json`. Patches carry only the field
+they change, never a read-modify-write of a whole spec.
+
+**W7. No RBAC pre-flight: attempt, then report.** The extension does not
+grey out an action because the user might lack permission.
+`isAllowedResource` keys on built-in resource names and answers
+permissively for anything it does not know, and the only correct check is
+a `SelfSubjectAccessReview`, which is itself a write and is not exported
+to extensions. A 403 arrives as a clear message from the API server and
+is shown as one.
+
+**W8. Concurrency is last-write-wins, and the spec says so out loud.**
+The host sends no `resourceVersion` on a merge patch and has no 409
+handling in its write path. For a single enum field whose transition the
+dialog just showed the user, that is acceptable. Where it stops being
+acceptable (forms that write many fields), the escape hatch is a `json`
+patch with a `test` operation on the field, or a `PUT` carrying the
+`resourceVersion` that was read.
+
+**W9. Failure is always reported, and the report says what did and did
+not happen.** Every write is wrapped in its own `try`/`catch` **inside**
+the dialog's `ok` callback, never left to the host: `ConfirmDialog`'s own
+catch only unwraps `Error` and `string`, and a Kubernetes error arrives
+as a `JsonApiErrorParsed`, which is neither. Errors are surfaced with
+`Notifications.checkedError(err, "<specific fallback>")`, whose fallback
+string is per call site, never a generic "something went wrong".
+
+- **A failure message says what to do next, and never replaces the API
+  server's words with its own:** one actionable sentence is prefixed to
+  the message the API returned, for the failures that are predictable
+  (a 403 names the verb, the resource and the namespace; a 404 says the
+  object is gone and the list is about to catch up); anything else is
+  passed through as it arrived.
+- **The host toasts every 403 from `apiKube` itself** and marks the error
+  with `isUsedForNotification`; an extension that toasts again produces
+  two notifications for one failure, so it reads that flag and stays
+  quiet when it is set (SPEC-0010 spike S4).
+- **A partially applied compound action reports the state it left
+  behind, and how to finish the job**, which is only honest because such
+  actions are built to be idempotent (W1's no-op dropping).
+- **Success is acknowledged when, and only when, the screen would not say
+  so on its own.** Core toasts nothing for suspend, scale or restart,
+  because a column flips under the user's cursor within a watch
+  round-trip; where an action changes nothing visible until a controller
+  acts, silence is indistinguishable from an action that did nothing, and
+  a short auto-dismissing `Notifications.ok` names the fact that was
+  written (not a prediction).
+
+**W10. The extension writes only the object the action is about, and its
+controller-owned children, and it names the children in the dialog.**
+
+**W11. Parity with the upstream UI is the floor, not the ceiling.** Every
+action is audited against three questions before its spec is approved:
+what does upstream leave the operator to guess, what does it get wrong,
+and what can a CRD-native client know that a gateway client cannot. Each
+answer is either implemented or rejected **in writing**, in the spec's
+"Better than upstream" subsection, with the rejected candidates listed
+next to the adopted ones so the bar is visible. Two limits keep this from
+becoming scope creep: an improvement must serve an action already in
+scope (a better verb is not a new verb), and it must not invent behaviour
+the recon could not confirm - where upstream is merely unverified rather
+than wrong, the honest move is to say less, not to promise more.
+
+**The pre-review agent pass stays read-only** (SPEC-0006, SPEC-0010): it
+runs against the demo cluster a reviewer is about to walk through by
+hand, it never opens a row kebab, it clicks only drawer rows that have an
+`href`, and it asserts that no action control was collected as a link.
+Mandatory confirmation (W1) is the second gate: even a stray click opens
+a dialog and stops there. Any check that needs a write belongs in the E2E
+suite, which owns a disposable cluster.

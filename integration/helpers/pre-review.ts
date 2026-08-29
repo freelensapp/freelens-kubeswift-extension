@@ -347,6 +347,59 @@ export async function conditionsSectionTitles(frame: Frame): Promise<string[]> {
   return titles.filter((title) => title.toLowerCase() === "conditions");
 }
 
+// The pass stays READ-ONLY on a write surface, by construction and by assert
+// (SPEC-0010). It runs against the demo cluster, which is the cluster a reviewer
+// then walks through by hand, so a pass that stopped a guest would corrupt the
+// session it exists to prepare.
+//
+// It cannot reach an action by accident today: it clicks only drawer rows that
+// have an `href` (`classifyDrawerReferences` filters on it), action items are
+// `MenuItem` elements with no `href`, and they render in the drawer's toolbar
+// and in the row kebab - neither of which is inside the `.DrawerItem` rows
+// `inspectDrawerRows` reads. The pass never opens a kebab. Mandatory
+// confirmation is the second gate: even a stray click opens a dialog and stops
+// there.
+//
+// The two helpers below are the belt and braces: one asserts that no action
+// control was ever collected as a link, and the other puts the controls, and the
+// reason each disabled one carries, into the report - so a reviewer can judge
+// the wording and the icons from the screenshots without opening a menu.
+const ACTION_CONTROL_SELECTOR = '[data-testid$="-action"]';
+
+/** An action control of the open drawer's toolbar. */
+export interface ActionControl {
+  testId: string | null;
+  /**
+   * The control's own tooltip text: the verb, or the verb and the guard's
+   * reason. Read from the attribute rather than by hovering, because a disabled
+   * `MenuItem` carries `pointer-events: none` and cannot be hovered at all
+   * (SPEC-0010, spike S7) - and because hovering is a step closer to clicking
+   * than this pass has any business being.
+   */
+  title: string | null;
+  disabled: boolean;
+}
+
+/** The action controls the open drawer exposes, with the reason each disabled one carries. */
+export async function actionControls(frame: Frame): Promise<ActionControl[]> {
+  return frame.$$eval(`.Drawer.KubeObjectDetails ${ACTION_CONTROL_SELECTOR}`, (elements) =>
+    elements.map((element) => ({
+      testId: element.getAttribute("data-testid"),
+      title: element.getAttribute("title"),
+      disabled: element.classList.contains("disabled"),
+    })),
+  );
+}
+
+/** Test ids of action controls that are, or contain, a link - which is what would make this pass click one. */
+export async function actionControlsCollectedAsLinks(frame: Frame): Promise<string[]> {
+  return frame.$$eval(ACTION_CONTROL_SELECTOR, (elements) =>
+    elements
+      .filter((element) => element.matches("a[href]") || element.querySelector("a[href]") !== null)
+      .map((element) => element.getAttribute("data-testid") ?? "(unnamed)"),
+  );
+}
+
 /** Header cell labels (`.TableHead .TableCell`) missing the `id` DESIGN.md requires for column resizing. */
 export async function headerCellsWithoutId(frame: Frame): Promise<string[]> {
   const cells = await frame.$$eval(".TableHead .TableCell", (elements) =>
@@ -495,6 +548,10 @@ export interface ViewAssertResults {
   conditionsSectionCount: number;
   nonHumanizedListValues: string[];
   nonHumanizedDrawerValues: string[];
+  /** The write actions this view exposes, and the reason each disabled one carries (SPEC-0010). */
+  actionControls: ActionControl[];
+  /** Action controls that were collected as links: always empty, and the assert that keeps this pass read-only. */
+  actionControlsCollectedAsLinks: string[];
 }
 
 export interface ViewScreenshot {
@@ -603,11 +660,41 @@ export function renderReport(views: ViewReport[], generatedAt = new Date()): str
     );
     lines.push("");
 
+    // The write actions of this view, and the reason each disabled one gives.
+    // The reasons are the text B5 promises a user will find, so putting them in
+    // the report is what lets a human check that promise without opening a menu
+    // (SPEC-0010).
+    lines.push(
+      assertLine(
+        "No action control was collected as a link (the pass stays read-only)",
+        view.asserts.actionControlsCollectedAsLinks.length === 0,
+        `collected: ${view.asserts.actionControlsCollectedAsLinks.join(", ")}`,
+      ),
+    );
+
+    if (view.asserts.actionControls.length === 0) {
+      lines.push("- Write actions exposed by this view: none");
+    } else {
+      lines.push("- Write actions exposed by this view (drawer toolbar, not clicked):");
+      for (const control of view.asserts.actionControls) {
+        lines.push(
+          `  - \`${control.testId}\`: ${control.disabled ? "disabled" : "enabled"}, tooltip "${control.title ?? ""}"`,
+        );
+      }
+    }
+    lines.push("");
+
     lines.push("### For human judgment", "");
 
     const judgment = view.asserts.possibleUnlinkedReferences.map(
       (row) => `Confirm "${row.label}: ${row.text}" really has no link target (rendered as plain text).`,
     );
+
+    if (view.asserts.actionControls.length > 0) {
+      judgment.push(
+        "Judge the wording, the icons and the disabled reasons of the write actions listed above, in both themes.",
+      );
+    }
 
     judgment.push("Visual balance, spacing and wording in both themes (see the screenshots above).");
 

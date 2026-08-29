@@ -77,6 +77,41 @@ apply_fixtures() {
 	kubectl_e2e apply -f "${substituted_dir}"
 }
 
+apply_owned_fixtures() {
+	local substituted_dir file pool_uid actual_uid
+
+	# A fixture that carries an owner reference cannot be a literal: the
+	# reference includes the owner's `uid`, and a wrong one makes the garbage
+	# collector delete the object outright. So the owner is created by the main
+	# pass above, its uid is read here, and the objects it owns are applied in
+	# this second pass with the same `sed` mechanism `__NODE_NAME__` uses
+	# (SPEC-0010, the Managed By row).
+	pool_uid="$(kubectl_e2e get swiftguestpools.swift.kubeswift.io "${E2E_OWNER_POOL_NAME}" \
+		--namespace "${E2E_NAMESPACE}" --output 'jsonpath={.metadata.uid}')"
+	[ -n "${pool_uid}" ] || die "could not read the uid of swiftguestpool/${E2E_OWNER_POOL_NAME}"
+
+	substituted_dir="$(mktemp -d)"
+	# shellcheck disable=SC2064 # the directory is expanded now on purpose
+	trap "rm -rf '${substituted_dir}'" RETURN
+
+	for file in "${E2E_FIXTURES_DIR}"/owned/*.yaml; do
+		sed -e "s/__NODE_NAME__/${E2E_NODE_NAME}/g" -e "s/__POOL_UID__/${pool_uid}/g" \
+			"${file}" >"${substituted_dir}/$(basename "${file}")"
+	done
+
+	log "applying the owner-referenced fixtures (pool uid: ${pool_uid})"
+	kubectl_e2e apply -f "${substituted_dir}"
+
+	# The substitution is asserted here rather than in verify_statuses(), whose
+	# expected values are literals: this one is only known at runtime. A uid that
+	# did not land would also be visible as the object disappearing, but by then
+	# the failure would look like a missing fixture rather than a wrong owner.
+	actual_uid="$(kubectl_e2e get swiftguests.swift.kubeswift.io e2e-guest-pooled \
+		--namespace "${E2E_NAMESPACE}" --output 'jsonpath={.metadata.ownerReferences[0].uid}')"
+	[ "${actual_uid}" = "${pool_uid}" ] ||
+		die "owner reference mismatch for swiftguest/e2e-guest-pooled: expected '${pool_uid}', got '${actual_uid}'"
+}
+
 inject_statuses() {
 	local entry target patch_file resource name substituted_file json_path actual_node_name
 
@@ -180,6 +215,7 @@ main() {
 	E2E_NODE_NAME="$(cluster_node_name)"
 
 	apply_fixtures
+	apply_owned_fixtures
 	inject_statuses
 	verify_statuses
 

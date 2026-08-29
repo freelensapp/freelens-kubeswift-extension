@@ -1,0 +1,23 @@
+# Status of the M6 "already gone" subject (SPEC-0010, B3): the podRef names a
+# launcher pod the fixtures deliberately never create, so the Stop dialog's
+# click-time read finds nothing and says so, instead of offering to delete a pod
+# that is not there.
+#
+# It is the counter-fixture of e2e-guest-action-running: between them they pin
+# the rule that the dialog describes the cluster rather than the status.
+status:
+  phase: Running
+  nodeName: __NODE_NAME__
+  restartCount: 0
+  podRef:
+    apiVersion: v1
+    kind: Pod
+    name: e2e-guest-action-orphanref-launcher
+    namespace: kubeswift-e2e
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: GuestRunning
+      message: The guest is running.
+      lastTransitionTime: "2026-08-28T09:10:00Z"
+      observedGeneration: 1
