@@ -93,6 +93,7 @@ export function fixturesReady(): boolean {
   const probes: [resource: string, name: string][] = [
     ["swiftguests.swift.kubeswift.io", "e2e-guest-running"],
     ["swiftmigrations.migration.kubeswift.io", "e2e-migration-completed"],
+    ["swiftgpuprofiles.gpu.kubeswift.io", "e2e-gpu-profile-hgx"],
   ];
 
   return probes.every(([resource, name]) => {

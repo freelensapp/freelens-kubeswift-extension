@@ -1,0 +1,36 @@
+# Merge patch applied to the status subresource of swiftguest/e2e-guest-gpu.
+# No KubeSwift controller runs in the E2E cluster, so the status a real
+# controller would write is injected here instead.
+#
+# The guest runs on four GPUs handed to it through e2e-gpu-profile-hgx: the
+# SwiftGPUProfile drawer lists it with the phase and node below, and the
+# SwiftGuest drawer's own GPU section (which no other fixture exercises) shows
+# the devices and the Fabric Manager partition.
+#
+# nodeName is __NODE_NAME__, substituted by cluster-up.sh's inject_statuses()
+# with the real (single) node of whatever cluster this is applied to (see the
+# comment in swiftguest-e2e-guest-running.yaml and issue #23).
+status:
+  phase: Running
+  nodeName: __NODE_NAME__
+  restartCount: 0
+  gpu:
+    # Quoted: unquoted, YAML reads a PCI address as a sexagesimal number.
+    devices:
+      - "0000:41:00.0"
+      - "0000:42:00.0"
+      - "0000:51:00.0"
+      - "0000:52:00.0"
+    hypervisor: qemu
+    nodeName: __NODE_NAME__
+    numaNodes:
+      - 0
+      - 1
+    partitionId: 3
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: GuestRunning
+      message: The guest is running with its GPUs attached.
+      lastTransitionTime: "2026-08-28T09:15:00Z"
+      observedGeneration: 1

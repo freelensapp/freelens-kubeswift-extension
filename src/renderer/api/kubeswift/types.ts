@@ -55,6 +55,24 @@ export function formatBytes(value?: number): string | undefined {
   return `${Number(size.toFixed(1))}${byteUnits[unit - 1]}`;
 }
 
+/**
+ * Renders a mebibyte count the way `formatBytes` renders a byte count, for
+ * example `256Gi`. Several GPU fields (`numaTopology.memoryPerSocketMi` on a
+ * profile, `host.numaNodes[].memoryMi` and `gpus[].barSizes[].sizeMi` on a
+ * node) are counts of MiB rather than of bytes, so passing them to
+ * `formatBytes` would under-report them by a factor of 1048576.
+ *
+ * Delegates the formatting itself, so there is one rule in one place, and
+ * keeps `0` distinct from an unset count exactly as `formatBytes` does.
+ */
+export function formatMebibytes(value?: number): string | undefined {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return formatBytes(value * 1024 * 1024);
+}
+
 /** Reference to another KubeSwift object living in the same namespace. */
 export interface LocalObjectReference {
   name?: string;

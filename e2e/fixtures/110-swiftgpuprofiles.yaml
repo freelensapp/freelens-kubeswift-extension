@@ -1,0 +1,53 @@
+# Minimal profile: one GPU of a given model, tier 1, no optional block at all.
+# The CRD declares no status subresource, so there is nothing to inject for
+# either of the two profiles here: everything their views show comes from the
+# spec, exactly like SwiftGuestClass and SwiftSeedProfile.
+#
+# tier, partitionMode and vcpuPinning are spelled out even though the API
+# server defaults all three, so the manifest reads as what the views render.
+apiVersion: gpu.kubeswift.io/v1alpha1
+kind: SwiftGPUProfile
+metadata:
+  name: e2e-gpu-profile-pcie
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  count: 1
+  model: L40S
+  tier: pcie
+  partitionMode: isolated
+  vcpuPinning: false
+---
+# Full profile: four GPUs, tier 2, hugepages, vCPU pinning and all three
+# optional blocks populated, so every self-guarding section of the drawer
+# renders. Its model filter is the empty string the schema uses for "any model
+# matches", which the views render as "Any" rather than as a missing value.
+apiVersion: gpu.kubeswift.io/v1alpha1
+kind: SwiftGPUProfile
+metadata:
+  name: e2e-gpu-profile-hgx
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  count: 4
+  model: ""
+  tier: hgx-shared
+  partitionMode: shared
+  hugepages: 1Gi
+  vcpuPinning: true
+  pcieTopology:
+    rootPortPerDevice: true
+    gpuDirectClique: 1
+    noMmap: false
+  numaTopology:
+    sockets: 2
+    coresPerSocket: 24
+    threadsPerCore: 1
+    # A count of MiB, not of bytes: 256Gi per socket, which the drawer
+    # humanizes instead of showing the digits.
+    memoryPerSocketMi: 262144
+  fabricManager:
+    runInGuest: false
+    requiredVersion: 560.35.03

@@ -13,12 +13,18 @@ import { vi } from "vitest";
 class LensExtensionKubeObject {
   apiVersion?: string;
   kind?: string;
-  metadata?: { namespace?: string };
+  metadata?: { name?: string; namespace?: string };
   spec?: unknown;
   status?: unknown;
 
   constructor(data: Record<string, unknown> = {}) {
     Object.assign(this, data);
+  }
+
+  // Mirrors `@freelensapp/kube-object`'s `KubeObject.getName()`, which the
+  // model helpers that match objects by name call on the real host object.
+  getName(): string {
+    return this.metadata?.name ?? "";
   }
 
   // Mirrors `@freelensapp/kube-object`'s `KubeObject.getNs()`, which detail

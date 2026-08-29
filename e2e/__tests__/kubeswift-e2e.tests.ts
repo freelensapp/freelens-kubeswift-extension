@@ -404,6 +404,66 @@ describe("KubeSwift views against the fixture cluster", () => {
   );
 
   it(
+    "lists the SwiftGPUProfiles with their count, model and tier",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftgpuprofiles", "GPU Profiles");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // Count, model, partition mode and tier, in column order: the CRD's own
+      // printer columns. The profile has no status at all (the CRD declares
+      // `subresources: {}`), so this list has no Condition and no Status
+      // column to assert - see SPEC-0007 for that declared deviation.
+      await cluster.expectRow(frame, "e2e-gpu-profile-pcie", "1 L40S isolated pcie");
+
+      // The full profile's model filter is the empty string, which the schema
+      // uses for "any model matches": a fact, not a missing value, so the cell
+      // reads "Any" rather than "N/A".
+      await cluster.expectRow(frame, "e2e-gpu-profile-hgx", "4 Any shared hgx-shared");
+
+      // "Guests Using This Profile" renders only once the SwiftGuest store
+      // reports isLoaded for this namespace (SPEC-0007: a section that renders
+      // nothing while the store fills, rather than claiming the profile is
+      // unused), so its row is waited for instead of being read in one shot,
+      // which would race that load on a slow runner. Once the row is there the
+      // store is filled and the whole-drawer read below is deterministic.
+      await pr.openDrawer(frame, "e2e-gpu-profile-hgx");
+      await frame
+        .locator(".Drawer.KubeObjectDetails .TableRow", { hasText: "e2e-guest-gpu" })
+        .first()
+        .waitFor({ state: "visible", timeout: 60_000 });
+      await cluster.closeDetails(frame);
+
+      // The full drawer: the humanized reading next to each enum, the
+      // per-socket memory converted from the MiB the schema counts in (256Gi,
+      // never the raw 262144), and where Fabric Manager runs.
+      await cluster.expectDetails(
+        frame,
+        "e2e-gpu-profile-hgx",
+        "SwiftGPUProfile: e2e-gpu-profile-hgx",
+        "Any",
+        "hgx-shared (tier 2",
+        "256Gi",
+        "Host",
+        "Guests Using This Profile",
+        "e2e-guest-gpu",
+      );
+
+      // The minimal profile carries no optional block: the two sections that
+      // guard themselves are gone, and the NUMA one says what an absent block
+      // means instead of showing four empty rows.
+      await cluster.expectDetails(
+        frame,
+        "e2e-gpu-profile-pcie",
+        "SwiftGPUProfile: e2e-gpu-profile-pcie",
+        "L40S",
+        "pcie (tier 1",
+        "Flat: the guest gets a single NUMA node",
+      );
+    },
+    TIMEOUT,
+  );
+
+  it(
     "activates the extension without renderer or process errors",
     async () => {
       const errors = errorCollector.errors();

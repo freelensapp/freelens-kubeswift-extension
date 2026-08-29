@@ -46,3 +46,25 @@ spec:
   kernelCmdline: console=ttyS0 root=/dev/vda1
   osType: linux
   runPolicy: Running
+---
+# Disk-boot guest attached to a GPU profile, so the SwiftGPUProfile drawer has
+# a guest to list under "Guests Using This Profile" and the SwiftGuest drawer's
+# GPU section has something to show. It cannot be folded into the kernel-boot
+# guest above: gpuProfileRef and kernelRef are mutually exclusive. Its status
+# is injected by cluster-up.sh.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-gpu
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-large
+  imageRef:
+    name: e2e-ubuntu-2404
+  gpuProfileRef:
+    name: e2e-gpu-profile-hgx
+  osType: linux
+  runPolicy: Running

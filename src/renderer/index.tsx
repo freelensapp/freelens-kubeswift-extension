@@ -4,6 +4,7 @@
  */
 
 import { Renderer } from "@freelensapp/extensions";
+import { SwiftGPUProfile as SwiftGPUProfileV1alpha1 } from "./api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest as SwiftGuestV1alpha1 } from "./api/kubeswift/swiftguest-v1alpha1";
 import { SwiftGuestClass as SwiftGuestClassV1alpha1 } from "./api/kubeswift/swiftguestclass-v1alpha1";
 import { SwiftGuestPool as SwiftGuestPoolV1alpha1 } from "./api/kubeswift/swiftguestpool-v1alpha1";
@@ -14,6 +15,7 @@ import { SwiftRestore as SwiftRestoreV1alpha1 } from "./api/kubeswift/swiftresto
 import { SwiftSeedProfile as SwiftSeedProfileV1alpha1 } from "./api/kubeswift/swiftseedprofile-v1alpha1";
 import { SwiftSnapshot as SwiftSnapshotV1alpha1 } from "./api/kubeswift/swiftsnapshot-v1alpha1";
 import { SwiftSnapshotSchedule as SwiftSnapshotScheduleV1alpha1 } from "./api/kubeswift/swiftsnapshotschedule-v1alpha1";
+import { SwiftGPUProfileDetails as SwiftGPUProfileDetailsV1alpha1 } from "./details/swiftgpuprofile-details-v1alpha1";
 import { SwiftGuestDetails as SwiftGuestDetailsV1alpha1 } from "./details/swiftguest-details-v1alpha1";
 import { SwiftGuestClassDetails as SwiftGuestClassDetailsV1alpha1 } from "./details/swiftguestclass-details-v1alpha1";
 import { SwiftGuestPoolDetails as SwiftGuestPoolDetailsV1alpha1 } from "./details/swiftguestpool-details-v1alpha1";
@@ -25,6 +27,7 @@ import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./de
 import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
 import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
 import { KubeSwiftIcon } from "./icons/kubeswift";
+import { SwiftGPUProfilesPage as SwiftGPUProfilesPageV1alpha1 } from "./pages/swiftgpuprofiles-page-v1alpha1";
 import { SwiftGuestClassesPage as SwiftGuestClassesPageV1alpha1 } from "./pages/swiftguestclasses-page-v1alpha1";
 import { SwiftGuestPoolsPage as SwiftGuestPoolsPageV1alpha1 } from "./pages/swiftguestpools-page-v1alpha1";
 import { SwiftGuestsPage as SwiftGuestsPageV1alpha1 } from "./pages/swiftguests-page-v1alpha1";
@@ -145,6 +148,16 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         ),
       },
     },
+    {
+      kind: SwiftGPUProfileV1alpha1.kind,
+      apiVersions: SwiftGPUProfileV1alpha1.crd.apiVersions,
+      priority: 10,
+      components: {
+        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
+          <SwiftGPUProfileDetailsV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
   ];
 
   clusterPages = [
@@ -206,6 +219,12 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       id: "swiftmigrations",
       components: {
         Page: () => <SwiftMigrationsPageV1alpha1 extension={this} />,
+      },
+    },
+    {
+      id: "swiftgpuprofiles",
+      components: {
+        Page: () => <SwiftGPUProfilesPageV1alpha1 extension={this} />,
       },
     },
   ];
@@ -319,6 +338,23 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       parentId: "kubeswift-migrations",
       title: SwiftMigrationV1alpha1.crd.title,
       target: { pageId: "swiftmigrations" },
+      components: {},
+    },
+    // Appended after the existing groups, in the order the roadmap introduces
+    // the domains: every entry a user found here last time stays where it was
+    // (SPEC-0007).
+    {
+      id: "kubeswift-gpu",
+      parentId: "kubeswift",
+      title: "GPU",
+      target: { pageId: "swiftgpuprofiles" },
+      components: {},
+    },
+    {
+      id: "swiftgpuprofiles",
+      parentId: "kubeswift-gpu",
+      title: SwiftGPUProfileV1alpha1.crd.title,
+      target: { pageId: "swiftgpuprofiles" },
       components: {},
     },
   ];

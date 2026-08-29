@@ -1,0 +1,23 @@
+.page {
+  :global(.TableCell) {
+    &.count {
+      flex-grow: 0.3;
+    }
+
+    &.model {
+      flex-grow: 0.6;
+    }
+
+    &.partitionMode {
+      flex-grow: 0.5;
+    }
+
+    &.tier {
+      flex-grow: 0.5;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

@@ -1,0 +1,14 @@
+// Nested table of the guests that reference the profile. Column sizing only,
+// in the same shape the list pages use for theirs; everything else (chrome,
+// spacing, colours) comes from the host's own table styles.
+.guests {
+  :global(.TableCell) {
+    &.phase {
+      flex-grow: 0.5;
+    }
+
+    &.node {
+      flex-grow: 0.8;
+    }
+  }
+}

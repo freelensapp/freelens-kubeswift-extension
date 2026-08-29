@@ -36,4 +36,5 @@ export const KUBESWIFT_VIEWS: KubeSwiftView[] = [
   { menuId: "swiftrestores", title: "Restores", fixtureObject: "e2e-restore-clone" },
   { menuId: "swiftsnapshotschedules", title: "Snapshot Schedules", fixtureObject: "e2e-schedule-nightly" },
   { menuId: "swiftmigrations", title: "Migrations", fixtureObject: "e2e-migration-completed" },
+  { menuId: "swiftgpuprofiles", title: "GPU Profiles", fixtureObject: "e2e-gpu-profile-hgx" },
 ];

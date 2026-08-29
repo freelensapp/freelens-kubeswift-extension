@@ -442,6 +442,42 @@ them requires a change to DESIGN.md.
 Filled during implementation when reality diverges from the plan. What
 follows is the recon that produced this spec.
 
+### Implementation, slice 1 of 2: SwiftGPUProfile (2026-08-29)
+
+The milestone lands in two PRs, one per CRD, because each is a complete
+vertical slice (model, page, drawer, unit tests, fixtures, E2E asserts) and
+the second one is the larger by far. This is a split of the work, not of the
+design: nothing below changes what the spec asks for.
+
+- **What slice 1 contains**: the SwiftGPUProfile model, list page and detail
+  drawer, `formatMebibytes`, the `kubeswift-gpu` sidebar group with "GPU
+  Profiles" as its only leaf (and therefore its `target`), the unit tests,
+  the `110-swiftgpuprofiles.yaml` fixtures, the `e2e-guest-gpu` SwiftGuest
+  fixture with its injected status, the E2E case and the pre-review entry.
+- **What slice 2 contains**: everything about SwiftGPUNode, plus the whole of
+  "Reach into the existing views". The three rows that become links are kept
+  together in the second PR even though the two profile ones would already
+  resolve here: the third (the SwiftGuest GPU section, which gains the GPU
+  Node link and the fields its model already types) needs SwiftGPUNode
+  registered, and changing one drawer's GPU rows twice in two PRs is worse
+  than changing them once. "GPU Nodes" joins the group created here.
+- The spec Status stays `Approved` until both slices are merged.
+
+Details the spec left open, settled while implementing:
+
+- `e2e-gpu-profile-hgx` carries `model: ""` (the schema's "any model
+  matches") while `e2e-gpu-profile-pcie` carries a real filter, so the two
+  row asserts of the E2E case cover both branches of the Model cell, "Any"
+  and the value.
+- The model types its metadata as `NamespaceScopedMetadata` rather than the
+  generic `KubeObjectMetadata` the M1/M2 models use: it makes `getNs()` a
+  `string`, which is what `NamespaceSelectBadge` needs, and it states in the
+  type what `namespaced = true` states next to it. New namespaced models
+  should follow it.
+- The `Guests Using This Profile` rows are read straight from the SwiftGuest
+  store, so their existence check can only ever pass; it is kept anyway, so
+  that every reference in the extension goes through the same rule.
+
 ### Upstream recon (2026-08-29)
 
 Per PROCESS.md's upstream drift watch, at the start of the milestone:

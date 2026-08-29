@@ -71,11 +71,13 @@ KUBESWIFT_CRD_FILES=(
 # because no KubeSwift controller runs in the cluster. Only the CRDs that
 # declare a status subresource appear here: of the M1 six, SwiftGuestClass and
 # SwiftSeedProfile have no status at all in their schemas, while all four M2
-# CRDs do declare one.
+# CRDs do declare one. SwiftGPUProfile (M3) has none either, so its fixtures
+# never appear below.
 #
 # Format: <resource>/<name>=<patch file, relative to fixtures/status>
 E2E_STATUS_PATCHES=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-running=swiftguest-e2e-guest-running.yaml"
+	"swiftguests.swift.kubeswift.io/e2e-guest-gpu=swiftguest-e2e-guest-gpu.yaml"
 	"swiftguestpools.swift.kubeswift.io/e2e-pool=swiftguestpool-e2e-pool.yaml"
 	"swiftimages.image.kubeswift.io/e2e-ubuntu-2404=swiftimage-e2e-ubuntu-2404.yaml"
 	"swiftkernels.kernel.kubeswift.io/e2e-kernel-6-12=swiftkernel-e2e-kernel-6-12.yaml"
@@ -94,6 +96,7 @@ E2E_STATUS_PATCHES=(
 E2E_STATUS_ASSERTIONS=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-running={.status.phase}=Running"
 	"swiftguests.swift.kubeswift.io/e2e-guest-running={.status.network.primaryIP}=10.244.1.21"
+	"swiftguests.swift.kubeswift.io/e2e-guest-gpu={.status.gpu.partitionId}=3"
 	"swiftguestpools.swift.kubeswift.io/e2e-pool={.status.readyReplicas}=2"
 	"swiftimages.image.kubeswift.io/e2e-ubuntu-2404={.status.phase}=Ready"
 	"swiftkernels.kernel.kubeswift.io/e2e-kernel-6-12={.status.kernelDigest}=sha256:9b2c8f0e3a7d41c5b6e8d90a2f14c7b38e5a6d0c9f3b1e7a4d2c8b5f6a0e9d31"
@@ -118,6 +121,7 @@ E2E_STATUS_ASSERTIONS=(
 # Format: <resource>/<name>=<jsonpath>
 E2E_NODE_NAME_FIELDS=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-running={.status.nodeName}"
+	"swiftguests.swift.kubeswift.io/e2e-guest-gpu={.status.gpu.nodeName}"
 	"swiftmigrations.migration.kubeswift.io/e2e-migration-completed={.status.destinationNode}"
 )
 
