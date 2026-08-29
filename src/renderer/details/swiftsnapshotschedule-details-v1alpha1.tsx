@@ -1,11 +1,11 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
-import React from "react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftSnapshotSchedule } from "../api/kubeswift/swiftsnapshotschedule-v1alpha1";
 import { withErrorPage } from "../components/error-page";
-import { ensureLoaded, objectExists } from "../components/object-existence";
+import { objectExists } from "../components/object-existence";
+import { useReferenceStores } from "../components/reference-loader";
 
 const { observer } = MobxReact;
 
@@ -36,9 +36,17 @@ export const SwiftSnapshotScheduleDetails = observer((props: SwiftSnapshotSchedu
     // (DESIGN.md section 3, issue #23).
     const guestStore = maybe(() => SwiftGuest.getStore<SwiftGuest>());
 
-    React.useEffect(() => {
-      ensureLoaded(guestStore);
-    }, []);
+    // Asked for the guest's own namespace (this schedule's when the ref does
+    // not carry one) rather than for whatever the namespace filter holds
+    // (issue #38).
+    useReferenceStores([
+      {
+        label: SwiftGuest.crd.plural,
+        store: guestStore,
+        namespaces: [guestRef?.namespace ?? object.getNs()],
+        lookups: [{ name: guestRef?.name, namespace: guestRef?.namespace }],
+      },
+    ]);
 
     const guestIsLinkable = objectExists(guestStore, guestRef?.name, guestRef?.namespace);
 

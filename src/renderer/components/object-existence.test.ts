@@ -3,8 +3,8 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { ensureLoaded, objectExists } from "./object-existence";
+import { describe, expect, it } from "vitest";
+import { objectExists } from "./object-existence";
 
 describe("objectExists", () => {
   const store = {
@@ -47,46 +47,5 @@ describe("objectExists", () => {
 
   it("returns false when the store is null (the maybe(() => Kind.getStore()) failure case)", () => {
     expect(objectExists(null, "node-1")).toBe(false);
-  });
-});
-
-describe("ensureLoaded", () => {
-  function buildStore(overrides: Partial<{ isLoaded: boolean; isLoading: boolean }> = {}) {
-    return {
-      isLoaded: false,
-      isLoading: false,
-      ...overrides,
-      getByName: () => undefined,
-      loadAll: vi.fn().mockResolvedValue(undefined),
-    };
-  }
-
-  it("triggers loadAll() when the store has neither loaded nor started loading", () => {
-    const store = buildStore();
-
-    ensureLoaded(store);
-
-    expect(store.loadAll).toHaveBeenCalledOnce();
-  });
-
-  it("does not trigger loadAll() again once the store has loaded", () => {
-    const store = buildStore({ isLoaded: true });
-
-    ensureLoaded(store);
-
-    expect(store.loadAll).not.toHaveBeenCalled();
-  });
-
-  it("does not trigger loadAll() while a load is already in flight", () => {
-    const store = buildStore({ isLoading: true });
-
-    ensureLoaded(store);
-
-    expect(store.loadAll).not.toHaveBeenCalled();
-  });
-
-  it("is a no-op for a store that is null or undefined", () => {
-    expect(() => ensureLoaded(null)).not.toThrow();
-    expect(() => ensureLoaded(undefined)).not.toThrow();
   });
 });

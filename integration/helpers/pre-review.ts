@@ -58,30 +58,59 @@ export interface DrawerRow {
   href: string | null;
 }
 
-/** Reads every `DrawerItem` row of the currently open detail drawer. */
-export async function inspectDrawerRows(frame: Frame): Promise<DrawerRow[]> {
-  return frame.$$eval(".Drawer.KubeObjectDetails .DrawerItem", (elements) =>
-    elements.map((element) => {
-      const label = element.querySelector(".name")?.textContent?.trim() ?? "";
-      const valueElement = element.querySelector(".value");
-      // Only the first link of a row is inspected: DrawerItem rows with
-      // several object references (e.g. a badge list) are a known MVP gap,
-      // see "Notes and deviations" in SPEC-0006.
-      const link = valueElement?.querySelector("a[href]") ?? null;
+// Freelens core's generic custom-resource detail item
+// (`custom-resource-detail-item`, `NonInjectedCustomResourceDetails` in
+// `@freelensapp/core`) renders a `<div class="CustomResourceDetails ...">`
+// above every CR drawer body, holding one plain-text `DrawerItem` per CRD
+// `additionalPrinterColumns` entry (`startCase(column.name)` as the label,
+// `safeJSONPathValue` as the value) plus the host's conditions table.
+//
+// Those host rows share labels with the extension's own rows, and share them
+// exactly: SwiftGuest publishes a printer column named `Node`, SwiftSnapshot
+// and SwiftSnapshotSchedule one named `Guest`, SwiftRestore one named
+// `Snapshot`, SwiftMigration one named `Guest` again. The host section is
+// rendered first, so a helper that looks a row up by label used to find the
+// host's plain-text copy and never the extension's linked one, reporting
+// every one of those references as "degraded to plain text" no matter what
+// the drawer actually rendered (issue #38: this is what made the SwiftGuest
+// drawer's Node row look like it never upgraded, while its Pod row - a label
+// with no printer column behind it - upgraded normally in the same drawer).
+//
+// So every row helper below reads the extension's own rows only. What the
+// host renders from printer columns is out of this extension's control, and
+// the byte-humanization assert already excluded it for that same reason.
+const HOST_GENERIC_CR_SECTION_SELECTOR = ".CustomResourceDetails";
 
-      return {
-        label,
-        text: (valueElement?.textContent ?? "").replace(/\s+/g, " ").trim(),
-        href: link ? link.getAttribute("href") : null,
-      };
-    }),
+/** Reads every `DrawerItem` row the extension itself renders in the currently open detail drawer. */
+export async function inspectDrawerRows(frame: Frame): Promise<DrawerRow[]> {
+  return frame.$$eval(
+    ".Drawer.KubeObjectDetails .DrawerItem",
+    (elements, hostSectionSelector) =>
+      elements
+        .filter((element) => !element.closest(hostSectionSelector))
+        .map((element) => {
+          const label = element.querySelector(".name")?.textContent?.trim() ?? "";
+          const valueElement = element.querySelector(".value");
+          // Only the first link of a row is inspected: DrawerItem rows with
+          // several object references (e.g. a badge list) are a known MVP gap,
+          // see "Notes and deviations" in SPEC-0006.
+          const link = valueElement?.querySelector("a[href]") ?? null;
+
+          return {
+            label,
+            text: (valueElement?.textContent ?? "").replace(/\s+/g, " ").trim(),
+            href: link ? link.getAttribute("href") : null,
+          };
+        }),
+    HOST_GENERIC_CR_SECTION_SELECTOR,
   );
 }
 
 // A store-backed drawer row (a Node/Pod/CRD reference resolved via
-// `objectExists`/`ensureLoaded`, see swiftguest-details-v1alpha1.tsx and the
-// other M1/M2 detail views) renders as plain text until the referencing
-// store's own `loadAll()` resolves (issue #23). The component is a MobX
+// `objectExists` against a store filled by `useReferenceStores`, see
+// swiftguest-details-v1alpha1.tsx and the other M1/M2 detail views) renders
+// as plain text until the referencing store's own `loadAll()` resolves
+// (issue #23). The component is a MobX
 // `observer`, so the row upgrades to a real link once the store's `items`
 // fill in - but that can take longer than a fixed pause on a slow runner. A
 // caller that reads the row once right after `openDrawer` can race that
@@ -93,7 +122,8 @@ const DRAWER_LINK_SETTLE_TIMEOUT_MS = 15_000;
 const DRAWER_LINK_POLL_INTERVAL_MS = 250;
 
 /**
- * Waits for `label`'s row to have an href, up to `timeoutMs`, then returns
+ * Waits for `label`'s row - among the extension's own rows, never the host's
+ * printer-column copies - to have an href, up to `timeoutMs`, then returns
  * the row's state at that point (`href: null` if it never got one).
  * Resolves as soon as an href appears, so a row that is already a link on
  * the very first check - the common case on a fast machine - costs nothing
@@ -115,13 +145,15 @@ export async function waitForDrawerLink(
 ): Promise<DrawerRow | undefined> {
   try {
     await frame.waitForFunction(
-      (targetLabel) => {
-        const items = Array.from(document.querySelectorAll(".Drawer.KubeObjectDetails .DrawerItem"));
+      ({ targetLabel, hostSectionSelector }) => {
+        const items = Array.from(document.querySelectorAll(".Drawer.KubeObjectDetails .DrawerItem")).filter(
+          (element) => !element.closest(hostSectionSelector),
+        );
         const item = items.find((element) => element.querySelector(".name")?.textContent?.trim() === targetLabel);
 
         return Boolean(item?.querySelector(".value a[href]"));
       },
-      label,
+      { targetLabel: label, hostSectionSelector: HOST_GENERIC_CR_SECTION_SELECTOR },
       { timeout: timeoutMs, polling: DRAWER_LINK_POLL_INTERVAL_MS },
     );
   } catch {
@@ -310,16 +342,13 @@ export function nonHumanizedByteValues(text: string): string[] {
   return [...new Set(matches)];
 }
 
-// Every CR drawer also carries Freelens core's own generic detail item
-// (`custom-resource-detail-item`, `orderNumber: 100`, `NonInjectedCustomResourceDetails`
-// in `@freelensapp/core`), which renders a `<div class="CustomResourceDetails ...">`
-// wrapper with one `DrawerItem` per CRD `additionalPrinterColumns` entry, read
-// with `safeJSONPathValue` and rendered verbatim - it has no way to know a
-// given column is a byte count, so it never humanizes one. When a CRD
-// publishes a raw byte count as a printer column (SwiftSnapshot's `SIZE`, for
-// example), this host section shows it unhumanized, and this extension has no
-// hook to change that rendering. See "Notes and deviations" in SPEC-0006.
-const HOST_GENERIC_CR_SECTION_SELECTOR = ".CustomResourceDetails";
+// The byte-humanization assert excludes the same host section as the row
+// helpers above (HOST_GENERIC_CR_SECTION_SELECTOR): it renders each printer
+// column with `safeJSONPathValue` verbatim and has no way to know a given
+// column is a byte count, so it never humanizes one. When a CRD publishes a
+// raw byte count as a printer column (SwiftSnapshot's `SIZE`, for example),
+// this host section shows it unhumanized and this extension has no hook to
+// change that rendering. See "Notes and deviations" in SPEC-0006.
 
 /**
  * Text content of the open detail drawer, excluding Freelens core's generic

@@ -1,12 +1,12 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
-import React from "react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftRestore } from "../api/kubeswift/swiftrestore-v1alpha1";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { withErrorPage } from "../components/error-page";
-import { ensureLoaded, objectExists } from "../components/object-existence";
+import { objectExists } from "../components/object-existence";
+import { useReferenceStores } from "../components/reference-loader";
 
 const { observer } = MobxReact;
 
@@ -51,11 +51,29 @@ export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) =>
 
     // `spec.targetNode` (s3 backend restores only) shares the same dead-link
     // risk: `LinkToNode` never checks the target exists either (issue #23).
-    React.useEffect(() => {
-      ensureLoaded(snapshotStore);
-      ensureLoaded(guestStore);
-      ensureLoaded(nodesStore);
-    }, []);
+    //
+    // Both CRD stores are asked for the namespaces these references live in
+    // (the refs' own, plus this restore's, since a ref may carry none) rather
+    // than for whatever the namespace filter holds; `nodesStore` is
+    // cluster-scoped (issue #38).
+    useReferenceStores([
+      {
+        label: SwiftSnapshot.crd.plural,
+        store: snapshotStore,
+        namespaces: [snapshotRef?.namespace ?? object.getNs()],
+        lookups: [{ name: snapshotRef?.name, namespace: snapshotRef?.namespace }],
+      },
+      {
+        label: SwiftGuest.crd.plural,
+        store: guestStore,
+        namespaces: [targetGuestRef?.namespace, restoredGuestRef?.namespace, object.getNs()],
+        lookups: [
+          { name: targetGuestRef?.name, namespace: targetGuestRef?.namespace },
+          { name: restoredGuestRef?.name, namespace: restoredGuestRef?.namespace },
+        ],
+      },
+      { label: "nodes", store: nodesStore, lookups: [{ name: spec?.targetNode }] },
+    ]);
 
     const snapshotIsLinkable = objectExists(snapshotStore, snapshotRef?.name, snapshotRef?.namespace);
     const targetGuestIsLinkable = objectExists(guestStore, targetGuestRef?.name, targetGuestRef?.namespace);

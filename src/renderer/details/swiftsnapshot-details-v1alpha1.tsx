@@ -1,13 +1,13 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
-import React from "react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftImage } from "../api/kubeswift/swiftimage-v1alpha1";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { formatBytes } from "../api/kubeswift/types";
 import { withErrorPage } from "../components/error-page";
-import { ensureLoaded, objectExists } from "../components/object-existence";
+import { objectExists } from "../components/object-existence";
+import { useReferenceStores } from "../components/reference-loader";
 
 const { observer } = MobxReact;
 
@@ -66,12 +66,30 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
     // per-kind `getStore()`.
     const imageStore = maybe(() => SwiftImage.getStore<SwiftImage>());
 
-    React.useEffect(() => {
-      ensureLoaded(guestStore);
-      ensureLoaded(nodesStore);
-      ensureLoaded(imageStore);
-      ensureLoaded(storageClassStore);
-    }, []);
+    // The namespaced stores are asked for the namespaces these references
+    // actually live in (the ref's own namespace, or this snapshot's when the
+    // ref does not carry one) instead of relying on the namespace filter;
+    // `nodesStore` and `storageClassStore` are cluster-scoped (issue #38).
+    useReferenceStores([
+      {
+        label: SwiftGuest.crd.plural,
+        store: guestStore,
+        namespaces: [guestRef?.namespace ?? object.getNs()],
+        lookups: [{ name: guestRef?.name, namespace: guestRef?.namespace }],
+      },
+      { label: "nodes", store: nodesStore, lookups: [{ name: status?.nodeName }] },
+      {
+        label: SwiftImage.crd.plural,
+        store: imageStore,
+        namespaces: [capturedImageRef?.namespace ?? object.getNs()],
+        lookups: [{ name: capturedImageRef?.name, namespace: capturedImageRef?.namespace }],
+      },
+      {
+        label: "storageclasses",
+        store: storageClassStore,
+        lookups: [{ name: guestSpec?.storage?.storageClassName }],
+      },
+    ]);
 
     const guestIsLinkable = objectExists(guestStore, guestRef?.name, guestRef?.namespace);
     const nodeIsLinkable = objectExists(nodesStore, status?.nodeName);
@@ -184,8 +202,9 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
                 snapshot time (status.guestSpec.imageName/.storage.storageClassName).
                 Like the Guest and Node references above, the SwiftImage or
                 StorageClass they named may since have been deleted, so both
-                rows go through the same objectExists/ensureLoaded
-                degradation (#29 follow-up, closing the SPEC-0004 residual). */}
+                rows go through the same objectExists degradation, against
+                stores loaded by the same useReferenceStores call
+                (#29 follow-up, closing the SPEC-0004 residual). */}
             <DrawerTitle>Captured Guest</DrawerTitle>
             <DrawerItem name="Image" hidden={!guestSpec.imageName}>
               {capturedImageRef && capturedImageIsLinkable ? (

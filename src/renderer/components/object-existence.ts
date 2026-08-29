@@ -10,10 +10,13 @@
 // `Renderer.Component.LinkToObject` all build a details URL from the
 // name/ref alone and never check the target exists).
 //
-// Pure functions of a store and a name/namespace (or a store and a loading
-// state), not JSX and not a direct `Renderer.K8sApi`/`getStore()` read, so
-// they stay unit-testable without stubbing the host global (the same shape
-// as the status classifiers DESIGN.md section 2 asks for).
+// Pure functions of a store and a name/namespace, not JSX and not a direct
+// `Renderer.K8sApi`/`getStore()` read, so they stay unit-testable without
+// stubbing the host global (the same shape as the status classifiers
+// DESIGN.md section 2 asks for).
+//
+// This module answers "is it there right now"; getting the store to hold it
+// in the first place is `reference-loader.ts` (issue #38).
 
 /** The slice of `Renderer.K8sApi`'s `KubeObjectStore` `objectExists` needs. */
 export interface ObjectLookupStore<T> {
@@ -40,27 +43,4 @@ export function objectExists<T>(
   }
 
   return store.getByName(name, namespace) !== undefined;
-}
-
-/** The slice of `KubeObjectStore` `ensureLoaded` needs, on top of `ObjectLookupStore`. */
-export interface LoadableStore<T> extends ObjectLookupStore<T> {
-  isLoaded: boolean;
-  isLoading: boolean;
-  loadAll(): Promise<unknown>;
-}
-
-/**
- * Triggers a one-time `loadAll()` on `store` if it has neither loaded nor
- * started loading yet. Meant to be called from a `useEffect` with an empty
- * dependency array: a detail view referencing another kind's store (for
- * example a SwiftSnapshot linking to the SwiftGuest it was taken from, or
- * this repo's own SwiftGuest linking to a core Node/Pod) cannot assume that
- * store is already populated - nothing else on the page necessarily loaded
- * it. A no-op for `store` being `null`/`undefined`, so callers can pass the
- * result of `maybe(() => Kind.getStore())` straight through.
- */
-export function ensureLoaded(store: LoadableStore<unknown> | null | undefined): void {
-  if (store && !store.isLoaded && !store.isLoading) {
-    void store.loadAll();
-  }
 }

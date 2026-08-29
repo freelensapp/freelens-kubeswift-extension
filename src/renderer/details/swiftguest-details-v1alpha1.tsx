@@ -1,9 +1,9 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
-import React from "react";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { withErrorPage } from "../components/error-page";
-import { ensureLoaded, objectExists } from "../components/object-existence";
+import { objectExists } from "../components/object-existence";
+import { useReferenceStores } from "../components/reference-loader";
 
 const { observer } = MobxReact;
 
@@ -49,11 +49,18 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
     // render a link (they only format a details URL from the name, they
     // never check the target exists), so the existence check below decides
     // between a real link and plain text instead (DESIGN.md section 3,
-    // issue #23).
-    React.useEffect(() => {
-      ensureLoaded(nodesStore);
-      ensureLoaded(podsStore);
-    }, []);
+    // issue #23). `nodesStore` is cluster-scoped and loads cluster-wide;
+    // `podsStore` is asked for the launcher pod's own namespace rather than
+    // for whatever the namespace filter happens to hold (issue #38).
+    useReferenceStores([
+      { label: "nodes", store: nodesStore, lookups: [{ name: nodeName }] },
+      {
+        label: "pods",
+        store: podsStore,
+        namespaces: [podNamespace],
+        lookups: [{ name: podName, namespace: podNamespace }],
+      },
+    ]);
 
     const nodeIsLinkable = objectExists(nodesStore, nodeName);
     const podIsLinkable = objectExists(podsStore, podName, podNamespace);

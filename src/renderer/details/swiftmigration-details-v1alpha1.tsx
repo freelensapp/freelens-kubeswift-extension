@@ -1,11 +1,11 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
-import React from "react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftMigration } from "../api/kubeswift/swiftmigration-v1alpha1";
 import { withErrorPage } from "../components/error-page";
-import { ensureLoaded, objectExists } from "../components/object-existence";
+import { objectExists } from "../components/object-existence";
+import { useReferenceStores } from "../components/reference-loader";
 
 const { observer } = MobxReact;
 
@@ -53,11 +53,28 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
     // exists (DESIGN.md section 3, issue #23).
     const guestStore = maybe(() => SwiftGuest.getStore<SwiftGuest>());
 
-    React.useEffect(() => {
-      ensureLoaded(guestStore);
-      ensureLoaded(nodesStore);
-      ensureLoaded(podsStore);
-    }, []);
+    // The launcher pods on both ends live in this migration's namespace and
+    // the guest in its ref's, so those stores are asked for exactly those
+    // namespaces instead of relying on the namespace filter; `nodesStore` is
+    // cluster-scoped (issue #38).
+    useReferenceStores([
+      {
+        label: SwiftGuest.crd.plural,
+        store: guestStore,
+        namespaces: [guestRef?.namespace ?? object.getNs()],
+        lookups: [{ name: guestRef?.name, namespace: guestRef?.namespace }],
+      },
+      { label: "nodes", store: nodesStore, lookups: [{ name: sourceNode }, { name: destinationNode }] },
+      {
+        label: "pods",
+        store: podsStore,
+        namespaces: [object.getNs()],
+        lookups: [
+          { name: sourcePodName, namespace: object.getNs() },
+          { name: destinationPodName, namespace: object.getNs() },
+        ],
+      },
+    ]);
 
     const guestIsLinkable = objectExists(guestStore, guestRef?.name, guestRef?.namespace);
     const sourceNodeIsLinkable = objectExists(nodesStore, sourceNode);

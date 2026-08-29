@@ -112,6 +112,14 @@ repositories.
   `MaybeLink` + a URL helper that returns `""` for unresolvable refs so
   they degrade to text instead of dead links. Always `stopPropagation`
   on link clicks.
+- A reference is linked only when the target is actually in its store
+  (`objectExists`, `components/object-existence.ts`); otherwise the row
+  degrades to `WithTooltip` plain text. The stores behind those checks are
+  filled by `useReferenceStores` (`components/reference-loader.ts`), which
+  asks for the namespaces the references live in, retries, watches, and
+  reports each attempt on one line - never by an ad-hoc one-shot
+  `loadAll()` in the component, which fails silently when the namespace
+  filter does not cover the reference (issue #38).
 - Repeated sub-objects (devices, interfaces, history entries) either
   render as a nested core `Table` (`sortSyncWithUrl={false}`,
   `scrollable={false}`) or as self-guarding section components that

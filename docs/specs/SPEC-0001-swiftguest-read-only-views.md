@@ -108,3 +108,43 @@ addition for `kubectl get sg -o wide` parity).
 - 2026-08-28: sidebar/page-header title humanized to "Guests" (`crd.title`),
   dropping the redundant "Swift" prefix (issues #24, #29); the `SwiftGuest`
   kind is unchanged in drawer titles and data contexts.
+- 2026-08-29 (issue #38): the existence check above only works if the store
+  it reads is actually populated, and the `ensureLoaded` one-shot that filled
+  it did not do so reliably. On the packed Linux app in CI the Node and Pod
+  rows stayed plain text forever, while the same build filled the stores
+  within seconds on a locally built macOS app - with no
+  `[KubeObjectStore] loadAll failed` warning to explain the difference. Two
+  host behaviors make that silent outcome possible: `loadAll()` called
+  without `namespaces` falls back to the cluster frame's context namespaces
+  (the UI namespace filter), and for a namespaced store listing an empty
+  namespace list loads nothing while still setting `isLoaded`, after which an
+  `isLoaded`-guarded one-shot never retries; and a load that fails without an
+  `onLoadFailure` callback leaves `isLoaded` false forever after a single
+  warning. The drawers now use `useReferenceStores`
+  (`src/renderer/components/reference-loader.ts`): it asks for the namespace
+  the reference actually lives in (here, `status.podRef.namespace`, falling
+  back to the guest's own; `nodesStore` stays cluster-wide), passes
+  `merge: true` so other namespaces are never clobbered and an
+  `onLoadFailure` so a failure is data rather than a swallowed rejection,
+  retries up to 5 times 2-8 seconds apart while the drawer stays open,
+  subscribes to the store after the first successful load so an object
+  appearing later upgrades the row to a link, and logs one line per attempt
+  (`[kubeswift-extension] reference store <apiBase>: attempt N ns=... isLoaded=... items=... lookup=hit|miss|n/a`)
+  which the E2E error collector echoes into the CI job log. `objectExists`
+  is unchanged and still decides link versus text at render time, so the
+  degradation behavior this spec describes is the same.
+- 2026-08-29 (issue #38, correcting the entry above): the symptom that
+  motivated the issue for this drawer - "the Node row never upgrades" - was
+  a test-side false negative, not a store that never filled. SwiftGuest
+  publishes an `additionalPrinterColumns` entry named `Node`, so Freelens
+  core's generic custom-resource section renders a second, always-plain-text
+  row labelled exactly "Node" above this drawer's body, and the E2E and
+  pre-review row helpers matched that one instead of the extension's linked
+  row, on every platform. The "Pod" row has no printer column behind it and
+  was never affected, which is exactly why one of the two upgraded and the
+  other never did. The helpers now read the extension's own rows only (see
+  SPEC-0006 "Notes and deviations" for the mechanism and the evidence). The
+  loader work above stands on its own: the silent empty load, the swallowed
+  load failure and the store that cannot be resolved are real host
+  behaviors, and the per-attempt diagnostics are what made this collision
+  provable in the first place.

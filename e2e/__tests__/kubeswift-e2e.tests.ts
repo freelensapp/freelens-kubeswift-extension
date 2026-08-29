@@ -129,20 +129,26 @@ describe("KubeSwift views against the fixture cluster", () => {
       // What this test actually asserts is the no-dead-links invariant the
       // fix guarantees: a rendered link never navigates to the host's
       // "Resource loading has failed" panel. It deliberately does NOT assert
-      // that the Node/Pod rows always render as links. Whether
-      // nodesStore/podsStore's loadAll() resolves in time for the existence
-      // check (objectExists/ensureLoaded in object-existence.ts) to upgrade
-      // a row from plain text to a link turned out to be environment-
-      // dependent, not just a settle race a longer wait fixes: it reliably
-      // upgrades against the local pre-review pass, but the Node row never
-      // upgraded on the packed Linux CI build within a bounded wait, even
-      // though the same Freelens version and fixtures are involved
-      // (plausibly the cluster frame's allowed-resources gating of
-      // nodesStore in that build - not chased further in this PR). A row
-      // still plain text after the wait is therefore treated as legitimate
-      // degradation - exactly the fallback DESIGN.md section 3 asks for
-      // when a reference cannot be confirmed - not a failure: it is logged
-      // so CI output still shows it happened, and the test moves on.
+      // that the Node/Pod rows always render as links: whether the
+      // referencing store fills in time for the existence check
+      // (objectExists against the stores useReferenceStores loads) is
+      // environment-dependent, so a row still plain text after the wait is
+      // treated as legitimate degradation - exactly the fallback DESIGN.md
+      // section 3 asks for when a reference cannot be confirmed - not a
+      // failure: it is logged so CI output still shows it happened, and the
+      // test moves on.
+      //
+      // Until issue #38 the "Node" row here looked like the environment-
+      // dependent case and was blamed on nodesStore never loading on the
+      // packed Linux CI build. It was not: SwiftGuest publishes a printer
+      // column named `Node`, so the host's own generic custom-resource
+      // section renders a second, always-plain-text row with that exact
+      // label above this drawer's body, and the row helpers matched it
+      // instead of ours. They now read the extension's own rows only (see
+      // pre-review.ts), which is why this check finally sees the real Node
+      // row. "Pod" was never affected - no printer column carries that
+      // label - which is exactly why one of the two upgraded and the other
+      // never did.
       await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
       await pr.openDrawer(frame, "e2e-guest-running");
 

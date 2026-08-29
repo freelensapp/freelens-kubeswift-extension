@@ -328,3 +328,38 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   exercised so far). Manual verification with Roberto (this spec's "Tests"
   section) is still pending - his review of the first `REPORT.md` was not
   part of this implementation pass.
+- 2026-08-29 (issue #38): **the row helpers were reading the host's rows as
+  if they were the extension's.** `inspectDrawerRows` and
+  `waitForDrawerLink` walked every `.DrawerItem` in the open drawer, so they
+  also saw Freelens core's generic `.CustomResourceDetails` section - the
+  same host section the byte-humanization assert already excluded above,
+  which renders one plain-text row per CRD `additionalPrinterColumns` entry
+  right under the object metadata, above the extension's own body. Those
+  labels collide with the extension's own, exactly: SwiftGuest publishes a
+  printer column named `Node`, SwiftSnapshot and SwiftSnapshotSchedule one
+  named `Guest`, SwiftRestore one named `Snapshot`, SwiftMigration one named
+  `Guest`. Looking a row up by label therefore returned the host's copy,
+  which never carries a link, and reported the reference as degraded to
+  plain text no matter what the extension had rendered. This is what the
+  graduated "navigates the SwiftGuest drawer's Node and Pod links" test hit:
+  its "Node" check could never see the real row, on any platform, while its
+  "Pod" check could (no printer column carries that label) - the asymmetry
+  that had been read as an environment-dependent store-loading problem on
+  the packed Linux CI build, and recorded as such both in that test and in
+  SPEC-0001. The evidence that it was not: the very first `REPORT.md`
+  produced by this pass lists a working link to `/api/v1/nodes/...` and, in
+  the same drawer, a plain-text "Node" row for the same node -
+  `e2e-artifacts/pre-review/swiftguests/drawer-dark.png` shows both, the
+  host's block above the extension's "Guest" section. Both helpers now
+  filter out anything inside `HOST_GENERIC_CR_SECTION_SELECTOR`, so the
+  pass and the E2E suite hold the extension accountable for its own rows
+  only. Consequence for the report: host printer-column rows no longer
+  appear in "For human judgment" (they never were the extension's to fix,
+  as the byte-humanization exemption already argued).
+- The duplication behind that bug is also a real UI finding, left open on
+  purpose here: for every CRD with printer columns, the drawer shows the
+  host's `Phase`/`Node`/`IP`/... rows and then the extension's own again,
+  which is what DESIGN.md section 3's "do not re-render what the host
+  already renders" warns about (the same family as gap 5's conditions
+  question). Deciding which side wins is a retrofit design call, not part
+  of the issue #38 fix.

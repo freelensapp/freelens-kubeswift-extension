@@ -303,3 +303,53 @@ loaded through the same `ensureLoaded` `useEffect` as `guestStore`/
 `nodesStore`. The stale comment in the drawer claiming these two rows were
 "plain text with nothing to degrade" (left over from the note two
 paragraphs above, written before the links landed) is removed.
+
+### Loading the reference stores
+
+2026-08-29 (issue #38, superseding the `ensureLoaded` calls the notes above
+describe): every existence check in these four drawers depends on the
+referenced kind's store being populated, and the one-shot fire-and-forget
+`loadAll()` that filled it was not reliable. On the packed Linux app in CI
+the reference rows stayed plain text forever - CRD guests included, while
+the list pages of the very same kinds loaded and watched fine through the
+core's `KubeObjectListLayout` subscription - and nothing was logged to
+explain it. See SPEC-0001 "Notes and deviations" for the two host behaviors
+that produce that silence (a `loadAll()` with no `namespaces` falling back
+to the namespace filter, which can list nothing and still set `isLoaded`;
+and a failure without `onLoadFailure` leaving `isLoaded` false after one
+warning).
+
+All four drawers now declare what they need through `useReferenceStores`
+(`src/renderer/components/reference-loader.ts`) instead: one entry per
+store, with the namespaces the references live in and the names that will
+be looked up. `SwiftSnapshot` asks the `SwiftGuest` and `SwiftImage` stores
+for the guest/captured-image ref's namespace (the snapshot's own when the
+ref carries none) and leaves `nodesStore`/`storageClassStore` cluster-wide;
+`SwiftRestore` asks the `SwiftSnapshot` store for the snapshot ref's
+namespace and the `SwiftGuest` store for both guest refs' namespaces plus
+the restore's own; `SwiftMigration` asks `podsStore` for the migration's
+namespace, where both launcher pods live; `SwiftSnapshotSchedule` asks the
+`SwiftGuest` store for the guest ref's namespace. Each entry loads with
+`merge: true` (never clobbering namespaces loaded by a list page) and an
+`onLoadFailure`, retries up to 5 times 2-8 seconds apart while the drawer
+stays open, subscribes to the store after the first successful load so
+objects appearing later upgrade their row to a link, and logs one terse
+`console.info` line per attempt with a stable
+`[kubeswift-extension] reference store ...` prefix that the E2E error
+collector echoes into the CI job log (as `info`, so it does not count as a
+captured error). A `lookup=miss` is not by itself a defect - a snapshot's
+guest or a clone restore's target guest may legitimately not exist - it
+only drives the bounded retries.
+
+The second failure mode these drawers could hit, now visible as
+`store=unavailable` in the same lines, is a CRD store that
+`maybe(() => <Kind>.getStore())` cannot resolve when the drawer opens: the
+render-time `objectExists` on a `null` store observes nothing, so no MobX
+change would ever trigger the re-render that resolves it again. The loader
+nudges one itself on each attempt that found no store, and takes over
+normally once the store appears.
+
+Rendering is deliberately unchanged: `objectExists` remains the render-time
+lookup and every row still degrades to `WithTooltip` plain text when the
+target is absent, so the E2E degradation allowance stays as it is until a
+CI run confirms the fix (tightening it is a follow-up).
