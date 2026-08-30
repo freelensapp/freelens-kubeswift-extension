@@ -90,7 +90,7 @@ means (each item needs its own spec before implementation):
 | Guest actions: start/stop (runPolicy), delete | [SPEC-0010](../specs/SPEC-0010-m6-guest-actions.md) | Done |
 | Create SwiftGuest (form) | — | Planned |
 | Create SwiftGuestClass / Pool / Image / Kernel / SeedProfile (forms) | — | Planned |
-| Snapshot now / restore dialogs | [SPEC-0011](../specs/SPEC-0011-m6-snapshot-restore-dialogs.md) | Spec in PR |
+| Snapshot now / restore dialogs | [SPEC-0011](../specs/SPEC-0011-m6-snapshot-restore-dialogs.md) | In PR |
 | Start migration dialog | — | Planned |
 | Sandbox / SandboxPool creation | — | Planned |
 

@@ -55,7 +55,11 @@ src/
                              # per verb, rendered by the host in both the list
                              # row kebab and the detail drawer's toolbar
   renderer/components/       # Shared pure modules: status classifiers, the
-                             # action guards and payloads, reference loading
+                             # action guards and payloads, the create dialogs'
+                             # gating, validation, payloads and write
+                             # summaries (snapshot-create.ts), reference
+                             # loading; plus the thin form components the
+                             # dialogs render (snapshot-create-dialog.tsx)
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```

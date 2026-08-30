@@ -473,6 +473,68 @@ scope (a better verb is not a new verb), and it must not invent behaviour
 the recon could not confirm - where upstream is merely unverified rather
 than wrong, the honest move is to say less, not to promise more.
 
+**W12. A create is a form, and the form is the confirmation** (decision of
+2026-08-30, SPEC-0011, which applies it to Take Snapshot). A create needs
+input before it can be confirmed, and stacking a second modal on top of a
+form would be ceremony rather than safety. So one dialog per verb: the top
+is the form, the bottom is the **live write summary** - the same enumerated
+writes W1 requires, rebuilt from the current field values on every change,
+with the one `Create <Kind> <ns>/<name>` line followed by the consequence
+lines that are true of this object in this state. The OK button carries the
+verb.
+
+- **Inline validation replaces the absent webhook.** Every cross-field rule
+  the API's admission webhook would enforce is enforced at the field,
+  before submit, whenever that webhook can be off (KubeSwift ships its
+  validating webhook disabled by default, so on a normal install nobody
+  else would ever produce those messages, and the mistake surfaces much
+  later as a `Failed` phase or a permanent `Pending`).
+- **Option dropping replaces no-op dropping.** A field whose value would
+  change nothing for the current choice is not rendered at all, rather than
+  rendered and ignored. A field the API documents as a no-op is not
+  rendered either; what it claims to control is stated as a derived fact
+  instead.
+- **A disabled submit always names the field and the reason**, in the form
+  (next to the offending field) and once more next to the button. W4
+  applies to submit buttons: a mute grey button is a dead control.
+- **A warning never blocks.** Where the client can only guess - a name
+  collision read from a store that may be stale, a reference that may have
+  been created since - the dialog warns and submits, and the API server's
+  refusal is what the failure path is designed to carry.
+
+**Host facts this pattern rests on** (measured in SPEC-0011's spikes, on
+Freelens 1.10.3; they are not obvious and each one has a wrong-looking
+alternative):
+
+- `ConfirmDialog.open` is the dialog host for every form, including in the
+  list row kebab. A self-rendered `Dialog` works in the drawer toolbar and
+  is unmounted ~100 ms after the kebab closes (`MenuActions` renders that
+  menu `animated`, and `Animate`'s leave path returns `null`), so it cannot
+  satisfy W5.
+- **The form model lives outside React**, in a per-open MobX observable the
+  menu item creates, with the message component an `observer` over it.
+  `ConfirmDialog.ok` closes the dialog in a `finally` on both outcomes, so
+  "the dialog stays open after a 409" is implemented as catch-in-`ok`
+  (never rethrow: a rethrown `JsonApiErrorParsed` also triggers the host's
+  own "Unknown error occurred while ok-ing" toast) plus
+  `setTimeout(() => ConfirmDialog.open(sameParams), 0)`, and that reopen
+  remounts the message. React-local state would be wiped exactly when the
+  user needs it most.
+- **`okButtonProps` must be a MobX observable object** whose fields are
+  mutated as validity changes. A plain object is inert: nothing re-renders
+  the host's button.
+- **The `ConfirmDialog` box is hardcoded `#fff` in both themes**, and
+  `.Dialog h5` is styled white on it. A form inside it therefore carries no
+  `h5`, and sets its own text colour on its container instead of following
+  `--textColorPrimary`, which in the dark theme measures roughly 3:1
+  against that box. This is the one place a hardcoded colour is allowed
+  under section 5, because the surface it sits on is itself hardcoded and
+  theme-independent; the host's `Select` is put in its `light` theme there
+  for the same reason. The limitation is upstream-Freelens feedback, next
+  to the kebab-unmount finding and the absence of a `pinned` option on
+  `ConfirmDialogParams` (a backdrop click discards the form, and no
+  extension can prevent it).
+
 **The pre-review agent pass stays read-only** (SPEC-0006, SPEC-0010): it
 runs against the demo cluster a reviewer is about to walk through by
 hand, it never opens a row kebab, it clicks only drawer rows that have an

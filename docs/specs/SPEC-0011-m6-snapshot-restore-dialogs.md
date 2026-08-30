@@ -753,6 +753,92 @@ implementation PR opens, verdicts recorded here.
 
 Filled during implementation when reality diverges from the plan.
 
+### Take Snapshot as implemented (2026-08-30)
+
+The spec ships in two PRs. The first one implements **Take Snapshot** and
+the **SwiftSnapshot On Delete row** (`components/snapshot-create.ts`,
+`components/snapshot-create-dialog.tsx`,
+`menus/swiftguest-take-snapshot-menu-item-v1alpha1.tsx`, the drawer row and
+DESIGN.md's W12); Restore and the SwiftRestore On Delete row follow in the
+second. Nothing in the design changed, and these are the places the
+implementation is more specific than the text above:
+
+- **The memory gating reports the live-state rule first**, before the GPU,
+  SR-IOV and qemu-override rules, when more than one applies. The gating
+  table lists four independent situations and does not order them; the
+  implementation does, because the state is the refusal an operator can act
+  on (start the guest and take the snapshot) while the other three are
+  properties of the guest's shape that starting it would not change. A
+  guest that is both stopped and GPU-attached therefore reads
+  "parks in Pending forever", which is also what the fixture guest of the
+  E2E case shows.
+- **The per-backend refusal is rendered twice**: inside the select, on each
+  disabled option, and as one sentence under the select naming the three
+  backends together. The three memory backends always share one verdict,
+  and a reason nobody opens a dropdown to read is a reason nobody reads.
+- **The payload always carries `deletionPolicy`**, and carries
+  `resumeAfterSnapshot` on the memory backends, because the user chose
+  both; when they equal the schema defaults the object is identical to one
+  the API server would have defaulted. `includeMemory` and `includeDisk`
+  are never sent, as specified. The E2E case asserts the created spec's key
+  set is exactly `backend`, `guestRef`, `deletionPolicy` and the two
+  defaults the API server fills (`includeMemory`, `resumeAfterSnapshot`) -
+  confirmed against the `v0.13.12` CRD, which declares exactly three
+  defaults and none for `includeDisk`.
+- **The frozen-VM warning is rendered twice**: under the Resume after
+  capture checkbox and in the write summary, from one shared constant. The
+  form is tall enough that the summary sits below the fold of the dialog's
+  own scroll area, and a cost that has to be visible "at the moment it is
+  chosen" cannot live only where the user has to scroll to find it. Caught
+  by screenshotting the dialog in both themes before the review: the accent
+  button was visible and its reason was not.
+- **The dialog renders no icon.** `ConfirmDialog`'s default is a warning
+  triangle, which contradicts "a snapshot is not destructive"; what is
+  dangerous here says so in the summary, in the warning style, and turns
+  the OK button to the accent styling.
+- **The credentials Secret field is a picker only when the namespace's
+  Secret list came back non-empty**, and a text input in every other case
+  (loading, refused, empty namespace). The text input also states that the
+  name is unverified when the list was refused.
+- **One contrast deviation from DESIGN.md section 5 is declared**: the form
+  container and the portalled select menu set a hardcoded ink colour,
+  because the box they sit on is itself hardcoded `#fff` in both themes.
+  Recorded in DESIGN.md section 12 (W12's host facts) with the rest.
+
+### Feasibility gates: the verdicts (2026-08-30)
+
+All four were run before the implementation, SPEC-0010 style: a throwaway
+Playwright suite (`e2e/__tests__/spike-m6b.tests.ts`, deleted afterwards)
+plus temporary spike menu items in `src/`, against a packed Freelens
+`v1.10.3` and the `kubeswift-e2e` fixture cluster. Final pass 6/6 green.
+
+| # | Verdict | What was learned |
+| --- | --- | --- |
+| T1 | **PASS**, with one hard limit | `ConfirmDialog.open` hosts a stateful form: the `message` element reference is stable in the host's observable state, so React keeps the subtree mounted (28 re-renders, one component instance, controlled inputs intact). The OK button reacts only through `okButtonProps` passed as a **MobX observable object** mutated on validity changes; a plain object is inert. The hard limit: `ConfirmDialog.ok` closes the dialog in a `finally` on **both** outcomes, and a rethrown `JsonApiErrorParsed` additionally triggers the host's own "Unknown error occurred while ok-ing" toast. "The dialog stays open after a 409" is therefore implemented as catch-in-`ok` (never rethrow) plus `setTimeout(() => ConfirmDialog.open(sameParams), 0)`, which lands after the host's `finally`. The reopen remounts the message and wipes React-local state, so **the form model lives outside React**, in a per-open MobX observable owned by the menu item, and the message component is an `observer` over it |
+| T1 fallback | Dialog: PASS in the drawer toolbar, **FAIL in the list kebab** | A self-rendered host `Dialog` is unmounted ~100 ms after the row kebab closes (`MenuActions` renders the kebab menu `animated`, and `Animate`'s leave path returns `null`), so it cannot serve W5's both-surfaces rule. `ConfirmDialog` is the dialog host for every M6 form |
+| T2 | **PASS** | `SwiftSnapshot.getStore().create({name, namespace}, {spec})` creates the object (kubectl-verified) and the Snapshots page shows the row ~106 ms after navigation, no reload. Two nuances recorded: the immediate store presence comes from `create` itself pushing the item, not from the watch (a store nobody subscribed never hears about the object; the target page's own mount load is what shows the row - same visible outcome, different mechanism); and the API server writes the schema defaults (`deletionPolicy: Delete`, `includeMemory: true`, `resumeAfterSnapshot: true`) into every created object, so E2E asserts "nothing beyond the schema defaults", exactly as the Tests section words it |
+| T3 | **PASS**, both paths | `secretsApi.list({namespace})` and `nodesApi.list()` work as one-shot reads on open; `secretsStore`/`nodesStore.loadAll` with `onLoadFailure` and explicit namespaces (the reference-loader shape; the cluster-scoped nodes store without `namespaces`) also works and leaves the data cached. The Secrets store is genuinely cold at click time; nothing throws |
+| T4 | **PASS** | From a cold page, `store.api.get` inside `try`/`catch` answers the present case (`runPolicy` read) and the missing case degrades to a classified 404. The failure code lives at `error.error.code`, not `error.code` - SPEC-0010's `apiFailureFacts` helper is reused verbatim. `isUsedForNotification` is false for 404 and 409, so the extension toasts those itself. The cold store stays cold and does not need to fill |
+
+Two host findings from the spikes worth their own records:
+
+- **`ConfirmDialog`'s box is hardcoded white in both themes**, with
+  `--textColorPrimary` text measured at roughly 3:1 contrast in the dark
+  theme (and `.Dialog h5` styled white, i.e. invisible on it). This
+  affects SPEC-0010's shipped dialogs too; the implementation keeps its
+  form legible inside that constraint (no `h5`, explicit text colour on
+  the form container), the pre-review pass keeps screenshotting it, and
+  the finding is a candidate for the upstream-Freelens feedback list.
+- **Extensions cannot pin the dialog**: `ConfirmDialogParams` has no
+  `pinned`, so a backdrop click discards the form. No mitigation exists
+  on this host; recorded as upstream-Freelens feedback next to the
+  kebab-unmount limitation above.
+
+Harness note for future spikes: under memory pressure the host's
+`unpack-extension` 10 s `when()` can time out on the first run; pointing
+`EXTENSION_PATH` at the already-built tarball avoids the rebuild and made
+every subsequent pass green in ~46 s.
+
 ### Upstream drift found by this recon (2026-08-30)
 
 Recorded here so the feedback survives; the actionable copies live in the

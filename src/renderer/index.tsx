@@ -40,6 +40,7 @@ import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } 
 import { KubeSwiftIcon } from "./icons/kubeswift";
 import { SwiftGuestStartMenuItem as SwiftGuestStartMenuItemV1alpha1 } from "./menus/swiftguest-start-menu-item-v1alpha1";
 import { SwiftGuestStopMenuItem as SwiftGuestStopMenuItemV1alpha1 } from "./menus/swiftguest-stop-menu-item-v1alpha1";
+import { SwiftGuestTakeSnapshotMenuItem as SwiftGuestTakeSnapshotMenuItemV1alpha1 } from "./menus/swiftguest-take-snapshot-menu-item-v1alpha1";
 import { FleetClustersPage as FleetClustersPageV1alpha1 } from "./pages/fleetclusters-page-v1alpha1";
 import { SwiftGPUNodesPage as SwiftGPUNodesPageV1alpha1 } from "./pages/swiftgpunodes-page-v1alpha1";
 import { SwiftGPUProfilesPage as SwiftGPUProfilesPageV1alpha1 } from "./pages/swiftgpuprofiles-page-v1alpha1";
@@ -255,6 +256,19 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       components: {
         MenuItem: (props: { object: any; toolbar?: boolean }) => (
           <SwiftGuestStopMenuItemV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    // The extension's first CREATE surface (SPEC-0011). Registered on
+    // SwiftGuest, because the object a snapshot is about is the guest; the
+    // SwiftSnapshot it writes lands on the Snapshots page, which is what the
+    // success notification exists to say.
+    {
+      kind: SwiftGuestV1alpha1.kind,
+      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
+      components: {
+        MenuItem: (props: { object: any; toolbar?: boolean }) => (
+          <SwiftGuestTakeSnapshotMenuItemV1alpha1 {...props} extension={this} />
         ),
       },
     },

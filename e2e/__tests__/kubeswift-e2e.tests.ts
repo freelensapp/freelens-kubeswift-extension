@@ -23,6 +23,24 @@ import type { ElectronApplication, Frame, Page } from "playwright";
 // runners are slower still.
 const TIMEOUT = 10 * 60 * 1000;
 
+/**
+ * The control of the Take Snapshot dialog's backend select.
+ *
+ * The host's `Select` spends its `id` on react-select's `inputId`, not on the
+ * container, so the control is reached through the input it holds - which is
+ * also what makes the menu addressable as `<inputId>-options`.
+ */
+function backendControl(frame: Frame) {
+  return frame.locator(".Select:has(#snapshot-backend) .Select__control");
+}
+
+/** The SwiftSnapshots the cluster holds, by name: the only way to see a create that did not happen. */
+function snapshotNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftsnapshots.snapshot.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
 describe("KubeSwift views against the fixture cluster", () => {
   let app: ElectronApplication;
   let window: Page;
@@ -374,6 +392,10 @@ describe("KubeSwift views against the fixture cluster", () => {
         "cloud-hypervisor",
         "e2e-ubuntu-2404",
         "20Gi",
+        // What deleting this one destroys, computed from its own backend and
+        // policy (SPEC-0011): on csi the Retain above decides nothing, and the
+        // VolumeSnapshotClass does.
+        "follows the VolumeSnapshotClass",
       );
     },
     TIMEOUT,
@@ -1339,10 +1361,16 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       const runningRowItems = await cluster.actionMenuItems(frame, ".Menu");
 
+      // Three registrations since SPEC-0011 added the create surface. Take
+      // Snapshot is never disabled: there is a valid snapshot for every settled
+      // guest state, and the gating that matters is per-backend, inside the
+      // dialog, where the backend choice exists.
       expect(runningRowItems.map((item) => item.testId).sort()).toEqual([
         "swiftguest-start-action",
         "swiftguest-stop-action",
+        "swiftguest-take-snapshot-action",
       ]);
+      expect(runningRowItems.find((item) => item.testId === "swiftguest-take-snapshot-action")?.disabled).toBe(false);
 
       const runningStart = runningRowItems.find((item) => item.testId === "swiftguest-start-action");
       const runningStop = runningRowItems.find((item) => item.testId === "swiftguest-stop-action");
@@ -1380,6 +1408,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       expect(toolbarItems.map((item) => item.testId).sort()).toEqual([
         "swiftguest-start-action",
         "swiftguest-stop-action",
+        "swiftguest-take-snapshot-action",
       ]);
       expect(toolbarItems.find((item) => item.testId === "swiftguest-start-action")?.disabled).toBe(true);
       expect(toolbarItems.find((item) => item.testId === "swiftguest-start-action")?.title).toContain(
@@ -1419,6 +1448,17 @@ describe("KubeSwift views against the fixture cluster", () => {
         cluster.kubectlField("swiftguests.swift.kubeswift.io", "e2e-guest-action-running", "{.spec.runPolicy}"),
       ).toBe("Always");
       expect(cluster.kubectlExists("pods", "e2e-guest-action-running-launcher")).toBe(true);
+
+      // The same gate on the create surface (SPEC-0011): a cancelled form is an
+      // object that was never created, which is only observable by counting.
+      const before = snapshotNames();
+
+      await cluster.openRowMenu(frame, "e2e-guest-action-running");
+      await frame.locator('.Menu [data-testid="swiftguest-take-snapshot-action"]').click();
+      await cluster.confirmDialogText(frame);
+      await cluster.cancelDialog(frame);
+
+      expect(snapshotNames()).toEqual(before);
     },
     TIMEOUT,
   );
@@ -1655,6 +1695,224 @@ describe("KubeSwift views against the fixture cluster", () => {
       await cluster.expectNoRow(frame, "e2e-guest-action-delete");
 
       expect(cluster.kubectlExists("swiftguests.swift.kubeswift.io", "e2e-guest-action-delete")).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  // ---------------------------------------------------------------------------
+  // M6 (SPEC-0011): the first cases in this suite that CREATE.
+  //
+  // What the fixture cluster proves: the API server admits the object the form
+  // built, fills its schema defaults, and refuses a second one under the same
+  // name - so these cases prove the payload is exactly what the write summary
+  // enumerated and nothing more, that the gating refuses what upstream would
+  // park in `Pending` forever, and that a 409 leaves the form on screen instead
+  // of losing it.
+  //
+  // What it cannot prove stays in the spec's manual verification list: no
+  // capture ever runs here, so a created snapshot has no status at all and never
+  // reaches `Ready`. The cases must not assert otherwise.
+  it(
+    "takes a csi snapshot of a running guest",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+
+      // From the drawer toolbar, which is the second surface of the same
+      // registration (W5).
+      await pr.openDrawer(frame, "e2e-guest-running");
+      await frame.locator('.Drawer.KubeObjectDetails [data-testid="swiftguest-take-snapshot-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+      const name = await frame.locator('[data-testid="snapshot-name"]').inputValue();
+
+      // The default name is the guest's plus the wall-clock instant of the
+      // click, which is what keeps the second snapshot of one guest from
+      // colliding with the first (C6).
+      expect(name).toMatch(/^e2e-guest-running-\d{8}-\d{6}$/);
+
+      // The one write, and the facts that are true of it: what csi captures,
+      // where it lands, and the deletion truth of this backend. No pause line -
+      // a csi capture never pauses the VM - and no wait line, because this guest
+      // is Running.
+      expect(dialog).toContain(`Create SwiftSnapshot kubeswift-e2e/${name}`);
+      expect(dialog).toContain("root disk only");
+      expect(dialog).toContain("default VolumeSnapshotClass");
+      expect(dialog).toContain("follows the VolumeSnapshotClass");
+      expect(dialog).not.toContain("paused for the whole capture");
+      expect(dialog).not.toContain("waits in Pending");
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSnapshot ${name} created`);
+
+      // The object the API server stored is the object the summary enumerated,
+      // plus the three schema defaults it fills itself (spike T2) - and nothing
+      // else. `includeMemory` is a documented no-op the dialog never sends, and
+      // `includeDisk` is a different verb entirely.
+      const spec = JSON.parse(cluster.kubectlField("swiftsnapshots.snapshot.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "backend",
+        "deletionPolicy",
+        "guestRef",
+        "includeMemory",
+        "resumeAfterSnapshot",
+      ]);
+      expect(spec.backend).toEqual({ type: "csi-volume-snapshot" });
+      expect(spec.guestRef).toEqual({ name: "e2e-guest-running" });
+      expect(spec.deletionPolicy).toBe("Delete");
+
+      // The row exists on the page the object belongs to, without a reload -
+      // which is exactly why the create is acknowledged with a notification: it
+      // was fired from a page that does not show it.
+      await cluster.closeDetails(frame);
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
+      await cluster.expectRow(frame, name, "csi-volume-snapshot");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses a memory snapshot of a stopped guest, with the reason",
+    async () => {
+      // The gating that a menu-item guard cannot express, because the backend is
+      // a field: upstream would admit this snapshot and park it in `Pending`
+      // forever, requeuing every five seconds with no deadline (C3).
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = snapshotNames();
+
+      await cluster.openRowMenu(frame, "e2e-guest-action-stopped");
+      await frame.locator('.Menu [data-testid="swiftguest-take-snapshot-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("local, s3, oci");
+      expect(dialog).toContain("park the snapshot in Pending forever");
+      expect(dialog).toContain("no launcher pod is recorded");
+
+      // csi stays offered, and the form stays submittable on it: a disk capture
+      // of a stopped guest is legitimate, its root PVC being populated.
+      expect(dialog).toContain("root disk only");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // The same three refusals inside the select itself, where the option a
+      // user would have clicked is. The menu is portalled to `document.body`
+      // (the host's own default, so it is never clipped by the dialog) and
+      // carries `<inputId>-options`, which is how it is addressed from here.
+      await backendControl(frame).click();
+
+      const options = await frame.locator(".snapshot-backend-options .Select__option").allInnerTexts();
+
+      expect(options).toHaveLength(4);
+      expect(options.filter((option) => option.includes("park the snapshot in Pending forever"))).toHaveLength(3);
+
+      // Closed by clicking the control again: react-select stops the Escape key
+      // from propagating, precisely so that it never closes the dialog around it.
+      await backendControl(frame).click();
+      await cluster.cancelDialog(frame);
+
+      expect(snapshotNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns about the frozen VM when resume is unchecked",
+    async () => {
+      // The single most dangerous control in the dialog: swiftletd skips the
+      // resume and returns, the snapshot still reaches `Ready`, and nothing
+      // anywhere ever resumes the guest again (C4).
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = snapshotNames();
+
+      await cluster.openRowMenu(frame, "e2e-guest-running");
+      await frame.locator('.Menu [data-testid="swiftguest-take-snapshot-action"]').click();
+      await cluster.confirmDialogText(frame);
+
+      // A memory backend is offered for this guest: it is Running and its status
+      // records the launcher pod.
+      await backendControl(frame).click();
+      await frame.locator(".snapshot-backend-options .Select__option", { hasText: "local" }).first().click();
+
+      // The webhook rule enforced inline, in the place the webhook would have
+      // spoken from if this install had one enabled - and the submit-disabled
+      // sentence naming the field and the reason (W4).
+      const withoutPath = await cluster.confirmDialogText(frame);
+
+      expect(withoutPath).toContain("Take Snapshot is disabled - Host path");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await frame.locator('[data-testid="snapshot-host-path"]').fill("/var/lib/kubeswift/snapshots/e2e-frozen");
+
+      const withPath = await cluster.confirmDialogText(frame);
+
+      expect(withPath).toContain("paused for the whole capture");
+      expect(withPath).not.toContain("Take Snapshot is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await frame.locator('[data-testid="snapshot-resume-after-capture"] .Checkbox').click();
+
+      const frozen = await cluster.confirmDialogText(frame);
+
+      expect(frozen).toContain("nothing in the cluster ever resumes this VM");
+
+      // And the button takes the accent styling Stop uses, because this
+      // combination terminates service until a human intervenes.
+      expect(await frame.locator('[data-testid="confirm"]').getAttribute("class")).toContain("accent");
+
+      await cluster.cancelDialog(frame);
+
+      expect(snapshotNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns on a colliding name and surfaces the 409 when submitted anyway",
+    async () => {
+      // The collision warning does not block: the store can be stale and the API
+      // server is the authority, so an ignored warning has to come back as a
+      // usable failure rather than a lost form.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+      await cluster.openRowMenu(frame, "e2e-guest-running");
+      await frame.locator('.Menu [data-testid="swiftguest-take-snapshot-action"]').click();
+      await cluster.confirmDialogText(frame);
+
+      await frame.locator('[data-testid="snapshot-name"]').fill("e2e-snapshot-ready");
+
+      const warned = await cluster.confirmDialogText(frame);
+
+      expect(warned).toContain("already exists in this namespace");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // Submitted anyway. `confirmDialog` is deliberately not used here: it waits
+      // for the dialog to disappear, and the whole point of this path is that it
+      // comes back.
+      await frame.locator('[data-testid="confirm"]').click();
+
+      const message = await cluster.expectNotification(frame, "error", "already exists");
+
+      expect(message).toContain("Change the name");
+
+      // The dialog is back, with everything the user typed still in it - which
+      // is only true because the form model lives outside React (spike T1).
+      await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "visible", timeout: 60_000 });
+      expect(await frame.locator('[data-testid="snapshot-name"]').inputValue()).toBe("e2e-snapshot-ready");
+
+      await cluster.cancelDialog(frame);
+
+      // And the snapshot that was already there is untouched: a refused create
+      // writes nothing.
+      expect(
+        cluster.kubectlField("swiftsnapshots.snapshot.kubeswift.io", "e2e-snapshot-ready", "{.spec.deletionPolicy}"),
+      ).toBe("Retain");
+
+      await cluster.clearNotifications(frame);
     },
     TIMEOUT,
   );

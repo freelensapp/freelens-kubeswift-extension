@@ -74,9 +74,10 @@ VMs), driven through a real Freelens by Playwright's Electron API.
   namespace, then opens every KubeSwift page and asserts the fixture rows and
   one detail panel per CRD.
 
-**Since M6 the suite also writes** (SPEC-0010): a handful of cases patch
-`spec.runPolicy`, delete a launcher pod and delete a guest, for real, against
-dedicated fixtures nothing else reads (`160-swiftguest-actions.yaml`). They
+**Since M6 the suite also writes** (SPEC-0010, SPEC-0011): a handful of cases
+patch `spec.runPolicy`, delete a launcher pod, delete a guest and create a
+SwiftSnapshot, for real, against dedicated fixtures nothing else reads
+(`160-swiftguest-actions.yaml`). They
 assert the UI **and** read the result back with `kubectl`, because the point of
 a write case is that the cluster changed. What they must never assert is what a
 controller would do next: no reconciler runs here, so a stopped guest never

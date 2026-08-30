@@ -8,6 +8,7 @@ import { formatBytes } from "../api/kubeswift/types";
 import { withErrorPage } from "../components/error-page";
 import { objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
+import { snapshotDeleteConsequences } from "../components/snapshot-create";
 
 const { observer } = MobxReact;
 
@@ -43,6 +44,10 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
     const capturedImageRef = SwiftSnapshot.getCapturedImageRef(object);
     const guestSpec = status?.guestSpec;
     const capturedDataDisks = guestSpec?.dataDisks ?? [];
+    const deleteConsequences = snapshotDeleteConsequences(
+      SwiftSnapshot.getBackendType(object),
+      SwiftSnapshot.getDeletionPolicy(object),
+    );
 
     // The guest a snapshot was taken from may since have been deleted;
     // LinkToObject only formats a details URL from the ref, it never checks
@@ -132,6 +137,20 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
         </DrawerItem>
         <DrawerItem name="Include Disk" hidden={spec?.includeDisk === undefined}>
           <WithTooltip>{String(spec?.includeDisk)}</WithTooltip>
+        </DrawerItem>
+        {/* What deleting THIS snapshot destroys and what it leaves behind,
+            computed from its own backend and policy rather than stated in the
+            abstract (SPEC-0011, the SPEC-0010 On Delete precedent). The host
+            owns the Delete confirmation and gives an extension no hook to add a
+            per-kind consequence to it, so the extension says it where it does
+            own the surface, and permanently rather than only at the moment of
+            deletion. Two of the four backends make the Deletion Policy row
+            above mean something other than what it says, and the last sentence
+            is the one nobody can guess: upstream's reference guard protects TTL
+            and keep-N reaping only, so a delete is never blocked by a restore
+            that is using this snapshot. */}
+        <DrawerItem name="On Delete">
+          <WithTooltip>{deleteConsequences.join(" ")}</WithTooltip>
         </DrawerItem>
 
         <DrawerTitle>Capture</DrawerTitle>
