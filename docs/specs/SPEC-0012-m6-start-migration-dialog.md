@@ -1,6 +1,7 @@
 # SPEC-0012: Start migration dialog (M6)
 
-- **Status:** Approved (Roberto, 2026-08-30, in chat)
+- **Status:** Implemented (PR #83, merged 2026-08-30, main CI green;
+  Verified pending the feature review)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (the `migration.kubeswift.io`
   CRD manifest and `api/migration/` are byte-identical at upstream `main`
