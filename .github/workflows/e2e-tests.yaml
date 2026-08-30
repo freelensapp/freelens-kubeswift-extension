@@ -305,6 +305,33 @@ jobs:
           DEBUG: pw:browser
         continue-on-error: true
 
+      # The retry above cannot reuse the cluster the first attempt ran against:
+      # the M6 write cases mutate it. They patch run policies, delete launcher
+      # pods, delete a guest outright and create SwiftSnapshots and
+      # SwiftRestores, so once the suite has run the cluster no longer holds the
+      # state its cases start from - and a single flake in one case would come
+      # back as all twelve write cases failing on the retry, hiding the flake
+      # that actually caused the rerun (issue #81).
+      #
+      # The cluster is thrown away and rebuilt rather than just re-applied.
+      # cluster-up.sh is idempotent for everything it applies - a patched
+      # `spec.runPolicy` is reset, a deleted guest or launcher pod comes back,
+      # the statuses are injected again - but it only ever applies, it never
+      # prunes. The objects the write cases CREATE carry a wall-clock timestamp
+      # in their names, so they are in no fixture and would survive a re-apply,
+      # accumulating on the very Snapshots and Restores lists the read-only
+      # cases assert against. A fresh cluster is the only state that matches the
+      # one the first attempt started from.
+      #
+      # This costs a kind delete and create, but only on the path that has
+      # already failed once, and the node image is in the runner's Docker cache
+      # by now. The job's 90 minute budget absorbs it.
+      - name: Re-provision the KubeSwift fixture cluster before the retry
+        if: steps.e2e-tests.outcome == 'failure'
+        run: |
+          pnpm e2e:cluster:down
+          pnpm e2e:cluster:up
+
       - name: Run E2E tests (retry)
         if: steps.e2e-tests.outcome == 'failure'
         run: timeout 1200 ./e2e/scripts/run-suite.sh
