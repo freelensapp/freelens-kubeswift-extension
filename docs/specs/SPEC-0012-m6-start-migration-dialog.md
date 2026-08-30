@@ -1,7 +1,12 @@
 # SPEC-0012: Start migration dialog (M6)
 
-- **Status:** Implemented (PR #83, merged 2026-08-30, main CI green;
-  Verified pending the feature review)
+- **Status:** Verified (2026-08-30: non-regression tests green in CI on
+  main; pre-review pass PASS on 15/15 views in both themes with the four
+  guest action controls and their disabled reasons reported; feature
+  review by Roberto on the pass artifacts and the migrate-dialog
+  screenshots, approved; the seven multi-node KVM checks under Manual
+  verification, including the D1 reproduction for the upstream report,
+  stay open)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (the `migration.kubeswift.io`
   CRD manifest and `api/migration/` are byte-identical at upstream `main`
