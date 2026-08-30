@@ -1,7 +1,12 @@
 # SPEC-0010: Guest actions - start, stop, delete (M6)
 
-- **Status:** Implemented (PR #72, merged 2026-08-29, main CI green;
-  Verified pending the feature review)
+- **Status:** Verified (2026-08-30: non-regression tests green in CI on
+  main; pre-review pass PASS on 15/15 views in both themes, with the
+  write actions and their disabled reasons reported on the Guests
+  drawer; feature review by Roberto on the pass artifacts and
+  screenshots, approved; the eight KVM-only checks and item 9 listed
+  under Manual verification stay open for a session on a real
+  KVM-backed cluster)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (schema re-read at `main`, see
   "Upstream recon"); UX reference kubeswift-ui `v0.12.3`
