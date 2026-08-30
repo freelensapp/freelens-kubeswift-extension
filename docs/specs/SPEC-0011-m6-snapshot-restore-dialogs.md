@@ -1,7 +1,13 @@
 # SPEC-0011: Snapshot and restore dialogs (M6)
 
-- **Status:** Implemented (PR #76 and #77, merged 2026-08-30, main CI
-  green; Verified pending the feature review)
+- **Status:** Verified (2026-08-30: non-regression tests green in CI on
+  main; pre-review pass PASS on 15/15 views in both themes with the two
+  new action controls and their disabled reasons reported; feature
+  review by Roberto on the pass artifacts and the twelve dialog
+  screenshots, approved, with one observation - the host dialog's
+  hardcoded white box in dark theme - resolved as follow the host's
+  current standard, no upstream Freelens change for now; the nine
+  KVM/real-backend checks under Manual verification stay open)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (latest release, 2026-08-24;
   the three `snapshot.kubeswift.io` CRD manifests are byte-identical at
