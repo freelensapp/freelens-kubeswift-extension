@@ -1,6 +1,7 @@
 # SPEC-0011: Snapshot and restore dialogs (M6)
 
-- **Status:** Approved (Roberto, 2026-08-30, in chat)
+- **Status:** Implemented (PR #76 and #77, merged 2026-08-30, main CI
+  green; Verified pending the feature review)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (latest release, 2026-08-24;
   the three `snapshot.kubeswift.io` CRD manifests are byte-identical at
