@@ -1,0 +1,27 @@
+# Status of the in-flight subject (SPEC-0012). Unlike the other two Migrate
+# subjects this one really is on the cluster's node - __NODE_NAME__, substituted
+# by cluster-up.sh's inject_statuses() with the real (single) node of whatever
+# cluster this is applied to (see swiftguest-e2e-guest-running.yaml and issue
+# #23) - so the picker excludes the only node there is and renders the honest
+# empty sentence. The same-node refusal, which upstream enforces in a webhook
+# that ships disabled, made visible.
+status:
+  phase: Running
+  nodeName: __NODE_NAME__
+  restartCount: 0
+  network:
+    primaryIP: 10.244.1.43
+    ready: true
+    interface: eth0
+  podRef:
+    apiVersion: v1
+    kind: Pod
+    name: e2e-guest-migrate-inflight-launcher
+    namespace: kubeswift-e2e
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: GuestRunning
+      message: The guest is running.
+      lastTransitionTime: "2026-08-30T09:15:00Z"
+      observedGeneration: 1

@@ -474,6 +474,107 @@ rows.
 
 Filled during implementation when reality diverges from the plan.
 
+### Start migration as implemented (2026-08-30)
+
+The spec ships in one PR: **Migrate** on SwiftGuest and the **SwiftMigration
+On Delete row** (`components/migration-create.ts`,
+`components/migration-create-dialog.tsx`,
+`menus/swiftguest-migrate-menu-item-v1alpha1.tsx`, the drawer row), on the
+SPEC-0011 machinery unchanged - the W12 create pattern, the MobX model outside
+React, the observable `okButtonProps`, the catch-never-rethrow with the 409
+reopen, `apiFailureFacts`, `store.create`, and the shared `create-dialog`
+primitives and stylesheet, which needed **no change at all** for a third
+dialog. The typed models needed none either: `migration.enabled`,
+`gpuProfileRef`, `gpuResourceClaim`, `interfaces[].type`,
+`interfaces[].networkRef`, `kernelRef`, `filesystems`, `vhostUserDevices`,
+`spec.storage` on the guest and `spec.storage` on the class were all already
+declared from the CRD schemas. Nothing in the design changed, and these are the
+places the implementation is more specific than the text above:
+
+- **The `auto` prediction checks the live state first**, before VFIO, the
+  virtio backends and the networking consent. The Design section lists
+  upstream's resolver order and does not place the running check; the
+  mode-availability table does put it first, and predicting `live` for a guest
+  that cannot be live-migrated would be predicting a failure. A stopped guest
+  therefore reads "auto will resolve to: offline, because this guest is
+  Stopped", which is also the outcome an operator gets either way - if upstream
+  resolved `live` there it would fail immediately with its own non-running
+  message.
+- **The prediction on the RWO fixture says `live`, and the submit is blocked** -
+  which is the Design section's D1 closure, and the one place this spec allows a
+  block. The Tests section's second E2E bullet says that case's prediction line
+  "names offline"; it cannot, without the prediction lying about what the
+  controller will do (upstream's resolver never consults storage, which is
+  exactly drift D1). The E2E case asserts the live prediction, the storage
+  reason on the refused `live` option, the block with the choice named, and that
+  taking that choice unblocks the form. The offline prediction is asserted in
+  the same suite on the stopped-guest case, and in the unit tests over every
+  resolver input.
+- **The consent is a locked, checked checkbox and the payload always carries
+  `allowIPChange: true` where it is shown**, so upstream's
+  "default networking without consent" resolver branch can never fire from this
+  dialog. `autoPrediction` still takes the consent as a parameter, defaulted
+  from the guest, so that branch stays reachable and unit-tested: it is what
+  upstream does for a client that does not consent (`swiftctl`, a hand-written
+  manifest), and a prediction function that could not express it would be
+  modelling this dialog rather than the resolver.
+- **The storage capability is the guest-spec-over-class merge, and
+  `status.storage` is deliberately not consulted.** It is the controller's
+  record of the same merge, it does not exist before the first reconcile, and
+  two sources for one fact is how a client starts disagreeing with itself.
+- **The dialog owns a Name field, rendered first.** The field table starts at
+  Target node and does not place the object's own name; the name is generated
+  `<guest>-migrate-<hhmmss>`, editable, warned against the namespace's
+  SwiftMigrations, and first - where both SPEC-0011 dialogs put theirs, and
+  where the 409 path's "the fix is a rename" needs it to be.
+- **The node picker has three renderings, not two**: the select, the text input
+  (the read was refused, or the value is not in the list), and an honest
+  sentence that counts what it dropped and why ("No node in this cluster can
+  take this guest. It has 1 node: `node-a` is the node this guest is already
+  on."). The third one is what a single-node cluster produces, and an empty
+  select with no explanation is exactly the degradation the M5 improvement
+  exists to avoid.
+- **The in-flight warning is rendered twice**, at the top of the form (named and
+  linked, through the host's `showDetails`) and in the write summary - the same
+  deviation, for the same reason, that the frozen-VM and wedge warnings took in
+  SPEC-0011: this form is tall enough that the summary sits below the fold of
+  the dialog's own scroll area.
+- **The On Delete row has a fifth branch: an unresolved `auto`.** A migration
+  the controller has not reached yet - which is exactly what this dialog's own
+  create produces - has no resolved mode, so the row states both futures rather
+  than picking one. An absent or unknown phase is classified pre-cutover, on the
+  same principle: nothing has moved yet, and an unknown phase is not a reason to
+  claim the cutover happened.
+- **The submit-disabled sentence reports the mode before the required node.**
+  Both are wrong at once on the D1 fixture - a freshly opened dialog has no node
+  yet either - and picking a node would not fix the mode, while the mode's
+  message names the choice that does. Every other form has no mode error at all,
+  so the node keeps that sentence there.
+- **The reason's control-character rule** refuses C0 and DEL and allows space
+  and tab, written as escapes rather than as literal characters.
+- **The dialog renders no icon**, as in SPEC-0011: `ConfirmDialog`'s default is a
+  warning triangle, and a migration is a commitment rather than a termination.
+  What IS a termination here - an offline move of a running guest, which stops
+  it - says so in the summary and turns the OK button to the accent styling.
+- **One host finding, dark-theme only, caught by the screenshots and fixed in
+  the shared stylesheet**: core's global `label { color: var(--textColorSecondary) }`
+  paints the `<label>` the host's `Input` wraps its field in, and the input is
+  `color: inherit`, so every typed value on the hardcoded white `ConfirmDialog`
+  box renders as a light grey in the dark theme and near-black in the light one.
+  It is the third of its family, after the checked-radio label and the select's
+  single value recorded in SPEC-0011, and the fix in `create-dialog.module.scss`
+  applies to **all three** create dialogs - Take Snapshot and Restore included.
+  It goes on the upstream-Freelens feedback list with the rest.
+- **The E2E fixtures are shaped by the cluster having one node.** The picker
+  never offers the node a guest is on, so the create and D1 subjects declare a
+  synthetic source node (`e2e-migrate-source`) and the in-flight subject
+  declares the real one - which is how the same-node exclusion becomes visible
+  as the empty-picker sentence. The created spec's key set is asserted to be
+  exactly `allowIPChange`, `guestRef`, `mode`, `target` plus the two defaults
+  the API server fills (`timeout: 30m0s`, `timeoutStrategy: cancel`), confirmed
+  against the `v0.13.12` CRD - so no `nodeSelector`, no `timeoutStrategy` of
+  ours, no `cancelRequested`, and no timeout in an offline migration.
+
 ### Upstream drift found by this recon (2026-08-30)
 
 Twelve items, recorded in full in the local feedback draft; the headline

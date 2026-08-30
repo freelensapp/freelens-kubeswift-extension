@@ -1,0 +1,31 @@
+# Status of the M6 Migrate create subject (SPEC-0012). No KubeSwift controller
+# runs in the E2E cluster, so what one would write is injected here.
+#
+# The node is a literal that does not exist in this cluster, and that is the
+# point: the picker never offers the node a guest is already on (upstream's
+# same-node refusal, which lives in the webhook only), so a subject sitting on
+# the cluster's single real node would leave nothing to migrate to. Naming a
+# synthetic source node keeps the real one offerable and the create case honest.
+status:
+  phase: Running
+  nodeName: e2e-migrate-source
+  restartCount: 0
+  network:
+    primaryIP: 10.244.1.41
+    ready: true
+    interface: eth0
+  runtime:
+    hypervisor: cloud-hypervisor
+    pid: 4401
+  podRef:
+    apiVersion: v1
+    kind: Pod
+    name: e2e-guest-migrate-running-launcher
+    namespace: kubeswift-e2e
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: GuestRunning
+      message: The guest is running.
+      lastTransitionTime: "2026-08-30T09:00:00Z"
+      observedGeneration: 1

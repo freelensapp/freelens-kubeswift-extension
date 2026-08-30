@@ -34,6 +34,28 @@ $ink-secondary: rgba(0, 0, 0, 0.6);
     color: inherit;
   }
 
+  // And so does every text input, one step further away: core's global
+  // `label { color: var(--textColorSecondary) }` paints the `<label>` the host's
+  // `Input` wraps its field in, and the input itself is `color: inherit`. On
+  // this hardcoded white box that renders a typed value as light grey in the
+  // dark theme and as near-black in the light one - the same value, two
+  // contrasts, and the darker theme is the illegible one. Measured on the
+  // SPEC-0012 screenshots; it applies to all three create dialogs.
+  :global(.Input) label {
+    color: inherit;
+  }
+
+  // ...and once the value is that ink, the placeholder has to be told apart
+  // from it: the host's own rule is the same colour at 0.75 opacity, which on
+  // this box reads as a filled field. An empty optional field that looks filled
+  // is worse than a dim one, so the placeholder takes the secondary ink,
+  // lighter than the hint under the field as well as than the value.
+  :global(.Input) input::placeholder,
+  :global(.Input) textarea::placeholder {
+    color: $ink-secondary;
+    opacity: 0.75;
+  }
+
   // Same reason as the select above: the host's radio and checkbox labels are
   // themed, and the box they sit on is not.
   :global(.Radio),

@@ -48,6 +48,29 @@ function restoreNames(): string[] {
   return stdout ? stdout.split("\n").sort() : [];
 }
 
+/** The same, for the objects the Migrate dialog creates. */
+function migrationNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftmigrations.migration.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
+/**
+ * The two selects of the Migrate dialog.
+ *
+ * Reached through the input they hold, for the reason `backendControl` is: the
+ * host's `Select` spends its `id` on react-select's `inputId` rather than on the
+ * container - which is also what makes each menu addressable as
+ * `<inputId>-options`, portalled to `document.body` so the dialog never clips it.
+ */
+function modeControl(frame: Frame) {
+  return frame.locator(".Select:has(#migration-mode) .Select__control");
+}
+
+function nodeControl(frame: Frame) {
+  return frame.locator(".Select:has(#migration-target-node) .Select__control");
+}
+
 /**
  * One mode radio of the Restore dialog.
  *
@@ -519,6 +542,32 @@ describe("KubeSwift views against the fixture cluster", () => {
         "offline (requested: auto)",
         "kubeswift-e2e-control-plane",
         "48s",
+        // The On Delete row (SPEC-0012), computed from this object's own phase
+        // and mode: a finished migration is a record, and this one carries a
+        // ttl, so it says when it will remove itself.
+        "removes the record and nothing else",
+        "self-deletes 24h",
+      );
+
+      // The same row on an unfinished LIVE migration, where deleting the object
+      // is the one deletion in this CRD that cleans up nothing at all - and
+      // where the safe lever has a name no upstream surface mentions.
+      await cluster.expectDetails(
+        frame,
+        "e2e-migration-live",
+        "SwiftMigration: e2e-migration-live",
+        "cleans up nothing",
+        "spec.cancelRequested: true",
+      );
+
+      // And on the pre-cutover offline one, where it is the opposite: deleting
+      // it rolls the guest back.
+      await cluster.expectDetails(
+        frame,
+        "e2e-migration-inflight",
+        "SwiftMigration: e2e-migration-inflight",
+        "aborts it and rolls the guest back",
+        "source pod comes back",
       );
     },
     TIMEOUT,
@@ -1397,16 +1446,20 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       const runningRowItems = await cluster.actionMenuItems(frame, ".Menu");
 
-      // Three registrations since SPEC-0011 added the create surface. Take
+      // Four registrations since SPEC-0012 added the Migrate surface. Take
       // Snapshot is never disabled: there is a valid snapshot for every settled
       // guest state, and the gating that matters is per-backend, inside the
-      // dialog, where the backend choice exists.
+      // dialog, where the backend choice exists. Migrate is disabled only for a
+      // guest that forbids migration and for an SR-IOV one, neither of which
+      // this subject is.
       expect(runningRowItems.map((item) => item.testId).sort()).toEqual([
+        "swiftguest-migrate-action",
         "swiftguest-start-action",
         "swiftguest-stop-action",
         "swiftguest-take-snapshot-action",
       ]);
       expect(runningRowItems.find((item) => item.testId === "swiftguest-take-snapshot-action")?.disabled).toBe(false);
+      expect(runningRowItems.find((item) => item.testId === "swiftguest-migrate-action")?.disabled).toBe(false);
 
       const runningStart = runningRowItems.find((item) => item.testId === "swiftguest-start-action");
       const runningStop = runningRowItems.find((item) => item.testId === "swiftguest-stop-action");
@@ -1442,6 +1495,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       const toolbarItems = await cluster.actionMenuItems(frame, ".Drawer.KubeObjectDetails .MenuActions");
 
       expect(toolbarItems.map((item) => item.testId).sort()).toEqual([
+        "swiftguest-migrate-action",
         "swiftguest-start-action",
         "swiftguest-stop-action",
         "swiftguest-take-snapshot-action",
@@ -1507,6 +1561,18 @@ describe("KubeSwift views against the fixture cluster", () => {
       await cluster.cancelDialog(frame);
 
       expect(restoreNames()).toEqual(restoresBefore);
+
+      // And on the third one (SPEC-0012), whose dialog opens with a required
+      // field nobody has filled: a cancelled form writes nothing either way.
+      const migrationsBefore = migrationNames();
+
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-migrate-running");
+      await frame.locator('.Menu [data-testid="swiftguest-migrate-action"]').click();
+      await cluster.confirmDialogText(frame);
+      await cluster.cancelDialog(frame);
+
+      expect(migrationNames()).toEqual(migrationsBefore);
     },
     TIMEOUT,
   );
@@ -2167,6 +2233,333 @@ describe("KubeSwift views against the fixture cluster", () => {
       await cluster.cancelDialog(frame);
 
       expect(restoreNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  // The M6 Migrate cases (SPEC-0012). Same honest split as the two create verbs
+  // before them: no controller runs here, so a created SwiftMigration stays
+  // phaseless forever - which is exactly what makes it provable that the
+  // extension wrote what the summary enumerated and nothing else.
+  //
+  // The E2E cluster has ONE node, which is the fixture design of these cases:
+  // the picker never offers the node a guest is already on, so a subject whose
+  // status names a synthetic other node has the real one to move to, and the
+  // subject that really is on the real node has nothing - and says so.
+  it(
+    "starts an offline migration of a running guest",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+
+      // From the drawer toolbar, which is the second surface of the same
+      // registration (W5).
+      await pr.openDrawer(frame, "e2e-guest-migrate-running");
+      await frame.locator('.Drawer.KubeObjectDetails [data-testid="swiftguest-migrate-action"]').click();
+
+      await cluster.confirmDialogText(frame);
+
+      const name = await frame.locator('[data-testid="migration-name"]').inputValue();
+
+      // The default name is the guest's plus the wall-clock time of the click.
+      expect(name).toMatch(/^e2e-guest-migrate-running-migrate-\d{6}$/);
+
+      // The picker offers the cluster's node and nothing else: this guest's own
+      // node is excluded, which is upstream's same-node refusal - a rule that
+      // lives in a webhook that ships disabled, and without which the migration
+      // is a reboot in place.
+      await nodeControl(frame).click();
+
+      const nodeOptions = await frame.locator(".migration-target-node-options .Select__option").allInnerTexts();
+
+      expect(nodeOptions).toHaveLength(1);
+      expect(nodeOptions[0]).toContain(cluster.clusterNodeName());
+
+      await frame
+        .locator(".migration-target-node-options .Select__option", { hasText: cluster.clusterNodeName() })
+        .first()
+        .click();
+
+      // The dialog opens on auto, and for this guest - running, no VFIO, no
+      // node-local backend, storage two nodes can hold at once - auto resolves
+      // to live, which is why the live-only fields are on screen right now.
+      const predicted = await cluster.confirmDialogText(frame);
+
+      expect(predicted).toContain("auto will resolve to: live");
+      expect(await frame.locator('[data-testid="migration-timeout"]').count()).toBe(1);
+
+      await modeControl(frame).click();
+      await frame.locator(".migration-mode-options .Select__option", { hasText: "offline" }).first().click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      // The one write, and the offline truths that are true of this guest.
+      expect(dialog).toContain(`Create SwiftMigration kubeswift-e2e/${name}`);
+      expect(dialog).toContain("is stopped for the move");
+      expect(dialog).toContain("30-second grace period");
+      expect(dialog).toContain("reattached, not copied");
+      expect(dialog).toContain("nothing upstream verifies it");
+      expect(dialog).toContain("no timeout in offline mode");
+      expect(dialog).toContain("fresh IP");
+
+      // Option dropping (M10): upstream reads spec.timeout in live mode only,
+      // so the field is gone rather than present and ignored.
+      expect(await frame.locator('[data-testid="migration-timeout"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="migration-downtime-target"]').count()).toBe(0);
+
+      // Stopping a running guest is the same class of consequence as Stop, and
+      // takes the same accent button.
+      expect(await frame.locator('[data-testid="confirm"]').getAttribute("class")).toContain("accent");
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftMigration ${name} created`);
+
+      // The object the API server stored is the object the summary enumerated,
+      // plus the two schema defaults it fills itself - and nothing else. No
+      // nodeSelector (upstream-unshipped, and an infinite retry without the
+      // webhook), and no timeoutStrategy of ours (never read by any handler).
+      const spec = JSON.parse(cluster.kubectlField("swiftmigrations.migration.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "allowIPChange",
+        "guestRef",
+        "mode",
+        "target",
+        "timeout",
+        "timeoutStrategy",
+      ]);
+      expect(spec.guestRef).toEqual({ name: "e2e-guest-migrate-running" });
+      expect(spec.target).toEqual({ nodeName: cluster.clusterNodeName() });
+      expect(spec.mode).toBe("offline");
+      // The consent this guest's default networking makes meaningful, sent
+      // exactly because the dialog showed it.
+      expect(spec.allowIPChange).toBe(true);
+      // The two the API server defaulted, which is why the dialog sends neither.
+      expect(spec.timeout).toBe("30m0s");
+      expect(spec.timeoutStrategy).toBe("cancel");
+
+      // The row exists on the page the object belongs to, without a reload -
+      // which is exactly why the create is acknowledged with a notification: it
+      // was fired from a page that does not show it.
+      await cluster.closeDetails(frame);
+      await cluster.openKubeSwiftPage(frame, "swiftmigrations", "Migrations");
+      await cluster.expectRow(frame, name, "e2e-guest-migrate-running offline");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "explains what auto will resolve to, and blocks live on RWO storage",
+    async () => {
+      // Drift D1, closed client-side: upstream's resolver promotes an eligible
+      // guest to live WITHOUT ever consulting storage, and the RWX+Block gate
+      // exists only in the webhook, only for an explicit mode: live, and only
+      // when that webhook is enabled - which by default it is not. So a
+      // default-mode migration of this guest walks into two launcher pods
+      // contending for one ReadWriteOnce volume, and this dialog is what stops
+      // it.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = migrationNames();
+
+      await cluster.openRowMenu(frame, "e2e-guest-migrate-rwo");
+      await frame.locator('.Menu [data-testid="swiftguest-migrate-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      // The prediction is the controller's own answer, not ours: it says live,
+      // with the because-clause and the assumption it rests on.
+      expect(dialog).toContain("auto will resolve to: live");
+      expect(dialog).toContain("user-defined network");
+
+      // And the block that follows from it, naming the choice.
+      expect(dialog).toContain("ReadWriteOnce/Filesystem");
+      expect(dialog).toContain("two launcher pods would contend for this guest's ReadWriteOnce/Filesystem volume");
+      expect(dialog).toContain("Pick offline, or fix the storage");
+      expect(dialog).toContain("Migrate is disabled - Mode:");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // The same refusal inside the select, on the option a user would have
+      // clicked, with the reason and with who enforces it.
+      await modeControl(frame).click();
+
+      const options = await frame.locator(".migration-mode-options .Select__option").allInnerTexts();
+
+      expect(options).toHaveLength(3);
+      expect(options.filter((option) => option.includes("ReadWriteMany and Block"))).toHaveLength(1);
+      expect(options.filter((option) => option.includes("ships disabled"))).toHaveLength(1);
+
+      // Taking the choice the block names unblocks the form: the offline path
+      // is fully usable, which is the whole point of naming it.
+      await frame.locator(".migration-mode-options .Select__option", { hasText: "offline" }).first().click();
+      await nodeControl(frame).click();
+      await frame
+        .locator(".migration-target-node-options .Select__option", { hasText: cluster.clusterNodeName() })
+        .first()
+        .click();
+
+      const offline = await cluster.confirmDialogText(frame);
+
+      expect(offline).not.toContain("Migrate is disabled");
+      expect(offline).toContain("reattached, not copied");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(migrationNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses migration of an SR-IOV guest, with the reason",
+    async () => {
+      // The webhook rule with no controller re-check at all: with the webhook
+      // off - the default - this guard is the only thing between an operator and
+      // a migration that cannot work in any mode.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-migrate-sriov");
+
+      const items = await cluster.actionMenuItems(frame, ".Menu");
+      const migrate = items.find((item) => item.testId === "swiftguest-migrate-action");
+
+      expect(migrate?.disabled).toBe(true);
+      expect(migrate?.title).toContain("SR-IOV");
+      expect(migrate?.title).toContain("vf0");
+      expect(migrate?.title).toContain("webhook is off");
+
+      // The E2E half of W4: the click is stopped by the stylesheet, not only by
+      // the handler, so Playwright's actionability check refuses it.
+      let clickWasRefused = false;
+
+      try {
+        await frame.locator('.Menu [data-testid="swiftguest-migrate-action"]').click({ timeout: 3000 });
+      } catch {
+        clickWasRefused = true;
+      }
+
+      if (!clickWasRefused) {
+        throw new Error("A disabled action item must not be clickable.");
+      }
+
+      await cluster.closeRowMenu(frame);
+
+      // The same verdict in the drawer toolbar: one registration, both surfaces
+      // (W5), and the reason reachable in both.
+      await pr.openDrawer(frame, "e2e-guest-migrate-sriov");
+
+      const toolbarItems = await cluster.actionMenuItems(frame, ".Drawer.KubeObjectDetails .MenuActions");
+      const toolbarMigrate = toolbarItems.find((item) => item.testId === "swiftguest-migrate-action");
+
+      expect(toolbarMigrate?.disabled).toBe(true);
+      expect(toolbarMigrate?.title).toContain("SR-IOV");
+
+      await cluster.closeDetails(frame);
+
+      // And the guest next to it is offered, so the assert above is about the
+      // interface rather than about the registration.
+      await cluster.openRowMenu(frame, "e2e-guest-migrate-stopped");
+
+      const stoppedItems = await cluster.actionMenuItems(frame, ".Menu");
+
+      expect(stoppedItems.find((item) => item.testId === "swiftguest-migrate-action")?.disabled).toBe(false);
+
+      await cluster.closeRowMenu(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns about an in-flight migration of the same guest",
+    async () => {
+      // A guard no upstream surface has at all: nothing refuses a second
+      // migration of one guest at admission, the in-progress annotation is
+      // controller-side and offline-only, and only a client holding every
+      // SwiftMigration can see the conflict coming.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = migrationNames();
+
+      await cluster.openRowMenu(frame, "e2e-guest-migrate-inflight");
+      await frame.locator('.Menu [data-testid="swiftguest-migrate-action"]').click();
+
+      // The node picker is filled by a read on open, and until it answers the
+      // field is a text input (SPEC-0011's degradation, unchanged here). This
+      // case is about what the picker says once it HAS answered, so it waits for
+      // that rather than racing it.
+      await frame.waitForSelector('[data-testid="migration-no-nodes"]', { state: "visible", timeout: 60_000 });
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("e2e-migration-inflight");
+      expect(dialog).toContain("is Preparing");
+      expect(dialog).toContain("claim conflict");
+      expect(dialog).toContain("warning and not a block");
+
+      // Named AND linked: the other migration's drawer is one click away.
+      expect(await frame.locator('[data-testid="migration-in-flight"] a').first().innerText()).toBe(
+        "e2e-migration-inflight",
+      );
+
+      // This subject really is on the cluster's only node, so the picker has
+      // nothing left to offer - and says which node it dropped and why, instead
+      // of rendering an empty control.
+      expect(dialog).toContain("No node in this cluster can take this guest");
+      expect(dialog).toContain(`${cluster.clusterNodeName()} is the node this guest is already on`);
+      expect(await frame.locator('[data-testid="migration-no-nodes"]').count()).toBe(1);
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await cluster.cancelDialog(frame);
+
+      expect(migrationNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "discloses that migrating a stopped guest boots it",
+    async () => {
+      // The behaviour nobody would guess and upstream documents nowhere: the
+      // cutover patches runPolicy back to Running, so moving a guest an operator
+      // chose to keep down starts it on the target.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = migrationNames();
+
+      await cluster.openRowMenu(frame, "e2e-guest-migrate-stopped");
+      await frame.locator('.Menu [data-testid="swiftguest-migrate-action"]').click();
+      await cluster.confirmDialogText(frame);
+
+      await nodeControl(frame).click();
+      await frame
+        .locator(".migration-target-node-options .Select__option", { hasText: cluster.clusterNodeName() })
+        .first()
+        .click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      // auto resolves to offline here, and says why; live is refused with the
+      // rule an operator can act on.
+      expect(dialog).toContain("auto will resolve to: offline");
+      expect(dialog).toContain("is Stopped");
+      expect(dialog).toContain("non-running guest");
+
+      expect(dialog).toContain(`will start the guest on ${cluster.clusterNodeName()}`);
+      expect(dialog).toContain("moving a stopped guest means booting it");
+      // Nothing is stopped by this migration, so nothing is accented: booting a
+      // guest is a commitment, not a termination.
+      expect(dialog).not.toContain("is stopped for the move");
+      expect(await frame.locator('[data-testid="confirm"]').getAttribute("class")).not.toContain("accent");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+      // The live-only fields are dropped with the predicted mode, not with the
+      // selected one.
+      expect(await frame.locator('[data-testid="migration-timeout"]').count()).toBe(0);
+
+      await cluster.cancelDialog(frame);
+
+      expect(migrationNames()).toEqual(before);
     },
     TIMEOUT,
   );

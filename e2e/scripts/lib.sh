@@ -139,6 +139,17 @@ E2E_STATUS_PATCHES=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-restore-source=swiftguest-e2e-guest-restore-source.yaml"
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-memory-ready=swiftsnapshot-e2e-snapshot-memory-ready.yaml"
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-failed=swiftsnapshot-e2e-snapshot-failed.yaml"
+	# The M6 Migrate subjects (SPEC-0012). The fifth, e2e-guest-migrate-sriov,
+	# gets no patch on purpose: its guard reads the spec alone, and a guest
+	# nothing has reconciled is the state most objects are in first. The three
+	# running ones differ only in the node their status names, which is what
+	# decides whether the picker has anything left to offer on a single-node
+	# cluster.
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-running=swiftguest-e2e-guest-migrate-running.yaml"
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-rwo=swiftguest-e2e-guest-migrate-rwo.yaml"
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-stopped=swiftguest-e2e-guest-migrate-stopped.yaml"
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-inflight=swiftguest-e2e-guest-migrate-inflight.yaml"
+	"swiftmigrations.migration.kubeswift.io/e2e-migration-inflight=swiftmigration-e2e-migration-inflight.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -210,6 +221,18 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-memory-ready={.status.phase}=Ready"
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-memory-ready={.status.memorySnapshot.sizeBytes}=4294967296"
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-failed={.status.phase}=Failed"
+	# The M6 Migrate subjects (SPEC-0012). The node of the create subject is the
+	# fact the picker's exclusion is measured against, the storage of the create
+	# subject is what makes the live mode genuinely available on it, and the RWO
+	# class is the one drift D1 is reproduced with - all three are read at click
+	# time, so a fixture that did not land would look like a UI regression.
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-running={.status.nodeName}=e2e-migrate-source"
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-running={.spec.storage.accessMode}=ReadWriteMany"
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-rwo={.status.phase}=Running"
+	"swiftguestclasses.swift.kubeswift.io/e2e-migrate-rwo={.spec.storage.volumeMode}=Filesystem"
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-stopped={.status.phase}=Stopped"
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-sriov={.spec.interfaces[0].type}=sriov"
+	"swiftmigrations.migration.kubeswift.io/e2e-migration-inflight={.status.phase}=Preparing"
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the
@@ -244,6 +267,10 @@ E2E_NODE_NAME_FIELDS=(
 	# A `local` capture lives on exactly one node, and the snapshot drawer links
 	# to it (SPEC-0011's memory fixture).
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-memory-ready={.status.nodeName}"
+	# The one Migrate subject that really is on this cluster's node (SPEC-0012):
+	# the picker excludes the node a guest is already on, so this substitution is
+	# what makes the empty-picker case empty.
+	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-inflight={.status.nodeName}"
 )
 
 log() {

@@ -38,6 +38,7 @@ import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./de
 import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
 import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
 import { KubeSwiftIcon } from "./icons/kubeswift";
+import { SwiftGuestMigrateMenuItem as SwiftGuestMigrateMenuItemV1alpha1 } from "./menus/swiftguest-migrate-menu-item-v1alpha1";
 import { SwiftGuestStartMenuItem as SwiftGuestStartMenuItemV1alpha1 } from "./menus/swiftguest-start-menu-item-v1alpha1";
 import { SwiftGuestStopMenuItem as SwiftGuestStopMenuItemV1alpha1 } from "./menus/swiftguest-stop-menu-item-v1alpha1";
 import { SwiftGuestTakeSnapshotMenuItem as SwiftGuestTakeSnapshotMenuItemV1alpha1 } from "./menus/swiftguest-take-snapshot-menu-item-v1alpha1";
@@ -284,6 +285,19 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       components: {
         MenuItem: (props: { object: any; toolbar?: boolean }) => (
           <SwiftSnapshotRestoreMenuItemV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    // SPEC-0012, and the third create surface: one dialog, one SwiftMigration.
+    // Registered on SwiftGuest, because the object a migration is about is the
+    // guest; the SwiftMigration it writes lands on the Migrations page, phase by
+    // phase, which is what the success notification exists to say.
+    {
+      kind: SwiftGuestV1alpha1.kind,
+      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
+      components: {
+        MenuItem: (props: { object: any; toolbar?: boolean }) => (
+          <SwiftGuestMigrateMenuItemV1alpha1 {...props} extension={this} />
         ),
       },
     },

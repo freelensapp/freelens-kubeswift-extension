@@ -1,0 +1,16 @@
+# Status of the M6 Migrate disclosure subject (SPEC-0012): a guest that is
+# stopped and says so, with no launcher pod and no node.
+#
+# No node on purpose, twice over: a stopped guest is not on one, and the picker
+# has to have the cluster's single node left to offer so the summary can name the
+# target it will BOOT the guest on.
+status:
+  phase: Stopped
+  restartCount: 0
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: GuestStopped
+      message: The run policy asks for this guest to be stopped.
+      lastTransitionTime: "2026-08-30T09:10:00Z"
+      observedGeneration: 1

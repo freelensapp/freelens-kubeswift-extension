@@ -1,0 +1,158 @@
+# Subjects of the M6 Migrate cases (SPEC-0012). Dedicated objects, not the M1
+# guests or the SPEC-0010/0011 action subjects: the Migrate dialog reads a
+# guest's live phase, node, interfaces and storage at click time, so a subject
+# some other case mutates would make these pass or fail depending on the order
+# the suite happened to run in. `e2e/scripts/cluster-up.sh` is idempotent and
+# re-applies everything, so a second run starts from these values again.
+#
+# The E2E cluster has exactly one node, which is what shapes the fixtures below:
+# a guest whose status names ANOTHER node leaves the real one offerable in the
+# picker, and a guest whose status names the real one leaves the picker empty -
+# which is the same-node exclusion made visible.
+#
+# The guest class whose storage no two launcher pods can share: ReadWriteOnce on
+# a Filesystem volume, which is what most clusters really have. It is the fixture
+# drift D1 is measured against - upstream's `auto` resolver never consults
+# storage, so an eligible guest on this class walks into a live migration with
+# two pods contending for one volume, and the dialog is what stops it.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuestClass
+metadata:
+  name: e2e-migrate-rwo
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  cpu: 4
+  memory: 8Gi
+  rootDisk:
+    format: qcow2
+    size: 40Gi
+  storage:
+    accessMode: ReadWriteOnce
+    volumeMode: Filesystem
+---
+# The create subject: running, with a launcher pod recorded, on default
+# networking (no interfaces at all), and with storage two nodes can hold at
+# once - so every mode is genuinely available and choosing offline is a choice
+# rather than the only option left. Its status names a node this cluster does
+# not have, which is what keeps the real one offerable in the picker.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-migrate-running
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Running
+  storage:
+    accessMode: ReadWriteMany
+    volumeMode: Block
+---
+# The drift D1 subject: eligible for a live migration in every respect upstream's
+# resolver checks - running, no VFIO, no node-local virtio backend, default
+# networking with the consent the dialog always sends - but on a guest class
+# whose storage cannot carry one. The live option is refused with the storage
+# reason, and `auto` is refused with the choice named.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-migrate-rwo
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-migrate-rwo
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Running
+---
+# The guard subject: an SR-IOV interface, which upstream's admission rule refuses
+# to migrate in every mode and which nothing re-checks once the webhook is off.
+# It carries no status on purpose: the guard reads the spec alone, and a guest
+# nothing has reconciled is also the state most objects are in first.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-migrate-sriov
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Running
+  interfaces:
+    - name: vf0
+      type: sriov
+      primary: true
+      resourceName: intel.com/sriov_netdevice
+---
+# The disclosure subject: a guest an operator chose to keep down. An offline
+# migration of it is legitimate and it BOOTS the guest on the target, because the
+# cutover patches the run policy back to Running - which is the sentence this
+# fixture exists to make true. No status node either, so the picker offers the
+# cluster's own node.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-migrate-stopped
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Stopped
+---
+# The in-flight subject: a running guest that already has an unfinished migration
+# (below). Its status names the cluster's real node, so the picker has nothing
+# left to offer and renders the honest empty sentence instead of an empty
+# control - the same-node exclusion, made visible on a single-node cluster.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-migrate-inflight
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Running
+---
+# The migration nothing upstream would warn about: it is not terminal, it names
+# the guest above, and no admission rule anywhere refuses a second migration of
+# the same guest. Only a client holding every SwiftMigration can see it coming,
+# which is what the dialog's warning spends. Its status is injected by
+# cluster-up.sh: Preparing, offline, mid-claim.
+apiVersion: migration.kubeswift.io/v1alpha1
+kind: SwiftMigration
+metadata:
+  name: e2e-migration-inflight
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-migrate-inflight
+  target:
+    nodeName: e2e-migrate-elsewhere
+  mode: offline
+  reason: rack maintenance

@@ -1,6 +1,7 @@
 declare const classNames: {
   readonly form: "form";
   readonly selectSingleValue: "selectSingleValue";
+  readonly input: "input";
   readonly radio: "radio";
   readonly checkbox: "checkbox";
   readonly checked: "checked";

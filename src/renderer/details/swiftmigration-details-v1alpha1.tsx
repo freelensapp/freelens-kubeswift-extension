@@ -4,6 +4,7 @@ import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftMigration } from "../api/kubeswift/swiftmigration-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { migrationDeleteRow } from "../components/migration-create";
 import { objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
 
@@ -82,6 +83,28 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
     const sourcePodIsLinkable = objectExists(podsStore, sourcePodName, object.getNs());
     const destinationPodIsLinkable = objectExists(podsStore, destinationPodName, object.getNs());
 
+    // What deleting THIS migration does, computed from its own phase and mode
+    // (SPEC-0012, the SPEC-0011 On Delete precedent). The host owns the Delete
+    // confirmation and gives an extension no hook to add a per-kind consequence
+    // to it, so the extension says it where it does own the surface, and
+    // permanently.
+    //
+    // It matters more here than anywhere else in this extension, because one
+    // trash icon covers three different verbs: deleting a pre-cutover offline
+    // migration ROLLS THE GUEST BACK, deleting a post-cutover one leaves it on
+    // the destination, and deleting an in-flight LIVE one cleans up nothing at
+    // all - the destination pod and the transfer carry on, and only the record
+    // disappears. Upstream states none of this anywhere, and `swiftctl migration
+    // cancel` deletes the CR against the CRD's own advice.
+    const deleteRow = migrationDeleteRow({
+      phase: status?.phase,
+      mode,
+      // `getMode` falls back to the requested mode, so "auto" here means the
+      // controller has not resolved it yet and both futures are still open.
+      modeUnresolved: status?.mode === undefined,
+      ttl: spec?.ttl,
+    });
+
     return (
       <>
         <DrawerTitle>Migration</DrawerTitle>
@@ -108,6 +131,13 @@ export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps
         </DrawerItem>
         <DrawerItem name="Reason" hidden={!spec?.reason}>
           <WithTooltip>{spec?.reason}</WithTooltip>
+        </DrawerItem>
+        {/* Three deletion outcomes wearing one trash icon, told apart from this
+            object's own phase and mode. It sits here, next to those two rows,
+            because it is a consequence of them - and because an operator
+            deciding what to do with a migration reads the top of the drawer. */}
+        <DrawerItem name="On Delete">
+          <WithTooltip>{deleteRow.sentences.join(" ")}</WithTooltip>
         </DrawerItem>
 
         <DrawerTitle>Placement</DrawerTitle>

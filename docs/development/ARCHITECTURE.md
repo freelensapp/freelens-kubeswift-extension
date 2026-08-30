@@ -58,11 +58,14 @@ src/
                              # action guards and payloads, the create dialogs'
                              # gating, validation, payloads and write
                              # summaries (snapshot-create.ts,
-                             # restore-create.ts), reference loading; plus the
-                             # thin form components the dialogs render
+                             # restore-create.ts, migration-create.ts),
+                             # reference loading; plus the thin form
+                             # components the dialogs render
                              # (snapshot-create-dialog.tsx,
-                             # restore-create-dialog.tsx) and the form grammar
-                             # they share (create-dialog.tsx and its module)
+                             # restore-create-dialog.tsx,
+                             # migration-create-dialog.tsx) and the form
+                             # grammar they share (create-dialog.tsx and its
+                             # module)
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```

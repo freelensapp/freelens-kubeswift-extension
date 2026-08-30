@@ -1,0 +1,22 @@
+# Merge patch applied to the status subresource of
+# swiftmigration/e2e-migration-inflight. Pre-cutover and unfinished: Preparing is
+# the phase in which an offline migration has already claimed the guest, which is
+# what makes a SECOND migration of that guest fail there with the claim conflict -
+# the thing the dialog's in-flight warning exists to say before the click.
+#
+# It is also the phase whose On Delete row says a delete rolls the guest back.
+status:
+  phase: Preparing
+  mode: offline
+  phaseDetail: waiting for the root volume to detach
+  sourceNode: __NODE_NAME__
+  destinationNode: e2e-migrate-elsewhere
+  startedAt: "2026-08-30T09:20:00Z"
+  preparingStartedAt: "2026-08-30T09:20:04Z"
+  conditions:
+    - type: Compatible
+      status: "True"
+      reason: EligibleForMigration
+      message: The guest can be moved to the destination node.
+      lastTransitionTime: "2026-08-30T09:20:02Z"
+      observedGeneration: 1

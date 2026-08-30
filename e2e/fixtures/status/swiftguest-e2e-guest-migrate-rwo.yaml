@@ -1,0 +1,27 @@
+# Status of the drift D1 subject (SPEC-0012): running, with a launcher pod, so
+# that every input upstream's `auto` resolver checks passes and its prediction is
+# a live migration - onto a guest class whose storage cannot carry one.
+#
+# The node is the same synthetic source name the create subject uses, for the
+# same reason: the cluster's real node has to stay offerable, or the case would
+# be blocked on the node rather than on the mode it is about.
+status:
+  phase: Running
+  nodeName: e2e-migrate-source
+  restartCount: 0
+  network:
+    primaryIP: 10.244.1.42
+    ready: true
+    interface: eth0
+  podRef:
+    apiVersion: v1
+    kind: Pod
+    name: e2e-guest-migrate-rwo-launcher
+    namespace: kubeswift-e2e
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: GuestRunning
+      message: The guest is running.
+      lastTransitionTime: "2026-08-30T09:05:00Z"
+      observedGeneration: 1
