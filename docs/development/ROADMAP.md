@@ -91,7 +91,7 @@ means (each item needs its own spec before implementation):
 | Create SwiftGuest (form) | — | Planned |
 | Create SwiftGuestClass / Pool / Image / Kernel / SeedProfile (forms) | — | Planned |
 | Snapshot now / restore dialogs | [SPEC-0011](../specs/SPEC-0011-m6-snapshot-restore-dialogs.md) | Done |
-| Start migration dialog | — | Planned |
+| Start migration dialog | [SPEC-0012](../specs/SPEC-0012-m6-start-migration-dialog.md) | Spec in PR |
 | Sandbox / SandboxPool creation | — | Planned |
 
 M6 is where the extension starts writing. Everything through M5 reads, so the
