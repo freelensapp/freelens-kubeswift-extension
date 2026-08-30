@@ -1,10 +1,14 @@
 declare const classNames: {
   readonly form: "form";
   readonly selectSingleValue: "selectSingleValue";
+  readonly radio: "radio";
+  readonly checkbox: "checkbox";
+  readonly checked: "checked";
+  readonly label: "label";
+  readonly disabled: "disabled";
   readonly selectMenu: "selectMenu";
   readonly subject: "subject";
   readonly field: "field";
-  readonly label: "label";
   readonly hint: "hint";
   readonly error: "error";
   readonly warning: "warning";
@@ -14,5 +18,8 @@ declare const classNames: {
   readonly note: "note";
   readonly blocked: "blocked";
   readonly checkboxRow: "checkboxRow";
+  readonly options: "options";
+  readonly optionReason: "optionReason";
+  readonly readOnlyValue: "readOnlyValue";
 };
 export = classNames;

@@ -41,6 +41,42 @@ function snapshotNames(): string[] {
   return stdout ? stdout.split("\n").sort() : [];
 }
 
+/** The same, for the objects the Restore dialog creates. */
+function restoreNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftrestores.snapshot.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
+/**
+ * One mode radio of the Restore dialog.
+ *
+ * The host's `Radio` takes no test id - its props are `className`, `label`,
+ * `value` and `disabled` - so the form puts one on the span it renders inside
+ * the label, and the row is the ancestor that holds the input. Matching on the
+ * visible text would not do: a refused option's reason names the other mode.
+ */
+function modeRadio(frame: Frame, mode: "in-place" | "clone") {
+  return frame.locator(`[data-testid="restore-mode"] .Radio:has([data-testid="restore-mode-${mode}"])`).first();
+}
+
+/**
+ * The name the Restore dialog will give the SwiftRestore it creates.
+ *
+ * The dialog names the object in the one line W1 requires, and that line is the
+ * contract this reads: there is no separate place the name is published, and
+ * parsing it here asserts the write line at the same time.
+ */
+function plannedRestoreName(dialog: string): string {
+  const match = dialog.match(/Create SwiftRestore kubeswift-e2e\/([a-z0-9.-]+)/);
+
+  if (!match) {
+    throw new Error(`The Restore dialog must name the object it creates, got: ${dialog}`);
+  }
+
+  return match[1];
+}
+
 describe("KubeSwift views against the fixture cluster", () => {
   let app: ElectronApplication;
   let window: Page;
@@ -1459,6 +1495,18 @@ describe("KubeSwift views against the fixture cluster", () => {
       await cluster.cancelDialog(frame);
 
       expect(snapshotNames()).toEqual(before);
+
+      // And on the other create surface, which writes a different kind from a
+      // different page.
+      const restoresBefore = restoreNames();
+
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
+      await cluster.openRowMenu(frame, "e2e-snapshot-ready");
+      await frame.locator('.Menu [data-testid="swiftsnapshot-restore-action"]').click();
+      await cluster.confirmDialogText(frame);
+      await cluster.cancelDialog(frame);
+
+      expect(restoreNames()).toEqual(restoresBefore);
     },
     TIMEOUT,
   );
@@ -1913,6 +1961,212 @@ describe("KubeSwift views against the fixture cluster", () => {
       ).toBe("Retain");
 
       await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "restores a memory snapshot as a clone",
+    async () => {
+      // The second create verb, and the one whose object upstream's own UI
+      // cannot show at all: it has no restore surface, so a SwiftRestore is
+      // invisible there from the moment it is created.
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
+      await cluster.clearNotifications(frame);
+
+      // From the drawer toolbar, which is the second surface of the same
+      // registration (W5).
+      await pr.openDrawer(frame, "e2e-snapshot-memory-ready");
+      await frame.locator('.Drawer.KubeObjectDetails [data-testid="swiftsnapshot-restore-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+      const name = plannedRestoreName(dialog);
+      const target = await frame.locator('[data-testid="restore-target-name"]').inputValue();
+
+      // The dialog opens on the mode that destroys nothing, with the two default
+      // names the spec fixes: the restore's own carries the date, the clone's
+      // carries the time of day because it becomes a guest's hostname.
+      expect(name).toMatch(/^e2e-snapshot-memory-ready-restore-\d{8}-\d{6}$/);
+      expect(target).toMatch(/^e2e-guest-restore-source-restore-\d{6}$/);
+
+      // The MAC rewrite is checked AND locked, because upstream requires it when
+      // a memory snapshot is cloned to another name - the likeliest rejection
+      // this dialog prevents (C13). The rule is both the row's tooltip and a
+      // visible line, since a locked control cannot be hovered.
+      const mac = frame.locator('[data-testid="restore-rewrite-mac"]');
+
+      expect(await mac.locator("input").isChecked()).toBe(true);
+      expect(await mac.locator("input").isDisabled()).toBe(true);
+      expect(await mac.getAttribute("title")).toContain("same MAC addresses");
+      expect(dialog).toContain("same MAC addresses");
+
+      // The disclosure upstream documents nowhere, said before the click (C12).
+      expect(dialog).toContain(`deleting the restore later deletes the guest ${target}`);
+      expect(dialog).toContain("current spec");
+      expect(dialog).toContain("fresh disk cloned from the image");
+      // A clone overwrites nothing, so the consent field is not on this path.
+      expect(dialog).not.toContain("overwriteExisting");
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftRestore ${name} created`);
+
+      // The object the API server stored is the object the summary enumerated,
+      // plus the two schema defaults it fills itself - and nothing else.
+      const spec = JSON.parse(cluster.kubectlField("swiftrestores.snapshot.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "identity",
+        "memoryRestoreMode",
+        "resumeAfterRestore",
+        "snapshotRef",
+        "targetGuest",
+      ]);
+      expect(spec.snapshotRef).toEqual({ name: "e2e-snapshot-memory-ready" });
+      // No overwriteExisting at all: the CRD declares no default for it, so a
+      // clone leaves the key absent rather than sending false.
+      expect(spec.targetGuest).toEqual({ name: target });
+      expect(spec.identity).toEqual({ regenerate: ["hostname", "machineId", "sshHostKeys", "macAddresses"] });
+      // The two the API server defaulted, which is exactly why the dialog does
+      // not send them: copy is the hypervisor default upstream never propagates,
+      // and true is the schema's own value.
+      expect(spec.memoryRestoreMode).toBe("copy");
+      expect(spec.resumeAfterRestore).toBe(true);
+
+      // The row exists on the page the object belongs to, without a reload.
+      await cluster.closeDetails(frame);
+      await cluster.openKubeSwiftPage(frame, "swiftrestores", "Restores");
+      await cluster.expectRow(frame, name, "e2e-snapshot-memory-ready", target);
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "disables in-place for a csi snapshot, with the no-op reason",
+    async () => {
+      // A verb that succeeds while doing nothing is a dead control (W4): the csi
+      // restore path returns early when the PVC and the guest already exist, and
+      // the SwiftRestore marches to Ready having changed nothing (C11).
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
+
+      const before = restoreNames();
+
+      await cluster.openRowMenu(frame, "e2e-snapshot-ready");
+      await frame.locator('.Menu [data-testid="swiftsnapshot-restore-action"]').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("restores nothing");
+      expect(dialog).toContain("marches the restore to Ready having changed nothing");
+
+      expect(await modeRadio(frame, "in-place").locator("input").isDisabled()).toBe(true);
+      expect(await modeRadio(frame, "clone").locator("input").isDisabled()).toBe(false);
+
+      // The clone path stays fully usable, which is what the refusal points at.
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+      // And the MAC rewrite is free here, because a csi snapshot holds no memory.
+      expect(await frame.locator('[data-testid="restore-rewrite-mac"] input').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(restoreNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "disables Restore on a Failed snapshot, with the terminal reason",
+    async () => {
+      // The one phase from which a restore is guaranteed never to resolve:
+      // Failed is terminal, so the snapshot never becomes Ready and upstream's
+      // own controller would requeue the restore every ten seconds forever.
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
+      await cluster.openRowMenu(frame, "e2e-snapshot-failed");
+
+      const items = await cluster.actionMenuItems(frame, ".Menu", "swiftsnapshot-");
+      const restore = items.find((item) => item.testId === "swiftsnapshot-restore-action");
+
+      expect(restore?.disabled).toBe(true);
+      expect(restore?.title).toContain("terminal");
+      expect(restore?.title).toContain("Pending forever");
+
+      // The E2E half of W4: the click is stopped by the stylesheet, not only by
+      // the handler, so Playwright's actionability check refuses it.
+      let clickWasRefused = false;
+
+      try {
+        await frame.locator('.Menu [data-testid="swiftsnapshot-restore-action"]').click({ timeout: 3000 });
+      } catch {
+        clickWasRefused = true;
+      }
+
+      if (!clickWasRefused) {
+        throw new Error("A disabled action item must not be clickable.");
+      }
+
+      await cluster.closeRowMenu(frame);
+
+      // And the Ready snapshot next to it is offered, so the assert above is
+      // about the phase rather than about the registration.
+      await cluster.openRowMenu(frame, "e2e-snapshot-ready");
+
+      const ready = await cluster.actionMenuItems(frame, ".Menu", "swiftsnapshot-");
+
+      expect(ready.find((item) => item.testId === "swiftsnapshot-restore-action")?.disabled).toBe(false);
+
+      await cluster.closeRowMenu(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that an in-place restore of a stopped guest will wedge",
+    async () => {
+      // The verified wedge: the restore never touches spec.runPolicy, so the
+      // guest controller will not recreate the launcher pod and the restore
+      // waits in Restoring with no timeout. A warning and not a block, because
+      // the policy can change between this dialog and the reconcile (C11).
+      await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
+
+      const before = restoreNames();
+
+      await cluster.openRowMenu(frame, "e2e-snapshot-memory-ready");
+      await frame.locator('.Menu [data-testid="swiftsnapshot-restore-action"]').click();
+      await cluster.confirmDialogText(frame);
+
+      await modeRadio(frame, "in-place").click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      // The target is fixed to the snapshot's source guest, not a text field:
+      // upstream reads the mode off the name match, so the name IS the mode.
+      expect(await frame.locator('[data-testid="restore-target-guest"]').innerText()).toBe("e2e-guest-restore-source");
+      expect(await frame.locator('[data-testid="restore-target-name"]').count()).toBe(0);
+
+      // What the click would do, from the one cheap read on open.
+      expect(dialog).toContain("deleted with no grace period");
+      expect(dialog).toContain("disks are untouched");
+      expect(dialog).toContain("spec.targetGuest.overwriteExisting: true");
+      expect(dialog).toContain("The guest is Stopped and no launcher pod is recorded");
+
+      // The warning, and the fix it names.
+      expect(dialog).toContain("will wedge");
+      expect(dialog).toContain("Start the guest first");
+
+      // In place terminates a running workload, so the button takes the accent
+      // styling Stop uses; the clone path does not.
+      expect(await frame.locator('[data-testid="confirm"]').getAttribute("class")).toContain("accent");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // The identity checkboxes are gone: upstream defines in place as a name
+      // match AND an empty regenerate, so there is nothing to offer here.
+      expect(await frame.locator('[data-testid="restore-regenerate-identity"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="restore-rewrite-mac"]').count()).toBe(0);
+
+      await cluster.cancelDialog(frame);
+
+      expect(restoreNames()).toEqual(before);
     },
     TIMEOUT,
   );

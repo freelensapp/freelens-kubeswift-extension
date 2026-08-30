@@ -7,6 +7,7 @@ import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { withErrorPage } from "../components/error-page";
 import { objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
+import { restoreDeleteRow } from "../components/restore-create";
 
 const { observer } = MobxReact;
 
@@ -80,6 +81,31 @@ export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) =>
     const restoredGuestIsLinkable = objectExists(guestStore, restoredGuestRef?.name, restoredGuestRef?.namespace);
     const targetNodeIsLinkable = objectExists(nodesStore, spec?.targetNode);
 
+    // What deleting THIS restore destroys, computed from its own mode rather
+    // than stated in the abstract (SPEC-0011, the SPEC-0010 On Delete
+    // precedent). The host owns the Delete confirmation and gives an extension
+    // no hook to add a per-kind consequence to it, so the extension says it
+    // where it does own the surface, and permanently.
+    //
+    // The guest a clone restore created is a CHILD of this object - the
+    // controller sets a controller ownerReference on it - so deleting this
+    // object garbage-collects the guest, and on the csi path its restored root
+    // PVC too. Upstream documents this nowhere, which is exactly why it is here.
+    // The snapshot's backend is read from the store the drawer already loads
+    // above; when it has not answered, the row says so rather than guessing.
+    const restoredSnapshot = snapshotRef?.name
+      ? snapshotStore?.getByName(snapshotRef.name, snapshotRef.namespace ?? object.getNs())
+      : undefined;
+    const deleteRow = restoreDeleteRow({
+      mode: SwiftRestore.getTargetMode(object),
+      guestName: restoredGuestRef?.name ?? targetGuestRef?.name,
+      snapshotBackend: restoredSnapshot ? SwiftSnapshot.getBackendType(restoredSnapshot) : undefined,
+    });
+    const deletedGuestRef = deleteRow.deletedGuest ? (restoredGuestRef ?? targetGuestRef) : undefined;
+    const deletedGuestIsLinkable = deleteRow.deletedGuest
+      ? objectExists(guestStore, deleteRow.deletedGuest, deletedGuestRef?.namespace)
+      : false;
+
     return (
       <>
         <DrawerTitle>Restore</DrawerTitle>
@@ -133,6 +159,25 @@ export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) =>
           {regenerated.map((item) => (
             <Badge key={item} label={item} />
           ))}
+        </DrawerItem>
+        {/* The sharpest fact this CRD carries and the one nobody can guess: a
+            clone restore OWNS the guest it created, so deleting this object
+            deletes that guest with it. The guest is rendered as a link, the way
+            the rows above render theirs, and the sentences read as its
+            predicate; an in-place restore owns nothing and says so instead. */}
+        <DrawerItem name="On Delete">
+          {deleteRow.deletedGuest ? (
+            <>
+              {deletedGuestRef && deletedGuestIsLinkable ? (
+                <LinkToObject objectRef={deletedGuestRef} object={object} />
+              ) : (
+                <WithTooltip>{deleteRow.deletedGuest}</WithTooltip>
+              )}{" "}
+              <WithTooltip>{deleteRow.sentences.join(" ")}</WithTooltip>
+            </>
+          ) : (
+            <WithTooltip>{deleteRow.sentences.join(" ")}</WithTooltip>
+          )}
         </DrawerItem>
 
         <DrawerTitle>Progress</DrawerTitle>

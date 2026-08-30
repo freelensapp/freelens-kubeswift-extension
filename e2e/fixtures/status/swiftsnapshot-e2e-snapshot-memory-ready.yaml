@@ -1,0 +1,40 @@
+# Merge patch applied to the status subresource of
+# swiftsnapshot/e2e-snapshot-memory-ready. A finished local capture: memory and
+# device state written to the host path, the VM paused for the window the
+# controller measured, and the guest spec frozen at capture time.
+#
+# `memorySnapshot` is the field that makes this a memory snapshot to the Restore
+# dialog even before its backend is read, and `nodeName` is set because a local
+# capture lives on exactly one node (the __NODE_NAME__ placeholder is substituted
+# by cluster-up.sh, issue #23).
+status:
+  phase: Ready
+  capturedAt: "2026-08-29T18:12:44Z"
+  totalSizeBytes: 4294967296
+  hypervisor: cloud-hypervisor
+  hypervisorVersion: v52.0
+  snapshotDirVersion: v1
+  nodeName: __NODE_NAME__
+  observedPauseWindowMs: 1140
+  memorySnapshot:
+    handle: /var/lib/kubeswift/snapshots/e2e-snapshot-memory-ready/memory.bin
+    sizeBytes: 4294967296
+  guestSpec:
+    cpu: "2"
+    memoryMi: 4096
+    imageName: e2e-ubuntu-2404
+    osType: linux
+    rootDiskSize: 20Gi
+    hasSeed: true
+    hasDataDisks: false
+    guestAgent: false
+    network: true
+    interfaceNames:
+      - eth0
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: SnapshotCaptured
+      message: The snapshot was captured and is ready to restore.
+      lastTransitionTime: "2026-08-29T18:12:44Z"
+      observedGeneration: 1

@@ -41,6 +41,7 @@ import { KubeSwiftIcon } from "./icons/kubeswift";
 import { SwiftGuestStartMenuItem as SwiftGuestStartMenuItemV1alpha1 } from "./menus/swiftguest-start-menu-item-v1alpha1";
 import { SwiftGuestStopMenuItem as SwiftGuestStopMenuItemV1alpha1 } from "./menus/swiftguest-stop-menu-item-v1alpha1";
 import { SwiftGuestTakeSnapshotMenuItem as SwiftGuestTakeSnapshotMenuItemV1alpha1 } from "./menus/swiftguest-take-snapshot-menu-item-v1alpha1";
+import { SwiftSnapshotRestoreMenuItem as SwiftSnapshotRestoreMenuItemV1alpha1 } from "./menus/swiftsnapshot-restore-menu-item-v1alpha1";
 import { FleetClustersPage as FleetClustersPageV1alpha1 } from "./pages/fleetclusters-page-v1alpha1";
 import { SwiftGPUNodesPage as SwiftGPUNodesPageV1alpha1 } from "./pages/swiftgpunodes-page-v1alpha1";
 import { SwiftGPUProfilesPage as SwiftGPUProfilesPageV1alpha1 } from "./pages/swiftgpuprofiles-page-v1alpha1";
@@ -269,6 +270,20 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       components: {
         MenuItem: (props: { object: any; toolbar?: boolean }) => (
           <SwiftGuestTakeSnapshotMenuItemV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    // The other half of SPEC-0011, and the only create in this milestone whose
+    // write can destroy something: an in-place restore kills the target guest's
+    // launcher pod with no grace period. Registered on SwiftSnapshot, because
+    // the object a restore is about is the snapshot; the SwiftRestore it writes
+    // lands on the Restores page.
+    {
+      kind: SwiftSnapshotV1alpha1.kind,
+      apiVersions: SwiftSnapshotV1alpha1.crd.apiVersions,
+      components: {
+        MenuItem: (props: { object: any; toolbar?: boolean }) => (
+          <SwiftSnapshotRestoreMenuItemV1alpha1 {...props} extension={this} />
         ),
       },
     },

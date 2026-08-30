@@ -1,0 +1,14 @@
+# Merge patch applied to the status subresource of
+# swiftsnapshot/e2e-snapshot-failed. The one terminal phase of this CRD: the
+# capture failed and nothing retries it, so the snapshot will never become Ready
+# and a restore created from it would wait in Pending forever. That is why the
+# Restore action is disabled here, and this fixture is what keeps that disabled.
+status:
+  phase: Failed
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: CaptureFailed
+      message: The capture failed and will not be retried.
+      lastTransitionTime: "2026-08-29T18:20:00Z"
+      observedGeneration: 1

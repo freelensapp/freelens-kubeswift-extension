@@ -1,0 +1,66 @@
+# Subjects of the M6 Restore cases (SPEC-0011, second slice). Dedicated objects,
+# not the M2 snapshots: these are what the Restore dialog is opened on, and one
+# of them pairs a Ready memory snapshot with a source guest that is Stopped,
+# which is the exact shape of the in-place wedge. `e2e/scripts/cluster-up.sh` is
+# idempotent and re-applies everything, so a second run starts from these values
+# again.
+#
+# The wedge subject: a guest whose run policy is Stopped. Deliberately NOT
+# e2e-guest-action-stopped, whose run policy an earlier case patches to Running -
+# the wedge warning is computed from the LIVE policy at click time, so a subject
+# some other case mutates would make this one pass or fail depending on the order
+# the suite happened to run in.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-restore-source
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Stopped
+---
+# The Ready memory snapshot both restore cases work from: the local backend
+# captures memory and device state, which is what makes the MAC rewrite a webhook
+# requirement on a clone, and what makes the in-place mode legitimate at all (the
+# csi in-place path restores nothing). Its status is injected by cluster-up.sh:
+# Ready, with the memory image the backend really produces.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftSnapshot
+metadata:
+  name: e2e-snapshot-memory-ready
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-restore-source
+  backend:
+    type: local
+    local:
+      hostPath: /var/lib/kubeswift/snapshots/e2e-snapshot-memory-ready
+  deletionPolicy: Delete
+---
+# The terminal snapshot: the one phase a restore can never be created usefully
+# from, because it will never become Ready and the restore would sit in Pending
+# forever. The Restore action is disabled on it, with that as the reason.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftSnapshot
+metadata:
+  name: e2e-snapshot-failed
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-running
+  backend:
+    type: local
+    local:
+      hostPath: /var/lib/kubeswift/snapshots/e2e-snapshot-failed
+  deletionPolicy: Delete

@@ -805,6 +805,79 @@ implementation is more specific than the text above:
   because the box they sit on is itself hardcoded `#fff` in both themes.
   Recorded in DESIGN.md section 12 (W12's host facts) with the rest.
 
+### Restore as implemented (2026-08-30)
+
+The second PR implements **Restore** and the **SwiftRestore On Delete row**
+(`components/restore-create.ts`, `components/restore-create-dialog.tsx`,
+`menus/swiftsnapshot-restore-menu-item-v1alpha1.tsx`, the drawer row), plus
+`components/create-dialog.tsx` and `create-dialog.module.scss`, into which the
+form grammar both dialogs render - the labelled field with its inline messages,
+the write summary block, and the stylesheet - was lifted from the first PR
+unchanged. Nothing in the design changed, and these are the places the
+implementation is more specific than the text above:
+
+- **The dialog owns a Name field for the SwiftRestore itself.** The field table
+  above lists what comes "beyond mode and name", where "name" is the target
+  guest's; the object being created also needs one, C6 promises a non-colliding
+  default and a live collision warning in **both** dialogs, and the 409 path
+  promises that "the fix is a rename". So the form carries `Name`, defaulting to
+  `<snapshot>-restore-<yyyymmdd-hhmmss>`, warned against the namespace's
+  SwiftRestores, and the target guest keeps the `<source-guest>-restore-<hhmmss>`
+  default the spec fixes for it. A generated, uneditable name would have made
+  the 409 reopen a loop with no way out.
+- **The mode defaults to Clone.** The spec makes the mode explicit and does not
+  say which one the dialog opens on. It opens on the one that destroys nothing:
+  an in-place restore deletes a running guest's launcher pod with no grace
+  period, and a dialog whose default answer does that is a trap however well it
+  is labelled. Choosing the other one is one click, which is exactly the cost
+  C10 was willing to pay.
+- **The in-place refusals are ordered**, and the order is not the one the text
+  lists them in: a snapshot that names no source guest first (there is no
+  in-place target at all), then the csi no-op, then the missing source guest.
+  A certain refusal outranks an uncertain one - the csi behaviour is a property
+  of the object that nothing can change, while the guest's absence is read from
+  a store that may be stale and may not have answered - and all three name the
+  clone path as the way forward.
+- **"Captures memory" is the backend derivation OR `status.memorySnapshot`.**
+  The CRD's own field documentation for `memoryRestoreMode` says "local / s3";
+  SPEC-0004's Contents derivation, which Take Snapshot already ships, counts
+  `oci` as a memory backend too, and `status.memorySnapshot` is the controller's
+  own record that a memory image exists. The wider reading is used, because
+  being wider here only ever locks a checkbox upstream would have required
+  anyway.
+- **The wedge warning is rendered twice**, under the mode radio and in the write
+  summary, from one shared function - the same deviation, for the same reason,
+  that the frozen-VM warning took in the first PR: this form is tall enough that
+  the summary sits below the fold of the dialog's own scroll area, and a cost
+  that has to be visible "at the moment it is chosen" cannot live only where the
+  user has to scroll to find it. Caught by screenshotting the in-place mode
+  before the review: the accent button was visible and its reason was not. The
+  MAC lock's rule is rendered twice for the same reason - as the row's `title`,
+  which is the channel that survives a control nobody can hover, and as a
+  visible line under it.
+- **`targetNode` is offered for `s3` and `oci`**, per the Design section, even
+  though the CRD's field documentation names only `s3`: the oci restore path
+  calls the same node resolver (and fails with a message that says "s3
+  restore"), which is already recorded as upstream feedback below. The node list
+  is only requested where the field exists at all - option dropping applied to
+  the request, not only to the control.
+- **Two host findings, both dark-theme only, both caught by the screenshots and
+  both fixed in the shared stylesheet**: the host paints a **checked** radio's
+  label with `--textColorAccent`, which is white in both themes and therefore
+  invisible on the `ConfirmDialog` box (the same class of fact as the
+  `.Dialog h5` one already recorded in DESIGN.md section 12); and it fades
+  everything after a **disabled** input to `opacity: 0.5`, which made the locked
+  MAC checkbox unreadable as checked - the opposite of what a lock is for. The
+  form keeps both legible and lets the sentence under the control carry the
+  disabled state instead. Both go on the upstream-Freelens feedback list with
+  the hardcoded-white box.
+- **The E2E case asserts the created spec's key set is exactly `identity`,
+  `memoryRestoreMode`, `resumeAfterRestore`, `snapshotRef` and `targetGuest`** -
+  the three the dialog sends and the two the API server defaults, confirmed
+  against the `v0.13.12` CRD, which declares defaults for `memoryRestoreMode`
+  and `resumeAfterRestore` and none for `overwriteExisting`. So a clone leaves
+  `overwriteExisting` absent rather than sending `false`.
+
 ### Feasibility gates: the verdicts (2026-08-30)
 
 All four were run before the implementation, SPEC-0010 style: a throwaway

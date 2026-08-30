@@ -345,6 +345,28 @@ const fieldOrder: SnapshotField[] = [
 const objectNamePattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
 
 /**
+ * Why a typed object name would be refused, or `undefined` when it is legal.
+ *
+ * Shared with the Restore dialog, which creates an object of a different kind
+ * under exactly the same rule: this is the API server's, not KubeSwift's, and it
+ * is the one validation in these forms that has nothing to do with the CRD.
+ */
+export function objectNameError(name: string): string | undefined {
+  if (!name) {
+    return "A name is required.";
+  }
+
+  if (name.length > 253 || !objectNamePattern.test(name)) {
+    return (
+      "A name is lowercase letters, digits, '-' and '.', starting and ending with a letter or a digit, at most " +
+      "253 characters."
+    );
+  }
+
+  return undefined;
+}
+
+/**
  * A Go duration, which is what `ttl` really is.
  *
  * The schema declares a bare string, but the field deserializes to
@@ -370,14 +392,10 @@ export const ttlFormatMessage =
  */
 export function snapshotErrors(values: SnapshotFormValues): SnapshotFieldMessages {
   const errors: SnapshotFieldMessages = {};
-  const name = values.name.trim();
+  const nameError = objectNameError(values.name.trim());
 
-  if (!name) {
-    errors.name = "A name is required.";
-  } else if (name.length > 253 || !objectNamePattern.test(name)) {
-    errors.name =
-      "A name is lowercase letters, digits, '-' and '.', starting and ending with a letter or a digit, at most " +
-      "253 characters.";
+  if (nameError) {
+    errors.name = nameError;
   }
 
   if (values.backend === "local") {

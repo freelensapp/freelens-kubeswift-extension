@@ -563,9 +563,14 @@ export interface ActionMenuItem {
  * carries `pointer-events: none`, so the host's hover tooltip cannot be shown
  * for it in either surface (spike S7), and the attribute is the channel that
  * survives.
+ *
+ * `prefix` selects the kind whose items are wanted, since the extension names
+ * every test id after the kind it registered the item on: the guest actions
+ * (SPEC-0010, SPEC-0011) and the SwiftSnapshot Restore action (SPEC-0011) share
+ * one menu with the host's own items and with nothing else.
  */
-export async function actionMenuItems(frame: Frame, root: string): Promise<ActionMenuItem[]> {
-  const selector = `${root} .MenuItem[data-testid^="swiftguest-"]`;
+export async function actionMenuItems(frame: Frame, root: string, prefix = "swiftguest-"): Promise<ActionMenuItem[]> {
+  const selector = `${root} .MenuItem[data-testid^="${prefix}"]`;
 
   // The host renders its own items and the extension's in the same menu, and in
   // the toolbar it builds them from a reaction that fires on mount, so a caller

@@ -133,6 +133,12 @@ E2E_STATUS_PATCHES=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-action-halfstopped=swiftguest-e2e-guest-action-halfstopped.yaml"
 	"swiftguests.swift.kubeswift.io/e2e-guest-action-orphanref=swiftguest-e2e-guest-action-orphanref.yaml"
 	"swiftguests.swift.kubeswift.io/e2e-guest-action-stopped=swiftguest-e2e-guest-action-stopped.yaml"
+	# The M6 restore subjects (SPEC-0011): a Ready memory snapshot whose source
+	# guest is stopped - the pair that wedges an in-place restore - and the one
+	# terminal snapshot, which the Restore guard refuses.
+	"swiftguests.swift.kubeswift.io/e2e-guest-restore-source=swiftguest-e2e-guest-restore-source.yaml"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-memory-ready=swiftsnapshot-e2e-snapshot-memory-ready.yaml"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-failed=swiftsnapshot-e2e-snapshot-failed.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -196,6 +202,14 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-action-halfstopped={.spec.runPolicy}=Stopped"
 	"swiftguests.swift.kubeswift.io/e2e-guest-action-halfstopped={.status.phase}=Running"
 	"swiftguests.swift.kubeswift.io/e2e-guest-action-stopped={.status.phase}=Stopped"
+	# The M6 restore subjects (SPEC-0011). The `{.spec.runPolicy}` entry is the
+	# fact the in-place wedge warning is computed from, so it is pinned here the
+	# same way the two SPEC-0010 policies are: a case that stops warning would
+	# otherwise look like a UI regression rather than a mutated fixture.
+	"swiftguests.swift.kubeswift.io/e2e-guest-restore-source={.spec.runPolicy}=Stopped"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-memory-ready={.status.phase}=Ready"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-memory-ready={.status.memorySnapshot.sizeBytes}=4294967296"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-failed={.status.phase}=Failed"
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the
@@ -227,6 +241,9 @@ E2E_NODE_NAME_FIELDS=(
 	# (B8), and a pin to a node that does not exist would be a different fact
 	# from the one that line is meant to state.
 	"swiftguests.swift.kubeswift.io/e2e-guest-action-stopped={.spec.nodeName}"
+	# A `local` capture lives on exactly one node, and the snapshot drawer links
+	# to it (SPEC-0011's memory fixture).
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-memory-ready={.status.nodeName}"
 )
 
 log() {

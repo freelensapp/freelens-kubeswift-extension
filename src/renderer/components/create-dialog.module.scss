@@ -1,0 +1,174 @@
+@use "../vars";
+
+// The stylesheet of every create dialog (SPEC-0011, W12): Take Snapshot and
+// Restore render the same form grammar - labelled fields, inline validation, a
+// write summary block - so they share one module rather than two copies of it.
+// The class names are deliberately generic for that reason.
+//
+// The host hardcodes the ConfirmDialog box to #fff in BOTH themes and styles
+// `.Dialog h5` white (SPEC-0011, spike T1), so nothing inside this form may
+// follow the theme's own text tokens: in the dark theme `--textColorPrimary` is
+// a light grey that measures roughly 3:1 against that box. The form therefore
+// carries its own ink, and pulls back the one host control that overrides the
+// inherited colour. Declared deviation from DESIGN.md section 5, recorded in
+// section 12 with the rest of the host facts.
+$ink: rgba(0, 0, 0, 0.87);
+$ink-secondary: rgba(0, 0, 0, 0.6);
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin;
+  color: $ink;
+  min-width: 420px;
+  // The dialog box has no maximum height of its own, so without one here a
+  // long form pushes its own OK button off the screen. The value is as large
+  // as it can be while leaving the host's button row visible.
+  max-height: 70vh;
+  overflow-y: auto;
+  text-align: left;
+
+  // The select renders its own value with `--textColorSecondary`, which is the
+  // one place the inherited ink above does not reach.
+  :global(.Select__single-value) {
+    color: inherit;
+  }
+
+  // Same reason as the select above: the host's radio and checkbox labels are
+  // themed, and the box they sit on is not.
+  :global(.Radio),
+  :global(.Checkbox) {
+    color: inherit;
+  }
+
+  // The host paints the label of a CHECKED radio with `--textColorAccent`,
+  // which is white in both themes: on this hardcoded white box the selected
+  // option's label is invisible, which is the same class of host fact as the
+  // `.Dialog h5` one DESIGN.md section 12 already records. Caught by
+  // screenshotting the dialog in the dark theme before the review.
+  :global(.Radio.checked .label) {
+    color: inherit;
+  }
+
+  // The host's checkbox is themed for a dark surface; this one is white in both
+  // themes, so it is given the host's own light-theme values in both. Without
+  // this the tick of a checked box is drawn in `--textColorPrimary` (a light
+  // grey in the dark theme) and reads as unchecked.
+  :global(.Checkbox) {
+    --checkbox-color: #{$ink-secondary};
+    --checkbox-color-active: var(--blue);
+    --checkbox-bgc-active: none;
+  }
+
+  // The host fades everything after a disabled input to 0.5 opacity. On this
+  // box that makes a LOCKED control - one this form checked on purpose and will
+  // not let the user uncheck - unreadable as checked, which is the opposite of
+  // what the lock is for. The disabled state is carried by the ink instead, and
+  // the sentence under the control carries the reason.
+  :global(.Radio.disabled),
+  :global(.Checkbox.disabled) {
+    opacity: 1;
+    color: $ink-secondary;
+  }
+
+  :global(.Radio input:disabled ~ *),
+  :global(.Checkbox input:disabled ~ *) {
+    opacity: 1;
+  }
+}
+
+// The portalled menu of a `Select` lives outside `.form`, on `document.body`,
+// so it is reached through the component's `menuClass` instead of by descent.
+.selectMenu {
+  color: $ink;
+}
+
+.subject {
+  margin: 0;
+  font-size: 1.1em;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin * 0.5;
+}
+
+.label {
+  font-weight: 500;
+}
+
+.hint {
+  color: $ink-secondary;
+  font-size: 0.9em;
+}
+
+// Inline validation, in the place the absent admission webhook would otherwise
+// have spoken from. `--colorError` is the one semantic token whose value is the
+// same in both themes and legible on white.
+.error {
+  color: var(--colorError);
+  font-size: 0.9em;
+}
+
+.warning {
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin * 0.5;
+  padding: vars.$padding;
+  border-radius: var(--border-radius);
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.summaryTitle {
+  margin: 0;
+  font-weight: 500;
+}
+
+.summaryWrite {
+  margin: 0;
+}
+
+.note {
+  margin: 0;
+  font-size: 0.95em;
+}
+
+.blocked {
+  margin: 0;
+  color: var(--colorError);
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.checkboxRow {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin * 0.5;
+}
+
+// The mode radios of the Restore dialog. Each option carries its own reason
+// under its label when it is refused (W4), so the group is a column rather than
+// the host's default inline row.
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin * 0.5;
+}
+
+.optionReason {
+  color: $ink-secondary;
+  font-size: 0.9em;
+  font-weight: 400;
+}
+
+// A value the form shows and does not let the user change: the target of an
+// in-place restore, which is the snapshot's source guest by definition.
+.readOnlyValue {
+  font-family: monospace;
+}

@@ -1,0 +1,18 @@
+# Merge patch applied to the status subresource of
+# swiftguest/e2e-guest-restore-source. The source guest of the Ready memory
+# snapshot, stopped after the capture: exactly the shape that wedges an in-place
+# restore, since the restore never touches spec.runPolicy and the controller will
+# not recreate a launcher pod for a guest that is set to stay down.
+#
+# No podRef on purpose: a stopped guest has no launcher pod, and the in-place
+# summary reads the live pod from the click-time GET rather than from the row.
+status:
+  phase: Stopped
+  restartCount: 0
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: GuestStopped
+      message: The run policy asks for this guest to be stopped.
+      lastTransitionTime: "2026-08-29T18:40:00Z"
+      observedGeneration: 1

@@ -27,6 +27,9 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
+import { Field, WriteSummary } from "./create-dialog";
+import styles from "./create-dialog.module.scss";
+import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import {
   backendChoices,
@@ -44,10 +47,9 @@ import {
   submitBlockReason,
   submitIsAccented,
 } from "./snapshot-create";
-import styles from "./snapshot-create-dialog.module.scss";
-import stylesInline from "./snapshot-create-dialog.module.scss?inline";
 
 import type { SwiftSnapshotBackendType, SwiftSnapshotDeletionPolicy } from "../api/kubeswift/swiftsnapshot-v1alpha1";
+import type { FieldProps } from "./create-dialog";
 import type { ExistingSnapshotFacts, SnapshotFormValues, SnapshotGuestFacts } from "./snapshot-create";
 
 const { observer } = MobxReact;
@@ -184,27 +186,6 @@ export async function loadExistingSnapshots(model: SnapshotDialogModel): Promise
   }
 }
 
-interface FieldProps {
-  label: string;
-  hint?: string;
-  error?: string;
-  warning?: string;
-  children?: React.ReactNode;
-}
-
-/** One labelled control, with the inline messages that replace the absent webhook. */
-function Field({ label, hint, error, warning, children }: FieldProps) {
-  return (
-    <div className={styles.field}>
-      <div className={styles.label}>{label}</div>
-      {children}
-      {hint ? <div className={styles.hint}>{hint}</div> : null}
-      {error ? <div className={styles.error}>{error}</div> : null}
-      {warning ? <div className={styles.warning}>{warning}</div> : null}
-    </div>
-  );
-}
-
 interface TextFieldProps extends FieldProps {
   model: SnapshotDialogModel;
   field: keyof SnapshotFormValues;
@@ -315,30 +296,9 @@ const BackendField = observer(({ model }: { model: SnapshotDialogModel }) => {
 });
 
 /** The live write summary: the one create line, then the facts that are true of it (W1). */
-const WriteSummary = observer(({ model }: { model: SnapshotDialogModel }) => {
-  const summary = snapshotSummary(model.guest, model.values);
-
-  return (
-    <div className={styles.summary}>
-      <p className={styles.summaryTitle}>This will:</p>
-      <ol className={styles.summaryWrite}>
-        <li>
-          <code>{summary.write}</code>
-        </li>
-      </ol>
-      {summary.notes.map((note) => (
-        <p className={styles.note} key={note}>
-          {note}
-        </p>
-      ))}
-      {summary.warnings.map((warning) => (
-        <p className={styles.warning} key={warning}>
-          <b>{warning}</b>
-        </p>
-      ))}
-    </div>
-  );
-});
+const SnapshotWriteSummary = observer(({ model }: { model: SnapshotDialogModel }) => (
+  <WriteSummary facts={snapshotSummary(model.guest, model.values)} />
+));
 
 /**
  * The form, as the dialog's `message`.
@@ -512,7 +472,7 @@ export const SnapshotCreateForm = observer(({ model }: { model: SnapshotDialogMo
         error={errors.ttl}
       />
 
-      <WriteSummary model={model} />
+      <SnapshotWriteSummary model={model} />
 
       {blocked ? (
         <p className={styles.blocked} data-testid="snapshot-submit-blocked">

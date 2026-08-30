@@ -57,9 +57,12 @@ src/
   renderer/components/       # Shared pure modules: status classifiers, the
                              # action guards and payloads, the create dialogs'
                              # gating, validation, payloads and write
-                             # summaries (snapshot-create.ts), reference
-                             # loading; plus the thin form components the
-                             # dialogs render (snapshot-create-dialog.tsx)
+                             # summaries (snapshot-create.ts,
+                             # restore-create.ts), reference loading; plus the
+                             # thin form components the dialogs render
+                             # (snapshot-create-dialog.tsx,
+                             # restore-create-dialog.tsx) and the form grammar
+                             # they share (create-dialog.tsx and its module)
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```
