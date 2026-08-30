@@ -1,8 +1,7 @@
 # SPEC-0010: Guest actions - start, stop, delete (M6)
 
-- **Status:** Approved (Roberto, 2026-08-29, in chat, with the standing
-  directive to outdo the upstream UI where possible; better-than-upstream pass
-  folded in before merge); implementation in PR
+- **Status:** Implemented (PR #72, merged 2026-08-29, main CI green;
+  Verified pending the feature review)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (schema re-read at `main`, see
   "Upstream recon"); UX reference kubeswift-ui `v0.12.3`
