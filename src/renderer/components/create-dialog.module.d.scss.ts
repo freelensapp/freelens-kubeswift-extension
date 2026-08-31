@@ -31,5 +31,10 @@ declare const classNames: {
   readonly factValue: "factValue";
   readonly dimOption: "dimOption";
   readonly footer: "footer";
+  readonly row: "row";
+  readonly rowHeader: "rowHeader";
+  readonly rowTitle: "rowTitle";
+  readonly rowButton: "rowButton";
+  readonly addRow: "addRow";
 };
 export = classNames;

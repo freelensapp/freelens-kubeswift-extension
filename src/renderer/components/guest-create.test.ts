@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  addDataDisk,
+  addDataDiskGuard,
+  attachAsDiskApplies,
+  attachAsDiskDroppedFact,
   cloneGoneSourceWarning,
   cloneIdentityItems,
   cloneInertClassNote,
@@ -12,12 +16,31 @@ import {
   cloneSnapshotChoices,
   cloneTargetNodeApplies,
   createGuestTitle,
+  dataDiskErrors,
+  dataDiskSummaryNote,
+  dataDisksSectionHasError,
+  dataDisksSectionHint,
+  dataDiskWarnings,
+  declaredExposure,
+  defaultBlankVolumeMode,
   defaultBootSource,
+  defaultGpuTier,
   defaultGuestForm,
+  defaultInterfaceType,
   defaultNamespace,
+  defaultNetworkBinding,
+  defaultPortProtocol,
   defaultRunPolicy,
   excludedFieldsFooter,
   excludedSnapshotsReason,
+  gpuAppliesToBootSource,
+  gpuErrors,
+  gpuNodePinWarning,
+  gpuProfileChoices,
+  gpuProfileSummary,
+  gpuSectionHasError,
+  gpuSectionHint,
+  gpuWarnings,
   guestAgentFact,
   guestBootSourceChoices,
   guestBootSourceDescription,
@@ -25,6 +48,7 @@ import {
   guestClassChoices,
   guestClassSizing,
   guestClassSummary,
+  guestCreateBlockingIssues,
   guestCreateErrors,
   guestCreateFailureMessage,
   guestCreateFailurePrefix,
@@ -34,10 +58,17 @@ import {
   guestCreateSuccessMessage,
   guestCreateSummary,
   guestCreateWarnings,
+  guestDataDiskPayload,
+  guestGpuBackendDescription,
+  guestGpuBackends,
   guestGpuGuard,
+  guestGpuPayload,
   guestImageChoices,
+  guestInterfacesPayload,
   guestKernelChoices,
   guestNameError,
+  guestNetworkBindings,
+  guestNetworkPayload,
   guestNodeChoices,
   guestOsType,
   guestRunPolicies,
@@ -45,6 +76,9 @@ import {
   guestStorageOverrides,
   imageWillWaitFact,
   implementedBootSources,
+  interfaceErrors,
+  interfaceTypesFact,
+  interfaceWarnings,
   kernelCmdlineFact,
   kernelLiveMigrationFact,
   kernelNodeRuleFact,
@@ -52,21 +86,41 @@ import {
   kernelWillWaitFact,
   liveMigrationFact,
   liveMigrationLabel,
+  maxDataDiskNameLength,
+  maxDataDisks,
   maxGuestNameLength,
+  maxPortNumber,
+  maxServicePortNameLength,
+  minPortNumber,
+  networkBindingDescription,
+  networkSectionHasError,
+  networkSectionHint,
+  newDataDiskRow,
+  newInterfaceRow,
+  newPortRow,
+  nextRowId,
   nodePinApplies,
   nodePinFact,
   noGuestNodeReason,
+  pickedGpuProfile,
   pickedGuestClass,
   pickedImage,
   pickedKernel,
   pickedSnapshot,
+  portErrors,
+  portWarnings,
+  primaryInterfaceFact,
   readyImagePhase,
+  removeDataDisk,
+  removePort,
   resolvedStorage,
   resolvedStorageText,
   runPolicyNote,
   runPolicyStarts,
   seedProfileApplies,
   seedProfileDroppedReason,
+  setDataDiskSource,
+  setGpuBackend,
   snapshotIsResumable,
   storageCelRule,
   storageFields,
@@ -74,6 +128,8 @@ import {
   switchBootSource,
   systemDefaultAccessMode,
   systemDefaultVolumeMode,
+  updateDataDisk,
+  usesNativeGpuProfile,
   windowsCloneWarning,
   windowsConstraintFact,
 } from "./guest-create";
@@ -85,9 +141,14 @@ import type {
   GuestClassFacts,
   GuestCreateField,
   GuestCreateInputs,
+  GuestDataDiskRow,
   GuestFormValues,
+  GuestGpuProfileFacts,
   GuestImageFacts,
+  GuestInterfaceRow,
   GuestKernelFacts,
+  GuestPortRow,
+  GuestPvcFacts,
   GuestSnapshotFacts,
 } from "./guest-create";
 import type { NodeFacts } from "./migration-create";
@@ -219,6 +280,35 @@ const uploadingSnapshot: GuestSnapshotFacts = {
   sourceGuestName: "already-here",
 };
 
+/** The claim `attachAsDisk` accepts: a raw device the guest can be handed. */
+const blockPvc: GuestPvcFacts = { name: "data-block", volumeMode: "Block", phase: "Bound", storageClassName: "fast" };
+
+/** The claim it refuses: a directory, with no device to hand to anything. */
+const filesystemPvc: GuestPvcFacts = { name: "data-fs", volumeMode: "Filesystem", phase: "Bound" };
+
+/** The claim that says nothing about its volume mode, which is a warning rather than a refusal. */
+const silentPvc: GuestPvcFacts = { name: "data-silent", phase: "Pending" };
+
+const pvcs: GuestPvcFacts[] = [blockPvc, filesystemPvc, silentPvc];
+
+/** The two GPU profiles: a single PCIe card and a four-GPU hgx one. */
+const pcieProfile: GuestGpuProfileFacts = {
+  name: "gpu-pcie",
+  count: 1,
+  model: "L40S",
+  tier: "pcie",
+  partitionMode: "isolated",
+};
+const hgxProfile: GuestGpuProfileFacts = {
+  name: "gpu-hgx",
+  count: 4,
+  model: "",
+  tier: "hgx-shared",
+  partitionMode: "shared",
+};
+
+const gpuProfiles: GuestGpuProfileFacts[] = [pcieProfile, hgxProfile];
+
 const kernels: GuestKernelFacts[] = [readyKernel, pullingKernel, phaselessKernel];
 const snapshots: GuestSnapshotFacts[] = [
   localSnapshot,
@@ -241,6 +331,10 @@ function inputs(overrides: Partial<GuestCreateInputs> = {}): GuestCreateInputs {
     kernelsUnverified: false,
     snapshots,
     snapshotsUnverified: false,
+    pvcs,
+    pvcsUnverified: false,
+    gpuProfiles,
+    gpuProfilesUnverified: false,
     nodes,
     nodesUnverified: false,
     existingNames: ["already-here"],
@@ -2820,5 +2914,1773 @@ describe("guestCreateWarnings about a field the boot source dropped", () => {
     expect(guestCreateWarnings(inputs(), values({ seedProfile: "not-there" })).seedProfile).toContain(
       "No SwiftSeedProfile named not-there",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPEC-0013 slice 3: the collapsed tail - data disks, network and ports, GPU.
+//
+// Almost every rule below belongs to a validating webhook that ships disabled,
+// so these tests are the only place its behaviour is written down in this
+// repository: what they assert is not "the form is strict" but "the form says
+// what upstream would have said, on the install where nobody says it".
+// ---------------------------------------------------------------------------
+
+/** A data-disk row with everything filled in, so a test can vary one field. */
+function diskRow(overrides: Partial<GuestDataDiskRow> = {}): GuestDataDiskRow {
+  return { ...newDataDiskRow("disk-1"), name: "data", source: "image", image: "ubuntu-2404", ...overrides };
+}
+
+/** A port row with everything filled in. */
+function portRow(overrides: Partial<GuestPortRow> = {}): GuestPortRow {
+  return { ...newPortRow("port-1"), port: "8080", ...overrides };
+}
+
+/** An interface row with everything filled in. */
+function nicRow(overrides: Partial<GuestInterfaceRow> = {}): GuestInterfaceRow {
+  return { ...newInterfaceRow("nic-1"), name: "net1", ...overrides };
+}
+
+/** The form with a set of data disks on it. */
+function withDisks(rows: GuestDataDiskRow[], overrides: Partial<GuestFormValues> = {}): GuestFormValues {
+  return values({ dataDisks: rows, ...overrides });
+}
+
+/** The form with a set of ports on it. */
+function withPorts(rows: GuestPortRow[], overrides: Partial<GuestFormValues> = {}): GuestFormValues {
+  return values({ ports: rows, ...overrides });
+}
+
+/** The form with a set of additional interfaces on it. */
+function withNics(rows: GuestInterfaceRow[]): GuestFormValues {
+  return values({ interfaces: rows });
+}
+
+/** The form asking for a GPU through the native backend. */
+function gpuProfileValues(overrides: Partial<GuestFormValues> = {}): GuestFormValues {
+  return values({ gpuBackend: "profile", gpuProfile: "gpu-pcie", ...overrides });
+}
+
+/** The form asking for a GPU through DRA. */
+function gpuClaimValues(overrides: Partial<GuestFormValues> = {}): GuestFormValues {
+  return values({ gpuBackend: "claim", gpuClaimName: "shared-gpu", ...overrides });
+}
+
+describe("defaultGuestForm, the collapsed tail", () => {
+  it("opens with no data disk, no port and no interface at all", () => {
+    const form = defaultGuestForm();
+
+    expect(form.dataDisks).toEqual([]);
+    expect(form.ports).toEqual([]);
+    expect(form.interfaces).toEqual([]);
+  });
+
+  it("opens on the binding and the tier the API server would stamp anyway", () => {
+    const form = defaultGuestForm();
+
+    expect(form.networkBinding).toBe(defaultNetworkBinding);
+    expect(defaultNetworkBinding).toBe("nat");
+    expect(form.gpuTier).toBe(defaultGpuTier);
+    expect(defaultGpuTier).toBe("pcie");
+  });
+
+  it("opens with no GPU: the backend is a choice and none of them is made", () => {
+    const form = defaultGuestForm();
+
+    expect(form.gpuBackend).toBe("none");
+    expect(form.gpuProfile).toBe("");
+    expect(form.gpuClaimName).toBe("");
+    expect(form.gpuClaimTemplateName).toBe("");
+    expect(form.gpuRequestName).toBe("");
+    expect(form.gpuHugepages).toBe("");
+  });
+});
+
+describe("nextRowId", () => {
+  it("starts at one on an empty section", () => {
+    expect(nextRowId("disk", [])).toBe("disk-1");
+  });
+
+  it("counts past the highest id rather than past the length", () => {
+    expect(nextRowId("disk", [{ id: "disk-1" }, { id: "disk-7" }])).toBe("disk-8");
+  });
+
+  it("never reuses the id of a row that was removed in the middle", () => {
+    const three = addDataDisk(addDataDisk(addDataDisk(defaultGuestForm())));
+    const withoutSecond = removeDataDisk(three, three.dataDisks[1].id);
+    const fourth = addDataDisk(withoutSecond);
+
+    expect(fourth.dataDisks.map((row) => row.id)).toEqual(["disk-1", "disk-3", "disk-4"]);
+  });
+
+  it("ignores ids of another prefix", () => {
+    expect(nextRowId("port", [{ id: "disk-9" }])).toBe("port-1");
+  });
+});
+
+describe("addDataDiskGuard", () => {
+  it("allows a disk while the guest has fewer than the maximum", () => {
+    expect(addDataDiskGuard(withDisks([diskRow()])).enabled).toBe(true);
+    expect(maxDataDisks).toBe(8);
+  });
+
+  it("refuses the ninth, with the count and the silent consequence (W4)", () => {
+    const full = withDisks(Array.from({ length: maxDataDisks }, (_unused, index) => diskRow({ id: `disk-${index}` })));
+    const guard = addDataDiskGuard(full);
+
+    expect(guard.enabled).toBe(false);
+    expect(guard.reason).toContain("at most 8 data disks");
+    expect(guard.reason).toContain("already has 8");
+    expect(guard.reason).toContain("webhook");
+  });
+
+  it("never disables without a reason, at every count up to the limit and past it", () => {
+    for (let count = 0; count <= maxDataDisks + 2; count += 1) {
+      const form = withDisks(Array.from({ length: count }, (_unused, index) => diskRow({ id: `disk-${index}` })));
+      const guard = addDataDiskGuard(form);
+
+      if (!guard.enabled) {
+        expect(guard.reason.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("adds nothing once the guard refuses", () => {
+    const full = withDisks(Array.from({ length: maxDataDisks }, (_unused, index) => diskRow({ id: `disk-${index}` })));
+
+    expect(addDataDisk(full).dataDisks).toHaveLength(maxDataDisks);
+  });
+});
+
+describe("data disk rows", () => {
+  it("adds an image-backed row with nothing filled in", () => {
+    const [row] = addDataDisk(defaultGuestForm()).dataDisks;
+
+    expect(row).toEqual({
+      id: "disk-1",
+      name: "",
+      source: "image",
+      image: "",
+      pvc: "",
+      blankSize: "",
+      blankStorageClass: "",
+      blankVolumeMode: "",
+      attachAsDisk: false,
+    });
+  });
+
+  it("removes the named row and leaves the others alone", () => {
+    const form = withDisks([diskRow({ id: "disk-1", name: "one" }), diskRow({ id: "disk-2", name: "two" })]);
+
+    expect(removeDataDisk(form, "disk-1").dataDisks.map((row) => row.name)).toEqual(["two"]);
+  });
+
+  it("changes one field of one row", () => {
+    const form = withDisks([diskRow({ id: "disk-1" }), diskRow({ id: "disk-2", name: "other" })]);
+    const patched = updateDataDisk(form, "disk-2", { name: "renamed" });
+
+    expect(patched.dataDisks.map((row) => row.name)).toEqual(["data", "renamed"]);
+  });
+
+  it("empties the source it leaves, so two sources are inexpressible", () => {
+    const form = withDisks([diskRow({ id: "disk-1", image: "ubuntu-2404" })]);
+    const [row] = setDataDiskSource(form, "disk-1", "pvc").dataDisks;
+
+    expect(row.source).toBe("pvc");
+    expect(row.image).toBe("");
+  });
+
+  it("keeps attachAsDisk with the PVC it belonged to and drops it elsewhere", () => {
+    const form = withDisks([
+      diskRow({ id: "disk-1", source: "pvc", image: "", pvc: "data-block", attachAsDisk: true }),
+    ]);
+
+    expect(setDataDiskSource(form, "disk-1", "pvc").dataDisks[0].attachAsDisk).toBe(true);
+    expect(setDataDiskSource(form, "disk-1", "image").dataDisks[0].attachAsDisk).toBe(false);
+  });
+
+  it("empties the blank fields when the row stops being a blank one", () => {
+    const form = withDisks([
+      diskRow({
+        id: "disk-1",
+        source: "blank",
+        image: "",
+        blankSize: "10Gi",
+        blankStorageClass: "fast",
+        blankVolumeMode: "Filesystem",
+      }),
+    ]);
+    const [row] = setDataDiskSource(form, "disk-1", "image").dataDisks;
+
+    expect(row.blankSize).toBe("");
+    expect(row.blankStorageClass).toBe("");
+    expect(row.blankVolumeMode).toBe("");
+  });
+
+  it("offers attachAsDisk on a PVC row and nowhere else", () => {
+    expect(attachAsDiskApplies(diskRow({ source: "pvc" }))).toBe(true);
+    expect(attachAsDiskApplies(diskRow({ source: "image" }))).toBe(false);
+    expect(attachAsDiskApplies(diskRow({ source: "blank" }))).toBe(false);
+  });
+
+  it("says what an image row and a blank row do instead of offering the checkbox", () => {
+    expect(attachAsDiskDroppedFact("image")).toContain("always attached as a raw VM disk");
+    expect(attachAsDiskDroppedFact("image")).toContain("filesystem directory");
+    expect(attachAsDiskDroppedFact("blank")).toContain("always attached as a raw VM disk");
+  });
+});
+
+describe("dataDiskErrors", () => {
+  it("says nothing about a complete image row", () => {
+    expect(dataDiskErrors(inputs(), withDisks([diskRow()]))[0]).toEqual({});
+  });
+
+  it("requires a name, and says what the name becomes", () => {
+    const [messages] = dataDiskErrors(inputs(), withDisks([diskRow({ name: "" })]));
+
+    expect(messages.name).toContain("needs a name");
+    expect(messages.name).toContain("/dev/kubeswift-data-");
+  });
+
+  it("refuses a name that is not a DNS label", () => {
+    expect(dataDiskErrors(inputs(), withDisks([diskRow({ name: "Data_1" })]))[0].name).toContain(
+      "lowercase letters, digits and '-'",
+    );
+  });
+
+  it("refuses a name past the schema's own 36-character cap, with the count", () => {
+    const [messages] = dataDiskErrors(inputs(), withDisks([diskRow({ name: "a".repeat(37) })]));
+
+    expect(messages.name).toContain("at most 36 characters");
+    expect(messages.name).toContain("this one is 37");
+    expect(maxDataDiskNameLength).toBe(36);
+  });
+
+  it("accepts a name of exactly the cap", () => {
+    expect(dataDiskErrors(inputs(), withDisks([diskRow({ name: "a".repeat(36) })]))[0].name).toBeUndefined();
+  });
+
+  it("refuses two disks with one name, on both rows", () => {
+    const errors = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ id: "disk-1", name: "data" }), diskRow({ id: "disk-2", name: "data" })]),
+    );
+
+    expect(errors[0].name).toContain("Two data disks are named data");
+    expect(errors[1].name).toContain("Two data disks are named data");
+  });
+
+  it("allows two disks with different names", () => {
+    const errors = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ id: "disk-1", name: "one" }), diskRow({ id: "disk-2", name: "two" })]),
+    );
+
+    expect(errors[0].name).toBeUndefined();
+    expect(errors[1].name).toBeUndefined();
+  });
+
+  it("refuses a row that names two sources, naming both of them", () => {
+    const [messages] = dataDiskErrors(inputs(), withDisks([diskRow({ image: "ubuntu-2404", pvc: "data-block" })]));
+
+    expect(messages.source).toContain("exactly one");
+    expect(messages.source).toContain("a SwiftImage and an existing PVC");
+    expect(messages.source).toContain("webhook");
+  });
+
+  it("refuses a row that names all three", () => {
+    const [messages] = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ image: "ubuntu-2404", pvc: "data-block", blankSize: "10Gi" })]),
+    );
+
+    expect(messages.source).toContain("a SwiftImage, an existing PVC and a blank disk");
+  });
+
+  it("asks for the image on an image row that names nothing", () => {
+    const [messages] = dataDiskErrors(inputs(), withDisks([diskRow({ image: "" })]));
+
+    expect(messages.image).toContain("Name the SwiftImage");
+    expect(messages.source).toBeUndefined();
+  });
+
+  it("asks for the claim on a PVC row that names nothing", () => {
+    const [messages] = dataDiskErrors(inputs(), withDisks([diskRow({ source: "pvc", image: "" })]));
+
+    expect(messages.pvc).toContain("has to exist already");
+  });
+
+  it("asks for the size on a blank row that names nothing", () => {
+    const [messages] = dataDiskErrors(inputs(), withDisks([diskRow({ source: "blank", image: "" })]));
+
+    expect(messages.blankSize).toContain("Give the blank disk a size");
+  });
+
+  it("refuses a size that is not a Kubernetes quantity", () => {
+    const [messages] = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ source: "blank", image: "", blankSize: "100 gigs" })]),
+    );
+
+    expect(messages.blankSize).toContain("Kubernetes quantity");
+  });
+
+  it("accepts the quantity forms the CRD's own pattern accepts", () => {
+    for (const size of ["100Gi", "10G", "1Ti", "1e3", "500M", "1.5Gi"]) {
+      const [messages] = dataDiskErrors(
+        inputs(),
+        withDisks([diskRow({ source: "blank", image: "", blankSize: size })]),
+      );
+
+      expect(messages.blankSize).toBeUndefined();
+    }
+  });
+
+  it("refuses a size of zero and a negative one", () => {
+    for (const size of ["0", "0Gi", "-10Gi"]) {
+      const [messages] = dataDiskErrors(
+        inputs(),
+        withDisks([diskRow({ source: "blank", image: "", blankSize: size })]),
+      );
+
+      expect(messages.blankSize).toBeDefined();
+    }
+  });
+
+  it("refuses a storage class that is not an object name", () => {
+    const [messages] = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ source: "blank", image: "", blankSize: "10Gi", blankStorageClass: "Fast_SSD" })]),
+    );
+
+    expect(messages.blankStorageClass).toContain("lowercase letters, digits, '-' and '.'");
+  });
+
+  it("refuses attachAsDisk on an image row, saying what an image disk already is", () => {
+    const [messages] = dataDiskErrors(inputs(), withDisks([diskRow({ attachAsDisk: true })]));
+
+    // The whole clause, articles included: the same sentence built from the
+    // source's own label read "an a SwiftImage disk" before the screenshots.
+    expect(messages.attachAsDisk).toContain(
+      "attachAsDisk only applies to a PVC: an image-backed disk is attached as a raw VM disk anyway.",
+    );
+  });
+
+  it("refuses attachAsDisk on a blank row for the same reason", () => {
+    const [messages] = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ source: "blank", image: "", blankSize: "10Gi", attachAsDisk: true })]),
+    );
+
+    expect(messages.attachAsDisk).toContain(
+      "attachAsDisk only applies to a PVC: a blank disk is attached as a raw VM disk anyway.",
+    );
+  });
+
+  it("accepts attachAsDisk on a Block claim", () => {
+    const [messages] = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ source: "pvc", image: "", pvc: "data-block", attachAsDisk: true })]),
+    );
+
+    expect(messages.attachAsDisk).toBeUndefined();
+  });
+
+  it("refuses attachAsDisk on a Filesystem claim, with the reason and the two ways out", () => {
+    const [messages] = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ source: "pvc", image: "", pvc: "data-fs", attachAsDisk: true })]),
+    );
+
+    expect(messages.attachAsDisk).toContain("data-fs is Filesystem");
+    expect(messages.attachAsDisk).toContain("needs a Block claim");
+    expect(messages.attachAsDisk).toContain("Leave it off");
+  });
+
+  it("does not refuse attachAsDisk on a claim whose volume mode is unreadable", () => {
+    const [messages] = dataDiskErrors(
+      inputs({ pvcs: [], pvcsUnverified: true }),
+      withDisks([diskRow({ source: "pvc", image: "", pvc: "data-block", attachAsDisk: true })]),
+    );
+
+    expect(messages.attachAsDisk).toBeUndefined();
+  });
+
+  it("does not refuse attachAsDisk on a claim that declares no volume mode", () => {
+    const [messages] = dataDiskErrors(
+      inputs(),
+      withDisks([diskRow({ source: "pvc", image: "", pvc: "data-silent", attachAsDisk: true })]),
+    );
+
+    expect(messages.attachAsDisk).toBeUndefined();
+  });
+
+  it("reports each row against its own rules, not against the first row's", () => {
+    const errors = dataDiskErrors(
+      inputs(),
+      withDisks([
+        diskRow({ id: "disk-1", name: "good" }),
+        diskRow({ id: "disk-2", name: "", image: "" }),
+        diskRow({ id: "disk-3", name: "third", source: "blank", image: "", blankSize: "20Gi" }),
+      ]),
+    );
+
+    expect(errors[0]).toEqual({});
+    expect(Object.keys(errors[1]).sort()).toEqual(["image", "name"]);
+    expect(errors[2]).toEqual({});
+  });
+
+  it("says nothing at all when the section is untouched", () => {
+    expect(dataDiskErrors(inputs(), values())).toEqual([]);
+  });
+});
+
+describe("dataDiskWarnings", () => {
+  it("says nothing about a Ready image", () => {
+    expect(dataDiskWarnings(inputs(), withDisks([diskRow()]))[0]).toEqual({});
+  });
+
+  it("warns that a data disk cloned from a not-Ready image waits, like the boot one", () => {
+    const [messages] = dataDiskWarnings(inputs(), withDisks([diskRow({ image: "ubuntu-2604" })]));
+
+    expect(messages.image).toContain("is Importing, not Ready");
+    expect(messages.image).toContain("Ready image only");
+  });
+
+  it("warns about an image that is not in the namespace", () => {
+    expect(dataDiskWarnings(inputs(), withDisks([diskRow({ image: "gone" })]))[0].image).toContain(
+      "No SwiftImage named gone",
+    );
+  });
+
+  it("distinguishes an unlistable image read from a missing image", () => {
+    const [messages] = dataDiskWarnings(
+      inputs({ images: [], imagesUnverified: true }),
+      withDisks([diskRow({ image: "ubuntu-2404" })]),
+    );
+
+    expect(messages.image).toContain("could not be listed");
+  });
+
+  it("warns about a claim that is not in the namespace", () => {
+    const [messages] = dataDiskWarnings(inputs(), withDisks([diskRow({ source: "pvc", image: "", pvc: "gone" })]));
+
+    expect(messages.pvc).toContain("No PersistentVolumeClaim named gone");
+    expect(messages.pvc).toContain("attaches an existing claim rather than creating one");
+  });
+
+  it("says the Block rule is uncheckable when the claims could not be listed", () => {
+    const [messages] = dataDiskWarnings(
+      inputs({ pvcs: [], pvcsUnverified: true }),
+      withDisks([diskRow({ source: "pvc", image: "", pvc: "data-block", attachAsDisk: true })]),
+    );
+
+    expect(messages.pvc).toContain("could not be listed");
+    expect(messages.pvc).toContain("Block claim");
+  });
+
+  it("warns rather than blocks on a claim that declares no volume mode", () => {
+    const [messages] = dataDiskWarnings(
+      inputs(),
+      withDisks([diskRow({ source: "pvc", image: "", pvc: "data-silent", attachAsDisk: true })]),
+    );
+
+    expect(messages.attachAsDisk).toContain("declares no volumeMode");
+    expect(messages.attachAsDisk).toContain("warns rather than blocks");
+  });
+
+  it("says nothing about a claim that is not attached as a disk and exists", () => {
+    expect(dataDiskWarnings(inputs(), withDisks([diskRow({ source: "pvc", image: "", pvc: "data-fs" })]))[0]).toEqual(
+      {},
+    );
+  });
+});
+
+describe("dataDiskSummaryNote", () => {
+  it("says an image disk becomes a PVC of this guest", () => {
+    expect(dataDiskSummaryNote(inputs(), diskRow({ name: "extra" }))).toContain(
+      "Data disk extra: the image ubuntu-2404 is cloned into a PVC of this guest",
+    );
+  });
+
+  it("says an attached Block claim is handed to the guest as a device", () => {
+    const note = dataDiskSummaryNote(
+      inputs(),
+      diskRow({ name: "vol", source: "pvc", image: "", pvc: "data-block", attachAsDisk: true }),
+    );
+
+    expect(note).toContain("the existing claim data-block (Block) is attached to the guest as a raw VM block disk");
+  });
+
+  it("says an unattached claim is mounted in the launcher pod and the guest never sees it", () => {
+    const note = dataDiskSummaryNote(inputs(), diskRow({ name: "vol", source: "pvc", image: "", pvc: "data-fs" }));
+
+    expect(note).toContain("mounted as a filesystem directory in the launcher pod");
+    expect(note).toContain("Tick attachAsDisk");
+  });
+
+  it("names the storage class of a blank disk when there is one", () => {
+    const note = dataDiskSummaryNote(
+      inputs(),
+      diskRow({ name: "db", source: "blank", image: "", blankSize: "100Gi", blankStorageClass: "fast" }),
+    );
+
+    expect(note).toContain("a blank 100Gi Block PVC of this guest is created on the storage class fast");
+    expect(note).toContain("arrives unformatted");
+  });
+
+  it("names the cluster default when a blank disk sets no class", () => {
+    expect(
+      dataDiskSummaryNote(inputs(), diskRow({ name: "db", source: "blank", image: "", blankSize: "100Gi" })),
+    ).toContain("the cluster's default storage class");
+  });
+
+  it("states the volume mode the API server would stamp, and the one that was chosen", () => {
+    const stamped = dataDiskSummaryNote(
+      inputs(),
+      diskRow({ name: "db", source: "blank", image: "", blankSize: "1Gi" }),
+    );
+    const chosen = dataDiskSummaryNote(
+      inputs(),
+      diskRow({ name: "db", source: "blank", image: "", blankSize: "1Gi", blankVolumeMode: "Filesystem" }),
+    );
+
+    expect(stamped).toContain("blank 1Gi Block PVC");
+    expect(chosen).toContain("blank 1Gi Filesystem PVC");
+  });
+
+  it("says nothing about a row that is not finished", () => {
+    expect(dataDiskSummaryNote(inputs(), diskRow({ name: "" }))).toBeUndefined();
+    expect(dataDiskSummaryNote(inputs(), diskRow({ image: "" }))).toBeUndefined();
+    expect(dataDiskSummaryNote(inputs(), diskRow({ source: "blank", image: "" }))).toBeUndefined();
+  });
+});
+
+describe("dataDisksSectionHint", () => {
+  it("says what a data disk is while there is none, and what the cap is", () => {
+    const hint = dataDisksSectionHint(values());
+
+    expect(hint).toContain("None.");
+    expect(hint).toContain("At most 8");
+  });
+
+  it("counts the disks and states the ownership consequence once there are some", () => {
+    const hint = dataDisksSectionHint(withDisks([diskRow()]));
+
+    expect(hint).toContain("1 disk");
+    expect(hint).toContain("deleted with it");
+    expect(hint).toContain("an attached PVC is not");
+  });
+
+  it("pluralizes the count", () => {
+    expect(dataDisksSectionHint(withDisks([diskRow({ id: "disk-1" }), diskRow({ id: "disk-2" })]))).toContain(
+      "2 disks",
+    );
+  });
+});
+
+describe("portErrors", () => {
+  it("says nothing about one complete port", () => {
+    expect(portErrors(withPorts([portRow()]))[0]).toEqual({});
+  });
+
+  it("requires a port number", () => {
+    expect(portErrors(withPorts([portRow({ port: "" })]))[0].port).toContain("A port is required");
+  });
+
+  it("refuses a port that is not a whole number", () => {
+    expect(portErrors(withPorts([portRow({ port: "80.5" })]))[0].port).toContain("whole number");
+  });
+
+  it("refuses a port outside the schema's own bounds, with the number", () => {
+    expect(portErrors(withPorts([portRow({ port: "0" })]))[0].port).toContain("between 1 and 65535");
+    expect(portErrors(withPorts([portRow({ port: "65536" })]))[0].port).toContain("this one is 65536");
+  });
+
+  it("accepts the bounds themselves", () => {
+    expect(portErrors(withPorts([portRow({ port: String(minPortNumber) })]))[0].port).toBeUndefined();
+    expect(portErrors(withPorts([portRow({ port: String(maxPortNumber) })]))[0].port).toBeUndefined();
+  });
+
+  it("does not require a name on a single port", () => {
+    expect(portErrors(withPorts([portRow()]))[0].name).toBeUndefined();
+  });
+
+  it("requires a name on every port as soon as there are two, with the reason", () => {
+    const errors = portErrors(withPorts([portRow({ id: "port-1" }), portRow({ id: "port-2", port: "8443" })]));
+
+    expect(errors[0].name).toContain("more than one port");
+    expect(errors[0].name).toContain("Service");
+    expect(errors[1].name).toBeDefined();
+  });
+
+  it("stops requiring names when the second port is removed", () => {
+    const two = withPorts([portRow({ id: "port-1" }), portRow({ id: "port-2", port: "8443" })]);
+
+    expect(portErrors(removePort(two, "port-2"))[0].name).toBeUndefined();
+  });
+
+  it("refuses a port name that is not a DNS label", () => {
+    expect(portErrors(withPorts([portRow({ name: "HTTP_1" })]))[0].name).toContain("lowercase letters");
+  });
+
+  it("refuses two ports with one name", () => {
+    const errors = portErrors(
+      withPorts([portRow({ id: "port-1", name: "http" }), portRow({ id: "port-2", port: "8443", name: "http" })]),
+    );
+
+    expect(errors[0].name).toContain("Two ports are named http");
+    expect(errors[1].name).toContain("Two ports are named http");
+  });
+
+  it("refuses the same port and protocol twice, on the later row", () => {
+    const errors = portErrors(withPorts([portRow({ id: "port-1", name: "a" }), portRow({ id: "port-2", name: "b" })]));
+
+    expect(errors[0].port).toBeUndefined();
+    expect(errors[1].port).toContain("Port 8080/TCP is declared twice");
+  });
+
+  it("allows the same port number on two protocols", () => {
+    const errors = portErrors(
+      withPorts([portRow({ id: "port-1", name: "a" }), portRow({ id: "port-2", name: "b", protocol: "UDP" })]),
+    );
+
+    expect(errors[0].port).toBeUndefined();
+    expect(errors[1].port).toBeUndefined();
+  });
+
+  it("refuses a target port outside the bounds and accepts an empty one", () => {
+    expect(portErrors(withPorts([portRow({ targetPort: "70000" })]))[0].targetPort).toContain("between 1 and 65535");
+    expect(portErrors(withPorts([portRow({ targetPort: "" })]))[0].targetPort).toBeUndefined();
+  });
+
+  it("accepts one expose value across every port", () => {
+    const errors = portErrors(
+      withPorts([
+        portRow({ id: "port-1", name: "a", expose: "NodePort" }),
+        portRow({ id: "port-2", name: "b", port: "8443", expose: "NodePort" }),
+      ]),
+    );
+
+    expect(errors[0].expose).toBeUndefined();
+    expect(errors[1].expose).toBeUndefined();
+  });
+
+  it("refuses a mixed expose, naming both types and the silent consequence", () => {
+    const errors = portErrors(
+      withPorts([
+        portRow({ id: "port-1", name: "a", expose: "NodePort" }),
+        portRow({ id: "port-2", name: "b", port: "8443", expose: "ClusterIP" }),
+      ]),
+    );
+
+    expect(errors[0].expose).toBeUndefined();
+    expect(errors[1].expose).toContain("this port asks for ClusterIP while another asks for NodePort");
+    expect(errors[1].expose).toContain("silently mints a Service");
+  });
+
+  it("does not call a port without an expose a mix", () => {
+    const errors = portErrors(
+      withPorts([
+        portRow({ id: "port-1", name: "a", expose: "NodePort" }),
+        portRow({ id: "port-2", name: "b", port: "8443" }),
+      ]),
+    );
+
+    expect(errors[1].expose).toBeUndefined();
+  });
+
+  it("refuses expose under a bridge binding, with both halves of upstream's rule", () => {
+    const [messages] = portErrors(withPorts([portRow({ expose: "NodePort" })], { networkBinding: "bridge" }));
+
+    expect(messages.expose).toContain("bridge-bound guest exposes nothing");
+    expect(messages.expose).toContain("mints no Service and reports no error");
+    expect(messages.expose).toContain("sriov");
+  });
+
+  it("allows a port without expose under a bridge binding", () => {
+    expect(portErrors(withPorts([portRow()], { networkBinding: "bridge" }))[0].expose).toBeUndefined();
+  });
+
+  it("says nothing at all when the section is untouched", () => {
+    expect(portErrors(values())).toEqual([]);
+  });
+});
+
+describe("portWarnings", () => {
+  it("says nothing about a short, lettered port name", () => {
+    expect(portWarnings(withPorts([portRow({ name: "http" })]))[0]).toEqual({});
+  });
+
+  it("warns about a name Kubernetes would refuse on the Service, without blocking", () => {
+    const [messages] = portWarnings(withPorts([portRow({ name: "a-very-long-port-name" })]));
+
+    expect(messages.name).toContain("caps a Service port name at 15");
+    expect(portErrors(withPorts([portRow({ name: "a-very-long-port-name" })]))[0].name).toBeUndefined();
+    expect(maxServicePortNameLength).toBe(15);
+  });
+
+  it("warns about an all-digit name for the same reason", () => {
+    expect(portWarnings(withPorts([portRow({ name: "8080" })]))[0].name).toContain("at least one letter");
+  });
+
+  it("says which ports are left off the Service when only some are exposed", () => {
+    const warnings = portWarnings(
+      withPorts([
+        portRow({ id: "port-1", name: "a", expose: "NodePort" }),
+        portRow({ id: "port-2", name: "b", port: "8443" }),
+      ]),
+    );
+
+    expect(warnings[0].expose).toBeUndefined();
+    expect(warnings[1].expose).toContain("not on the Service");
+    expect(warnings[1].expose).toContain("reminder, not a refusal");
+  });
+
+  it("says nothing when every port is exposed", () => {
+    const warnings = portWarnings(
+      withPorts([
+        portRow({ id: "port-1", name: "a", expose: "NodePort" }),
+        portRow({ id: "port-2", name: "b", port: "8443", expose: "NodePort" }),
+      ]),
+    );
+
+    expect(warnings[1].expose).toBeUndefined();
+  });
+});
+
+describe("declaredExposure", () => {
+  it("is undefined when no port asks to be exposed", () => {
+    expect(declaredExposure(withPorts([portRow()]))).toBeUndefined();
+  });
+
+  it("is the first type any port names", () => {
+    expect(
+      declaredExposure(
+        withPorts([portRow({ id: "port-1" }), portRow({ id: "port-2", port: "8443", expose: "LoadBalancer" })]),
+      ),
+    ).toBe("LoadBalancer");
+  });
+
+  it("is undefined on an untouched form", () => {
+    expect(declaredExposure(values())).toBeUndefined();
+  });
+});
+
+describe("networkBindingDescription", () => {
+  it("says what nat does, including that it is the only binding a Service is possible under", () => {
+    const nat = networkBindingDescription("nat");
+
+    expect(nat).toContain("behind the pod IP");
+    expect(nat).toContain("only binding under which a port can ask for a Service");
+  });
+
+  it("says what bridge does, including the two things it turns off", () => {
+    const bridge = networkBindingDescription("bridge");
+
+    expect(bridge).toContain("portable IP");
+    expect(bridge).toContain("refuses expose");
+    expect(bridge).toContain("no per-guest Service");
+  });
+
+  it("offers exactly the two bindings the schema declares", () => {
+    expect(guestNetworkBindings).toEqual(["nat", "bridge"]);
+  });
+});
+
+describe("networkSectionHint", () => {
+  it("names the binding and says no Service is created while no port asks", () => {
+    const hint = networkSectionHint(values());
+
+    expect(hint).toContain("nat binding");
+    expect(hint).toContain("No Service is created until a port asks");
+  });
+
+  it("counts the ports and the interfaces", () => {
+    const hint = networkSectionHint(
+      values({ ports: [portRow({ id: "port-1" }), portRow({ id: "port-2" })], interfaces: [nicRow()] }),
+    );
+
+    expect(hint).toContain("2 ports");
+    expect(hint).toContain("1 additional interface");
+  });
+
+  it("names the Service type once a port asks for one", () => {
+    expect(networkSectionHint(withPorts([portRow({ expose: "NodePort" })]))).toContain(
+      "A per-guest Service of type NodePort is created",
+    );
+  });
+
+  it("says no Service under a bridge binding, whatever the ports say", () => {
+    expect(networkSectionHint(withPorts([portRow({ expose: "NodePort" })], { networkBinding: "bridge" }))).toContain(
+      "No per-guest Service is created under a bridge binding",
+    );
+  });
+});
+
+describe("interfaceErrors", () => {
+  it("says nothing about a named interface", () => {
+    expect(interfaceErrors(withNics([nicRow()]))[0]).toEqual({});
+  });
+
+  it("requires a name", () => {
+    expect(interfaceErrors(withNics([nicRow({ name: "" })]))[0].name).toContain("needs a name");
+  });
+
+  it("refuses a name that is not a DNS label", () => {
+    expect(interfaceErrors(withNics([nicRow({ name: "Net_1" })]))[0].name).toContain("lowercase letters");
+  });
+
+  it("refuses two interfaces with one name", () => {
+    const errors = interfaceErrors(withNics([nicRow({ id: "nic-1" }), nicRow({ id: "nic-2" })]));
+
+    expect(errors[0].name).toContain("Two interfaces are named net1");
+    expect(errors[1].name).toContain("Two interfaces are named net1");
+  });
+
+  it("accepts one primary interface", () => {
+    expect(interfaceErrors(withNics([nicRow({ primary: true })]))[0].primary).toBeUndefined();
+  });
+
+  it("refuses two primaries, on both, with the count and the default behaviour", () => {
+    const errors = interfaceErrors(
+      withNics([nicRow({ id: "nic-1", primary: true }), nicRow({ id: "nic-2", name: "net2", primary: true })]),
+    );
+
+    expect(errors[0].primary).toContain("At most one interface may be the primary, and 2 are marked");
+    expect(errors[0].primary).toContain("first interface without a network reference");
+    expect(errors[1].primary).toBeDefined();
+  });
+
+  it("accepts a canonical MAC address in either case", () => {
+    expect(interfaceErrors(withNics([nicRow({ mac: "52:54:00:12:34:56" })]))[0].mac).toBeUndefined();
+    expect(interfaceErrors(withNics([nicRow({ mac: "52:54:00:AB:CD:EF" })]))[0].mac).toBeUndefined();
+  });
+
+  it("refuses a MAC that is not the schema's pattern, and says why the pattern exists", () => {
+    const [messages] = interfaceErrors(withNics([nicRow({ mac: "52-54-00-12-34-56" })]));
+
+    expect(messages.mac).toContain("six colon-separated hex pairs");
+    expect(messages.mac).toContain("security boundary");
+  });
+
+  it("refuses a short MAC and one with a bad character", () => {
+    expect(interfaceErrors(withNics([nicRow({ mac: "52:54:00:12:34" })]))[0].mac).toBeDefined();
+    expect(interfaceErrors(withNics([nicRow({ mac: "52:54:00:12:34:zz" })]))[0].mac).toBeDefined();
+  });
+
+  it("accepts an empty MAC, which is the generated one", () => {
+    expect(interfaceErrors(withNics([nicRow({ mac: "" })]))[0].mac).toBeUndefined();
+  });
+
+  it("refuses a network namespace with no network name", () => {
+    const [messages] = interfaceErrors(withNics([nicRow({ networkNamespace: "networks" })]));
+
+    expect(messages.networkNamespace).toContain("points at nothing");
+  });
+
+  it("refuses a network name that is not an object name", () => {
+    expect(interfaceErrors(withNics([nicRow({ networkName: "Bad Name" })]))[0].networkName).toContain(
+      "lowercase letters",
+    );
+  });
+
+  it("accepts a network reference with a namespace", () => {
+    expect(interfaceErrors(withNics([nicRow({ networkName: "macvlan", networkNamespace: "networks" })]))[0]).toEqual(
+      {},
+    );
+  });
+
+  it("says nothing at all when the section is untouched", () => {
+    expect(interfaceErrors(values())).toEqual([]);
+  });
+});
+
+describe("interfaceWarnings", () => {
+  it("says nothing about a node-local primary", () => {
+    expect(interfaceWarnings(withNics([nicRow({ primary: true })]))[0]).toEqual({});
+  });
+
+  it("says what marking a network-backed interface primary attests to", () => {
+    const [messages] = interfaceWarnings(withNics([nicRow({ primary: true, networkName: "macvlan" })]));
+
+    expect(messages.primary).toContain("attestation");
+    expect(messages.primary).toContain("IP-preserving");
+  });
+
+  it("says nothing about a network-backed interface that is not primary", () => {
+    expect(interfaceWarnings(withNics([nicRow({ networkName: "macvlan" })]))[0]).toEqual({});
+  });
+});
+
+describe("interfaceTypesFact", () => {
+  it("names the type this form builds and routes the other two to the YAML editor", () => {
+    expect(interfaceTypesFact).toContain("bridge");
+    expect(interfaceTypesFact).toContain("sriov");
+    expect(interfaceTypesFact).toContain("vhost-user");
+    expect(interfaceTypesFact).toContain("YAML editor");
+  });
+
+  it("says which interface the binding and the ports apply to", () => {
+    expect(primaryInterfaceFact).toContain("PRIMARY interface");
+    expect(primaryInterfaceFact).toContain("secondary");
+  });
+});
+
+describe("gpuErrors", () => {
+  it("says nothing when the guest asks for no GPU", () => {
+    expect(gpuErrors(inputs(), values())).toEqual({});
+  });
+
+  it("requires a profile on the native backend", () => {
+    expect(gpuErrors(inputs(), values({ gpuBackend: "profile" })).profile).toContain("Name the SwiftGPUProfile");
+  });
+
+  it("says nothing about a named profile", () => {
+    expect(gpuErrors(inputs(), gpuProfileValues())).toEqual({});
+  });
+
+  it("requires one of the two DRA references", () => {
+    const messages = gpuErrors(inputs(), values({ gpuBackend: "claim" }));
+
+    expect(messages.claimName).toContain("Name a ResourceClaim to share, or a ResourceClaimTemplate");
+  });
+
+  it("refuses both DRA references at once, on both fields", () => {
+    const messages = gpuErrors(inputs(), gpuClaimValues({ gpuClaimTemplateName: "gpu-template" }));
+
+    expect(messages.claimName).toContain("never both");
+    expect(messages.claimTemplateName).toBe(messages.claimName);
+  });
+
+  it("accepts a claim alone and a template alone", () => {
+    expect(gpuErrors(inputs(), gpuClaimValues())).toEqual({});
+    expect(gpuErrors(inputs(), values({ gpuBackend: "claim", gpuClaimTemplateName: "gpu-template" }))).toEqual({});
+  });
+
+  it("refuses a hugepage size that is not a quantity, and accepts the two upstream names", () => {
+    expect(gpuErrors(inputs(), gpuClaimValues({ gpuHugepages: "huge" })).hugepages).toContain("is a size");
+    expect(gpuErrors(inputs(), gpuClaimValues({ gpuHugepages: "1Gi" })).hugepages).toBeUndefined();
+    expect(gpuErrors(inputs(), gpuClaimValues({ gpuHugepages: "2Mi" })).hugepages).toBeUndefined();
+  });
+
+  it("refuses a request name that is not a DNS label", () => {
+    expect(gpuErrors(inputs(), gpuClaimValues({ gpuRequestName: "GPU_0" })).requestName).toContain("lowercase letters");
+  });
+
+  it("says nothing at all when the guard refuses the section, on every excluded case", () => {
+    expect(gpuErrors(inputs(), kernelValues({ gpuBackend: "profile" }))).toEqual({});
+    expect(gpuErrors(inputs(), cloneValues({ gpuBackend: "claim" }))).toEqual({});
+    expect(gpuErrors(inputs(), values({ image: "windows-2022", gpuBackend: "profile" }))).toEqual({});
+  });
+});
+
+describe("gpuWarnings", () => {
+  it("says nothing about a profile that is in the namespace", () => {
+    expect(gpuWarnings(inputs(), gpuProfileValues())).toEqual({});
+  });
+
+  it("warns about a profile that is not, and says the guest parks rather than fails", () => {
+    const messages = gpuWarnings(inputs(), gpuProfileValues({ gpuProfile: "gone" }));
+
+    expect(messages.profile).toContain("No SwiftGPUProfile named gone");
+    expect(messages.profile).toContain("parks in Pending on GPUAllocated");
+  });
+
+  it("distinguishes an unlistable read from a missing profile", () => {
+    const messages = gpuWarnings(
+      inputs({ gpuProfiles: [], gpuProfilesUnverified: true }),
+      gpuProfileValues({ gpuProfile: "gpu-pcie" }),
+    );
+
+    expect(messages.profile).toContain("could not be listed");
+  });
+
+  it("says nothing on the DRA backend, whose references this form cannot read", () => {
+    expect(gpuWarnings(inputs(), gpuClaimValues({ gpuClaimName: "gone" }))).toEqual({});
+  });
+});
+
+describe("gpuProfileChoices", () => {
+  it("offers every profile of the namespace, with the request it carries", () => {
+    const choices = gpuProfileChoices(inputs());
+
+    expect(choices.map((choice) => choice.name)).toEqual(["gpu-pcie", "gpu-hgx"]);
+    expect(choices[0].label).toBe("gpu-pcie - 1 GPU, L40S, pcie");
+  });
+
+  it("reads the empty model as 'any model', the way the M3 list does", () => {
+    expect(gpuProfileChoices(inputs())[1].label).toBe("gpu-hgx - 4 GPUs, any model, hgx-shared");
+  });
+
+  it("falls back to the bare name when a profile carries no request at all", () => {
+    expect(gpuProfileChoices(inputs({ gpuProfiles: [{ name: "bare" }] }))[0].label).toBe("bare");
+  });
+
+  it("dims and disables nothing: a SwiftGPUProfile has no status to be not-Ready in", () => {
+    expect(gpuProfileChoices(inputs())).toHaveLength(inputs().gpuProfiles.length);
+  });
+
+  it("summarizes the count in the singular and the plural", () => {
+    expect(gpuProfileSummary({ name: "one", count: 1 })).toBe("1 GPU");
+    expect(gpuProfileSummary({ name: "two", count: 2 })).toBe("2 GPUs");
+  });
+
+  it("finds the picked profile, and nothing when the name is not in the list", () => {
+    expect(pickedGpuProfile(inputs(), gpuProfileValues())?.count).toBe(1);
+    expect(pickedGpuProfile(inputs(), gpuProfileValues({ gpuProfile: "gone" }))).toBeUndefined();
+    expect(pickedGpuProfile(inputs(), values())).toBeUndefined();
+  });
+});
+
+describe("setGpuBackend", () => {
+  it("empties the native reference when the form moves to DRA", () => {
+    const claim = setGpuBackend(gpuProfileValues(), "claim");
+
+    expect(claim.gpuBackend).toBe("claim");
+    expect(claim.gpuProfile).toBe("");
+  });
+
+  it("empties every DRA field when the form moves to the native backend", () => {
+    const profile = setGpuBackend(
+      gpuClaimValues({ gpuRequestName: "gpu0", gpuTier: "hgx-full", gpuHugepages: "1Gi" }),
+      "profile",
+    );
+
+    expect(profile.gpuClaimName).toBe("");
+    expect(profile.gpuRequestName).toBe("");
+    expect(profile.gpuTier).toBe(defaultGpuTier);
+    expect(profile.gpuHugepages).toBe("");
+  });
+
+  it("empties both when the form asks for no GPU", () => {
+    const none = setGpuBackend(gpuProfileValues(), "none");
+
+    expect(none.gpuProfile).toBe("");
+    expect(none.gpuClaimName).toBe("");
+  });
+
+  it("makes the two backends mutually exclusive by construction", () => {
+    for (const backend of guestGpuBackends) {
+      const form = setGpuBackend(
+        values({ gpuProfile: "gpu-pcie", gpuClaimName: "shared", gpuClaimTemplateName: "template" }),
+        backend,
+      );
+      const { spec } = guestCreatePayload(inputs(), form);
+
+      expect(spec.gpuProfileRef !== undefined && spec.gpuResourceClaim !== undefined).toBe(false);
+    }
+  });
+});
+
+describe("switchBootSource, the GPU", () => {
+  it("keeps the GPU on image boot", () => {
+    expect(gpuAppliesToBootSource("image")).toBe(true);
+    expect(switchBootSource(gpuProfileValues(), "image").gpuProfile).toBe("gpu-pcie");
+  });
+
+  it("clears it on the two sources that exclude it outright", () => {
+    for (const source of ["kernel", "clone"] as GuestBootSource[]) {
+      const switched = switchBootSource(gpuClaimValues({ gpuTier: "hgx-full", gpuHugepages: "1Gi" }), source);
+
+      expect(gpuAppliesToBootSource(source)).toBe(false);
+      expect(switched.gpuBackend).toBe("none");
+      expect(switched.gpuClaimName).toBe("");
+      expect(switched.gpuTier).toBe(defaultGpuTier);
+      expect(switched.gpuHugepages).toBe("");
+    }
+  });
+
+  it("keeps the data disks, the ports and the interfaces on every source", () => {
+    for (const source of implementedBootSources) {
+      const switched = switchBootSource(
+        values({ dataDisks: [diskRow()], ports: [portRow()], interfaces: [nicRow()] }),
+        source,
+      );
+
+      expect(switched.dataDisks).toHaveLength(1);
+      expect(switched.ports).toHaveLength(1);
+      expect(switched.interfaces).toHaveLength(1);
+    }
+  });
+
+  it("does not clear the GPU when a Windows image excludes it, because the image can change back", () => {
+    const windows = { ...gpuProfileValues(), image: "windows-2022" };
+
+    expect(guestGpuGuard(inputs(), windows).enabled).toBe(false);
+    expect(windows.gpuProfile).toBe("gpu-pcie");
+    expect(guestCreatePayload(inputs(), windows).spec.gpuProfileRef).toBeUndefined();
+  });
+});
+
+describe("gpuSectionHint", () => {
+  it("says what a GPU costs while none is asked for", () => {
+    const hint = gpuSectionHint(inputs(), values());
+
+    expect(hint).toContain("None.");
+    expect(hint).toContain("waits in Pending");
+  });
+
+  it("names the backend and repeats the parking expectation once one is chosen", () => {
+    expect(gpuSectionHint(inputs(), gpuProfileValues())).toContain("SwiftGPUProfile (native allocation)");
+    expect(gpuSectionHint(inputs(), gpuClaimValues())).toContain("Resource claim (DRA)");
+    expect(gpuSectionHint(inputs(), gpuClaimValues())).toContain("GPUAllocated");
+  });
+
+  it("is the guard's own reason wherever the section is refused", () => {
+    for (const form of [kernelValues(), cloneValues(), values({ image: "windows-2022" })]) {
+      const guard = guestGpuGuard(inputs(), form);
+
+      expect(guard.enabled).toBe(false);
+      expect(gpuSectionHint(inputs(), form)).toBe(guard.reason);
+    }
+  });
+
+  it("describes each backend in one line", () => {
+    expect(guestGpuBackendDescription("profile")).toContain("before the launcher pod is created");
+    expect(guestGpuBackendDescription("claim")).toContain("ResourceClaim");
+    expect(guestGpuBackendDescription("none")).toContain("almost every guest");
+  });
+});
+
+describe("guestDataDiskPayload", () => {
+  it("sends nothing when the section is untouched", () => {
+    expect(guestDataDiskPayload(values())).toBeUndefined();
+  });
+
+  it("sends an image disk as a name and a reference, and nothing else", () => {
+    expect(guestDataDiskPayload(withDisks([diskRow({ name: "extra" })]))).toEqual([
+      { name: "extra", imageRef: { name: "ubuntu-2404" } },
+    ]);
+  });
+
+  it("sends a PVC disk without attachAsDisk when it is off, because false is the default", () => {
+    expect(
+      guestDataDiskPayload(withDisks([diskRow({ name: "vol", source: "pvc", image: "", pvc: "data-fs" })])),
+    ).toEqual([{ name: "vol", pvcRef: { name: "data-fs" } }]);
+  });
+
+  it("sends attachAsDisk when it is on", () => {
+    expect(
+      guestDataDiskPayload(
+        withDisks([diskRow({ name: "vol", source: "pvc", image: "", pvc: "data-block", attachAsDisk: true })]),
+      ),
+    ).toEqual([{ name: "vol", pvcRef: { name: "data-block" }, attachAsDisk: true }]);
+  });
+
+  it("sends a blank disk with only the fields that were set", () => {
+    expect(
+      guestDataDiskPayload(withDisks([diskRow({ name: "db", source: "blank", image: "", blankSize: "100Gi" })])),
+    ).toEqual([{ name: "db", blank: { size: "100Gi" } }]);
+  });
+
+  it("never re-sends the Block volume mode the API server stamps", () => {
+    const disks =
+      guestDataDiskPayload(
+        withDisks([diskRow({ name: "db", source: "blank", image: "", blankSize: "1Gi", blankVolumeMode: "Block" })]),
+      ) ?? [];
+
+    expect(disks[0].blank?.volumeMode).toBeUndefined();
+    expect(defaultBlankVolumeMode).toBe("Block");
+  });
+
+  it("sends the Filesystem volume mode, which is not the default", () => {
+    const disks =
+      guestDataDiskPayload(
+        withDisks([
+          diskRow({
+            name: "db",
+            source: "blank",
+            image: "",
+            blankSize: "1Gi",
+            blankStorageClass: "fast",
+            blankVolumeMode: "Filesystem",
+          }),
+        ]),
+      ) ?? [];
+
+    expect(disks[0].blank?.volumeMode).toBe("Filesystem");
+    expect(disks[0].blank?.storageClassName).toBe("fast");
+  });
+
+  it("sends only the source the row is on, whatever the other fields still hold", () => {
+    const disks =
+      guestDataDiskPayload(
+        withDisks([diskRow({ name: "one", source: "pvc", image: "ubuntu-2404", pvc: "data-block", blankSize: "1Gi" })]),
+      ) ?? [];
+
+    expect(Object.keys(disks[0]).sort()).toEqual(["name", "pvcRef"]);
+  });
+
+  it("drops a row with no name and a row with no source, rather than emitting an empty reference (G7)", () => {
+    expect(guestDataDiskPayload(withDisks([diskRow({ name: "" })]))).toBeUndefined();
+    expect(guestDataDiskPayload(withDisks([diskRow({ image: "" })]))).toBeUndefined();
+    expect(guestDataDiskPayload(withDisks([diskRow({ source: "pvc", image: "", pvc: "" })]))).toBeUndefined();
+    expect(guestDataDiskPayload(withDisks([diskRow({ source: "blank", image: "" })]))).toBeUndefined();
+  });
+
+  it("sends the rows in the order they are on the form", () => {
+    const disks = guestDataDiskPayload(
+      withDisks([
+        diskRow({ id: "disk-1", name: "one" }),
+        diskRow({ id: "disk-2", name: "two", source: "blank", image: "", blankSize: "5Gi" }),
+      ]),
+    );
+
+    expect(disks?.map((disk) => disk.name)).toEqual(["one", "two"]);
+  });
+
+  it("trims what it sends", () => {
+    expect(guestDataDiskPayload(withDisks([diskRow({ name: " extra ", image: " ubuntu-2404 " })]))).toEqual([
+      { name: "extra", imageRef: { name: "ubuntu-2404" } },
+    ]);
+  });
+});
+
+describe("guestNetworkPayload", () => {
+  it("sends nothing at all when nothing in the section was touched", () => {
+    expect(guestNetworkPayload(values())).toBeUndefined();
+  });
+
+  it("never re-sends the nat binding the API server stamps", () => {
+    expect(guestNetworkPayload(values({ networkBinding: "nat" }))).toBeUndefined();
+  });
+
+  it("sends the bridge binding, which is not the default", () => {
+    expect(guestNetworkPayload(values({ networkBinding: "bridge" }))).toEqual({ binding: "bridge" });
+  });
+
+  it("sends a port as a number, not as the string the input held", () => {
+    expect(guestNetworkPayload(withPorts([portRow({ port: "8080" })]))).toEqual({ ports: [{ port: 8080 }] });
+  });
+
+  it("never re-sends the TCP protocol the API server stamps", () => {
+    const network = guestNetworkPayload(withPorts([portRow({ protocol: "TCP" })]));
+
+    expect(network?.ports?.[0].protocol).toBeUndefined();
+    expect(defaultPortProtocol).toBe("TCP");
+  });
+
+  it("sends UDP and SCTP, which are not the default", () => {
+    expect(guestNetworkPayload(withPorts([portRow({ protocol: "UDP" })]))?.ports?.[0].protocol).toBe("UDP");
+    expect(guestNetworkPayload(withPorts([portRow({ protocol: "SCTP" })]))?.ports?.[0].protocol).toBe("SCTP");
+  });
+
+  it("sends the name, the target port and the expose when they are set", () => {
+    expect(guestNetworkPayload(withPorts([portRow({ name: "http", targetPort: "80", expose: "NodePort" })]))).toEqual({
+      ports: [{ port: 8080, name: "http", targetPort: 80, expose: "NodePort" }],
+    });
+  });
+
+  it("omits an empty target port, which upstream reads as the port itself", () => {
+    expect(guestNetworkPayload(withPorts([portRow({ targetPort: "" })]))?.ports?.[0].targetPort).toBeUndefined();
+  });
+
+  it("drops a port with no number rather than sending a NaN", () => {
+    expect(guestNetworkPayload(withPorts([portRow({ port: "" })]))).toBeUndefined();
+  });
+
+  it("sends the binding and the ports together", () => {
+    expect(guestNetworkPayload(withPorts([portRow({ name: "http" })], { networkBinding: "bridge" }))).toEqual({
+      binding: "bridge",
+      ports: [{ port: 8080, name: "http" }],
+    });
+  });
+
+  it("sends neither serviceAnnotations nor loadBalancerClass: they are YAML territory", () => {
+    const network = guestNetworkPayload(withPorts([portRow({ expose: "LoadBalancer" })]));
+
+    expect(Object.keys(network ?? {})).toEqual(["ports"]);
+  });
+});
+
+describe("guestInterfacesPayload", () => {
+  it("sends nothing when none was added", () => {
+    expect(guestInterfacesPayload(values())).toBeUndefined();
+  });
+
+  it("sends a bare interface as a name alone: bridge is the type the API server stamps", () => {
+    expect(guestInterfacesPayload(withNics([nicRow()]))).toEqual([{ name: "net1" }]);
+    expect(defaultInterfaceType).toBe("bridge");
+  });
+
+  it("sends a network reference without a namespace when none was given", () => {
+    expect(guestInterfacesPayload(withNics([nicRow({ networkName: "macvlan" })]))).toEqual([
+      { name: "net1", networkRef: { name: "macvlan" } },
+    ]);
+  });
+
+  it("sends the namespace when one was given", () => {
+    expect(
+      guestInterfacesPayload(withNics([nicRow({ networkName: "macvlan", networkNamespace: "networks" })])),
+    ).toEqual([{ name: "net1", networkRef: { name: "macvlan", namespace: "networks" } }]);
+  });
+
+  it("sends primary only when it is true", () => {
+    expect(guestInterfacesPayload(withNics([nicRow({ primary: true })]))).toEqual([{ name: "net1", primary: true }]);
+    expect(guestInterfacesPayload(withNics([nicRow({ primary: false })]))?.[0].primary).toBeUndefined();
+  });
+
+  it("sends the MAC when one was pinned", () => {
+    expect(guestInterfacesPayload(withNics([nicRow({ mac: "52:54:00:12:34:56" })]))?.[0].mac).toBe("52:54:00:12:34:56");
+  });
+
+  it("drops a nameless row rather than emitting one the schema requires a name on", () => {
+    expect(guestInterfacesPayload(withNics([nicRow({ name: "" })]))).toBeUndefined();
+  });
+});
+
+describe("guestGpuPayload", () => {
+  it("sends nothing when the guest asks for no GPU", () => {
+    expect(guestGpuPayload(inputs(), values())).toEqual({});
+  });
+
+  it("sends the native reference by name", () => {
+    expect(guestGpuPayload(inputs(), gpuProfileValues())).toEqual({ gpuProfileRef: { name: "gpu-pcie" } });
+  });
+
+  it("never emits an empty-name profile reference (G7)", () => {
+    expect(guestGpuPayload(inputs(), values({ gpuBackend: "profile" }))).toEqual({});
+  });
+
+  it("sends a shared claim alone", () => {
+    expect(guestGpuPayload(inputs(), gpuClaimValues())).toEqual({
+      gpuResourceClaim: { resourceClaimName: "shared-gpu" },
+    });
+  });
+
+  it("sends a template alone", () => {
+    expect(guestGpuPayload(inputs(), values({ gpuBackend: "claim", gpuClaimTemplateName: "gpu-template" }))).toEqual({
+      gpuResourceClaim: { resourceClaimTemplateName: "gpu-template" },
+    });
+  });
+
+  it("never re-sends the pcie tier the API server stamps", () => {
+    const { gpuResourceClaim } = guestGpuPayload(inputs(), gpuClaimValues({ gpuTier: "pcie" }));
+
+    expect(gpuResourceClaim?.tier).toBeUndefined();
+  });
+
+  it("sends the request name, the tier and the hugepages when they are set", () => {
+    expect(
+      guestGpuPayload(inputs(), gpuClaimValues({ gpuRequestName: "gpu0", gpuTier: "hgx-shared", gpuHugepages: "1Gi" })),
+    ).toEqual({
+      gpuResourceClaim: {
+        resourceClaimName: "shared-gpu",
+        requestName: "gpu0",
+        tier: "hgx-shared",
+        hugepages: "1Gi",
+      },
+    });
+  });
+
+  it("sends nothing on a DRA backend with neither reference", () => {
+    expect(guestGpuPayload(inputs(), values({ gpuBackend: "claim", gpuRequestName: "gpu0" }))).toEqual({});
+  });
+
+  it("sends nothing wherever the guard refuses, whatever the section still holds", () => {
+    expect(guestGpuPayload(inputs(), kernelValues({ gpuBackend: "profile", gpuProfile: "gpu-pcie" }))).toEqual({});
+    expect(guestGpuPayload(inputs(), cloneValues({ gpuBackend: "claim", gpuClaimName: "shared" }))).toEqual({});
+    expect(
+      guestGpuPayload(inputs(), values({ image: "windows-2022", gpuBackend: "profile", gpuProfile: "gpu-pcie" })),
+    ).toEqual({});
+  });
+});
+
+describe("guestCreatePayload, the collapsed tail", () => {
+  it("sends nothing of the three sections when they are untouched", () => {
+    const { spec } = guestCreatePayload(inputs(), values());
+
+    expect(spec.dataDiskRefs).toBeUndefined();
+    expect(spec.network).toBeUndefined();
+    expect(spec.interfaces).toBeUndefined();
+    expect(spec.gpuProfileRef).toBeUndefined();
+    expect(spec.gpuResourceClaim).toBeUndefined();
+  });
+
+  it("never emits the legacy singular dataDiskRef, whatever the disks say", () => {
+    const { spec } = guestCreatePayload(
+      inputs(),
+      withDisks([diskRow({ name: "extra" }), diskRow({ id: "disk-2", name: "second", image: "windows-2022" })]),
+    );
+
+    expect(spec.dataDiskRef).toBeUndefined();
+    expect(spec.dataDiskRefs).toHaveLength(2);
+  });
+
+  it("carries the whole tail on one guest, with the exact key set", () => {
+    const { spec } = guestCreatePayload(
+      inputs(),
+      values({
+        dataDisks: [
+          diskRow({ name: "extra" }),
+          diskRow({ id: "disk-2", name: "db", source: "blank", image: "", blankSize: "50Gi" }),
+        ],
+        ports: [
+          portRow({ id: "port-1", name: "http", expose: "NodePort" }),
+          portRow({ id: "port-2", port: "8443", name: "https", expose: "NodePort" }),
+        ],
+        interfaces: [nicRow({ networkName: "macvlan", primary: true })],
+        gpuBackend: "profile",
+        gpuProfile: "gpu-pcie",
+      }),
+    );
+
+    expect(Object.keys(spec).sort()).toEqual([
+      "dataDiskRefs",
+      "gpuProfileRef",
+      "guestClassRef",
+      "imageRef",
+      "interfaces",
+      "network",
+      "osType",
+      "runPolicy",
+    ]);
+    expect(spec.network).toEqual({
+      ports: [
+        { port: 8080, name: "http", expose: "NodePort" },
+        { port: 8443, name: "https", expose: "NodePort" },
+      ],
+    });
+    expect(spec.interfaces).toEqual([{ name: "net1", networkRef: { name: "macvlan" }, primary: true }]);
+    expect(spec.gpuProfileRef).toEqual({ name: "gpu-pcie" });
+  });
+
+  it("carries the tail on kernel boot too, minus the GPU", () => {
+    const { spec } = guestCreatePayload(
+      inputs(),
+      kernelValues({ dataDisks: [diskRow({ name: "extra" })], ports: [portRow()], interfaces: [nicRow()] }),
+    );
+
+    expect(Object.keys(spec).sort()).toEqual([
+      "dataDiskRefs",
+      "guestClassRef",
+      "interfaces",
+      "kernelRef",
+      "network",
+      "osType",
+      "runPolicy",
+    ]);
+  });
+
+  it("carries the tail on clone boot too, minus the GPU", () => {
+    const { spec } = guestCreatePayload(inputs(), cloneValues({ dataDisks: [diskRow({ name: "extra" })] }));
+
+    expect(spec.dataDiskRefs).toEqual([{ name: "extra", imageRef: { name: "ubuntu-2404" } }]);
+    expect(spec.gpuProfileRef).toBeUndefined();
+  });
+
+  it("sends the DRA claim instead of the profile when that is the backend", () => {
+    const { spec } = guestCreatePayload(inputs(), gpuClaimValues());
+
+    expect(spec.gpuProfileRef).toBeUndefined();
+    expect(spec.gpuResourceClaim).toEqual({ resourceClaimName: "shared-gpu" });
+  });
+
+  it("never emits a reference without a name anywhere in the tail (G7)", () => {
+    const { spec } = guestCreatePayload(
+      inputs(),
+      values({
+        dataDisks: [diskRow({ name: "one", image: "" }), diskRow({ id: "disk-2", name: "", image: "ubuntu-2404" })],
+        interfaces: [nicRow({ name: "", networkName: "macvlan" })],
+        gpuBackend: "profile",
+        gpuProfile: "",
+      }),
+    );
+
+    expect(spec.dataDiskRefs).toBeUndefined();
+    expect(spec.interfaces).toBeUndefined();
+    expect(spec.gpuProfileRef).toBeUndefined();
+  });
+
+  it("sends a guest whose only tail is one bridge-bound port", () => {
+    const { spec } = guestCreatePayload(inputs(), withPorts([portRow()], { networkBinding: "bridge" }));
+
+    expect(spec.network).toEqual({ binding: "bridge", ports: [{ port: 8080 }] });
+  });
+});
+
+describe("guestCreateSummary, the collapsed tail", () => {
+  it("says nothing about the three sections when they are untouched", () => {
+    const text = summaryText();
+
+    expect(text).not.toContain("Data disk");
+    expect(text).not.toContain("Service");
+    expect(text).not.toContain("GPU");
+  });
+
+  it("names every data disk on its own line", () => {
+    const facts = guestCreateSummary(
+      inputs(),
+      withDisks([
+        diskRow({ name: "extra" }),
+        diskRow({ id: "disk-2", name: "db", source: "blank", image: "", blankSize: "50Gi" }),
+      ]),
+    );
+
+    expect(facts.notes.filter((note) => note.startsWith("Data disk"))).toHaveLength(2);
+  });
+
+  it("names the Service and its type when a port is exposed", () => {
+    const text = summaryText({ ports: [portRow({ name: "http", expose: "NodePort" })] });
+
+    expect(text).toContain("One Service of type NodePort is created for this guest");
+    expect(text).toContain("deleted with the guest");
+  });
+
+  it("counts the exposed ports against the declared ones", () => {
+    const text = summaryText({
+      ports: [
+        portRow({ id: "port-1", name: "http", expose: "NodePort" }),
+        portRow({ id: "port-2", port: "8443", name: "https" }),
+      ],
+    });
+
+    expect(text).toContain("1 of its 2 ports");
+  });
+
+  it("says no Service is created when no port asks for one", () => {
+    const text = summaryText({ ports: [portRow()] });
+
+    expect(text).toContain("in-pod DNAT");
+    expect(text).toContain("No Service is created: none of them asks to be exposed");
+  });
+
+  it("says no Service and no DNAT under a bridge binding", () => {
+    const text = summaryText({ ports: [portRow()], networkBinding: "bridge" });
+
+    expect(text).toContain("no Service is created and no in-pod DNAT is installed");
+    expect(text).toContain("NetworkPolicy");
+  });
+
+  it("counts the additional interfaces and names the primary", () => {
+    const text = summaryText({ interfaces: [nicRow({ networkName: "macvlan", primary: true })] });
+
+    expect(text).toContain("one additional bridge interface, attached to a network by Multus");
+    expect(text).toContain("The primary NIC is net1");
+  });
+
+  it("counts how many of several interfaces are network-backed", () => {
+    const text = summaryText({
+      interfaces: [nicRow({ id: "nic-1", networkName: "macvlan" }), nicRow({ id: "nic-2", name: "net2" })],
+    });
+
+    expect(text).toContain("2 additional bridge interfaces, 1 of them attached to a network by Multus");
+  });
+
+  it("says nothing about Multus when no interface names a network", () => {
+    expect(summaryText({ interfaces: [nicRow()] })).toContain("It gets one additional bridge interface. ");
+  });
+
+  it("says the Service carries every port when they are all exposed", () => {
+    const text = summaryText({
+      ports: [
+        portRow({ id: "port-1", name: "http", expose: "NodePort" }),
+        portRow({ id: "port-2", port: "8443", name: "https", expose: "NodePort" }),
+      ],
+    });
+
+    expect(text).toContain("carrying every one of its 2 ports");
+  });
+
+  it("says the Service carries its one port when there is only one", () => {
+    expect(summaryText({ ports: [portRow({ name: "http", expose: "NodePort" })] })).toContain("carrying its one port");
+  });
+
+  it("says what an unmarked interface list means", () => {
+    expect(summaryText({ interfaces: [nicRow()] })).toContain("None is marked primary");
+  });
+
+  it("names the native GPU profile with its request", () => {
+    const text = summaryText({ gpuBackend: "profile", gpuProfile: "gpu-pcie" });
+
+    expect(text).toContain("It asks for the GPU profile gpu-pcie (1 GPU, L40S, pcie) through the native backend");
+    expect(text).toContain("VFIO");
+  });
+
+  it("names the DRA claim, the request and the tier", () => {
+    const text = summaryText({ gpuBackend: "claim", gpuClaimName: "shared-gpu" });
+
+    expect(text).toContain("the ResourceClaim shared-gpu");
+    expect(text).toContain("the request gpu");
+    expect(text).toContain("the tier is pcie (the value the API server stamps)");
+  });
+
+  it("names the template when that is the DRA reference", () => {
+    const text = summaryText({ gpuBackend: "claim", gpuClaimTemplateName: "gpu-template", gpuTier: "hgx-full" });
+
+    expect(text).toContain("a claim minted from the template gpu-template");
+    expect(text).toContain("the tier is hgx-full");
+    expect(text).not.toContain("the value the API server stamps");
+  });
+
+  it("states the parks-in-Pending expectation as a warning, on both backends (G11)", () => {
+    for (const form of [
+      { gpuBackend: "profile", gpuProfile: "gpu-pcie" },
+      { gpuBackend: "claim", gpuClaimName: "c" },
+    ]) {
+      const facts = guestCreateSummary(inputs(), values(form as Partial<GuestFormValues>));
+
+      expect(facts.warnings.some((warning) => warning.includes("parks in Pending on its GPUAllocated"))).toBe(true);
+    }
+  });
+
+  it("says nothing about a GPU the guard refuses, on every excluded case", () => {
+    for (const form of [
+      kernelValues({ gpuBackend: "profile", gpuProfile: "gpu-pcie" }),
+      cloneValues({ gpuBackend: "profile", gpuProfile: "gpu-pcie" }),
+      values({ image: "windows-2022", gpuBackend: "profile", gpuProfile: "gpu-pcie" }),
+    ]) {
+      const facts = guestCreateSummary(inputs(), form);
+
+      expect([...facts.notes, ...facts.warnings].some((line) => line.includes("gpu-pcie"))).toBe(false);
+    }
+  });
+
+  it("repeats an unverified GPU profile, because the picker is inside a collapsed section", () => {
+    expect(summaryText({ gpuBackend: "profile", gpuProfile: "gone" })).toContain("No SwiftGPUProfile named gone");
+  });
+});
+
+describe("the node pin against a native GPU profile", () => {
+  it("is not a warning without a pin, and not a warning without a profile", () => {
+    expect(guestCreateWarnings(inputs(), gpuProfileValues()).nodeName).toBeUndefined();
+    expect(guestCreateWarnings(inputs(), values({ nodeName: "node-a" })).nodeName).toBeUndefined();
+  });
+
+  it("warns when both are set, naming what upstream does about it", () => {
+    const warning = guestCreateWarnings(inputs(), gpuProfileValues({ nodeName: "node-a" })).nodeName;
+
+    expect(warning).toBe(gpuNodePinWarning);
+    expect(warning).toContain("Resolved=False");
+    expect(warning).toContain("Leave the pin empty");
+  });
+
+  it("never blocks on it", () => {
+    expect(guestCreateSubmitBlockReason(inputs(), gpuProfileValues({ nodeName: "node-a" }))).toBeUndefined();
+  });
+
+  it("does not fire on the DRA backend, whose node the scheduler picks anyway", () => {
+    expect(guestCreateWarnings(inputs(), gpuClaimValues({ nodeName: "node-a" })).nodeName).toBeUndefined();
+  });
+
+  it("does not fire on a guest whose GPU the guard refuses", () => {
+    expect(
+      usesNativeGpuProfile(inputs(), values({ image: "windows-2022", gpuBackend: "profile", gpuProfile: "gpu-pcie" })),
+    ).toBe(false);
+  });
+});
+
+describe("guestCreateBlockingIssues", () => {
+  it("is empty on a form that can be sent", () => {
+    expect(guestCreateBlockingIssues(inputs(), values())).toEqual([]);
+  });
+
+  it("names the row a data disk problem is on", () => {
+    const [issue] = guestCreateBlockingIssues(
+      inputs(),
+      withDisks([diskRow({ id: "disk-1", name: "one" }), diskRow({ id: "disk-2", name: "" })]),
+    );
+
+    expect(issue.label).toBe("Data disk 2 name");
+  });
+
+  it("names the row a port problem is on", () => {
+    const issues = guestCreateBlockingIssues(
+      inputs(),
+      withPorts([portRow({ id: "port-1", name: "a" }), portRow({ id: "port-2", port: "70000", name: "b" })]),
+    );
+
+    expect(issues[0].label).toBe("Port 2 port");
+  });
+
+  it("names the row an interface problem is on", () => {
+    const [issue] = guestCreateBlockingIssues(inputs(), withNics([nicRow({ mac: "nope" })]));
+
+    expect(issue.label).toBe("Interface 1 mac address");
+  });
+
+  it("names the GPU field", () => {
+    const [issue] = guestCreateBlockingIssues(inputs(), values({ gpuBackend: "profile" }));
+
+    expect(issue.label).toBe("GPU profile");
+  });
+
+  it("reports the flat fields before the sections, in the reading order of the form", () => {
+    const issues = guestCreateBlockingIssues(
+      inputs(),
+      values({ name: "", dataDisks: [diskRow({ name: "" })], gpuBackend: "profile" }),
+    );
+
+    expect(issues.map((issue) => issue.label)).toEqual(["Name", "Data disk 1 name", "GPU profile"]);
+  });
+
+  it("is what the submit-disabled sentence names", () => {
+    const form = withDisks([diskRow({ name: "" })]);
+    const [issue] = guestCreateBlockingIssues(inputs(), form);
+
+    expect(guestCreateSubmitBlockReason(inputs(), form)).toBe(`${issue.label}: ${issue.message}`);
+  });
+
+  it("carries a non-empty message on every issue it ever reports", () => {
+    const forms: GuestFormValues[] = [
+      values({ name: "" }),
+      withDisks([diskRow({ name: "" })]),
+      withDisks([diskRow({ image: "ubuntu-2404", pvc: "data-block" })]),
+      withDisks([diskRow({ attachAsDisk: true })]),
+      withPorts([portRow({ port: "" })]),
+      withPorts([
+        portRow({ id: "port-1", expose: "NodePort" }),
+        portRow({ id: "port-2", port: "1", expose: "ClusterIP" }),
+      ]),
+      withPorts([portRow({ expose: "NodePort" })], { networkBinding: "bridge" }),
+      withNics([nicRow({ name: "" })]),
+      withNics([nicRow({ id: "nic-1", primary: true }), nicRow({ id: "nic-2", name: "net2", primary: true })]),
+      values({ gpuBackend: "profile" }),
+      values({ gpuBackend: "claim" }),
+      gpuClaimValues({ gpuClaimTemplateName: "template" }),
+    ];
+
+    for (const form of forms) {
+      const issues = guestCreateBlockingIssues(inputs(), form);
+
+      expect(issues.length).toBeGreaterThan(0);
+
+      for (const issue of issues) {
+        expect(issue.label.length).toBeGreaterThan(0);
+        expect(issue.message.length).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe("the collapsed sections that open themselves", () => {
+  it("reports no error on an untouched form", () => {
+    expect(dataDisksSectionHasError(inputs(), values())).toBe(false);
+    expect(networkSectionHasError(values())).toBe(false);
+    expect(gpuSectionHasError(inputs(), values())).toBe(false);
+  });
+
+  it("reports the data disks section when one of its rows is wrong", () => {
+    expect(dataDisksSectionHasError(inputs(), withDisks([diskRow({ name: "" })]))).toBe(true);
+  });
+
+  it("reports the network section for a port and for an interface alike", () => {
+    expect(networkSectionHasError(withPorts([portRow({ port: "" })]))).toBe(true);
+    expect(networkSectionHasError(withNics([nicRow({ mac: "nope" })]))).toBe(true);
+  });
+
+  it("reports the GPU section, and never one the guard refuses", () => {
+    expect(gpuSectionHasError(inputs(), values({ gpuBackend: "profile" }))).toBe(true);
+    expect(gpuSectionHasError(inputs(), kernelValues({ gpuBackend: "profile" }))).toBe(false);
+  });
+
+  it("never leaves a blocking issue in a section that would stay shut", () => {
+    const form = values({ dataDisks: [diskRow({ name: "" })], ports: [portRow({ port: "" })], gpuBackend: "profile" });
+
+    expect(guestCreateBlockingIssues(inputs(), form).length).toBeGreaterThan(0);
+    expect(dataDisksSectionHasError(inputs(), form)).toBe(true);
+    expect(networkSectionHasError(form)).toBe(true);
+    expect(gpuSectionHasError(inputs(), form)).toBe(true);
   });
 });

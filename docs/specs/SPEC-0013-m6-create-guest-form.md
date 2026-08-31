@@ -288,10 +288,13 @@ re-sent (except `runPolicy`, argued above).
    the live-migratability consequence stated both ways; dropped on
    kernel boot, which creates no root-disk PVC for them to apply to.
 8. **Data disks** (collapsed): repeatable rows, each exactly one of
-   image (Ready-filtered picker) / existing PVC (picker) / blank
+   image (picker, dimmed-and-selectable like the boot image - a data
+   disk cloned from a still-importing image waits the same way, so
+   the row warns rather than filters) / existing PVC (picker) / blank
    (size + class + volume mode), `attachAsDisk` only on PVC rows
    with the Block-mode requirement checked from the picked PVC when
-   readable; all shape rules inline; at most 8.
+   readable and warned about when it is not; all shape rules inline;
+   at most 8.
 9. **Network** (collapsed): binding nat / bridge with one sentence
    each (bridge disables `expose` and the per-guest Service);
    repeatable ports (port, name - required above one, target,
@@ -361,6 +364,7 @@ Adopted:
 | G11 | Park-versus-fail expectations in the summary: what waits and self-heals, what fails and why, what parks in Pending | Write summary |
 | G12 | DNS-1123 name validation and the store collision warning (warn, never block) | Section 1 |
 | G13 | Success lands on the page the user is on, with the row delivered by the page's own store | Outcome |
+| G14 | The node pin against a native GPU profile warned about, which upstream documents in the `nodeName` field's own comment and shows nowhere: the GPU controller picks the node, so a pin that names another one makes the pod builder refuse to build with `Resolved=False` (added in slice 3, from the schema) | Sections 6, 10 |
 
 Considered and rejected:
 
@@ -453,18 +457,28 @@ never hiding a required field).
   explicit regenerate list"; "requires a target node for an s3
   snapshot, and writes it into the clone"; "leaves the snapshots a
   clone cannot resume out of the picker, and says how many"; "warns
-  that a clone's source guest is gone, and submits anyway". Slice 3:
-  port-rule and
-  data-disk-rule refusals with reasons; a full guest with disks and
-  ports read back key-exact. Fixture additions per slice, named in
-  the slice PRs.
+  that a clone's source guest is gone, and submits anyway". Slice 3, as
+  shipped: "creates a guest with data disks, ports, an interface and a
+  GPU, and reads back what the server stamped"; "refuses the port rules
+  with their reasons, and keeps the section open on one"; "refuses the
+  data-disk rules, and offers attachAsDisk on a PVC row alone";
+  "replaces the GPU section with the guard's reason on kernel boot and
+  on a windows image"; "keeps the last row's menu clear of the host's
+  floating create button". Its fixtures are the two claims of
+  `195-swiftguest-create-volumes.yaml`, with the M3 GPU profiles and the
+  M1 image reused. Fixture additions per slice, named in the slice PRs.
 - **Manual verification** (escalated to Roberto, PROCESS.md), on a
   real KVM cluster: a form-created guest boots end-to-end; the
   create-early-against-an-importing-image self-heal; a Windows image
   create with the synced osType; a clone-boot create resuming with
   rewritten MACs; a ports+expose guest getting its Service; a
-  GPU-profile guest parking and then allocating. Record date, tester
-  and result here.
+  GPU-profile guest parking and then allocating; and, from slice 3,
+  the three kinds of data disk actually reaching the guest - an
+  image-backed one and a blank one as raw devices the guest can
+  partition, and an attached Block claim as a device rather than as a
+  directory in the launcher pod, which is the one difference
+  `attachAsDisk` decides and no cluster without KVM can show. Record
+  date, tester and result here.
 
 ## Notes and deviations
 
@@ -795,6 +809,211 @@ different from, the text above:
   status patches registered in `lib.sh`), and SPEC-0011's
   `e2e-snapshot-memory-ready` is reused for the local clone: its tier
   is what that case is about, and nothing else mutates it.
+
+### Create Guest slice 3 as implemented (2026-08-31)
+
+Slice 3 adds the collapsed tail - data disks, network and ports, GPU
+(sections 8, 9 and 10) - with their rule matrices, summary lines, payload,
+unit and E2E coverage and fixtures, plus one fix to the Guests page that
+slice 2 had only worked around in a test helper. The machinery is
+unchanged again: the W12 create pattern, the MobX model outside React, the
+observable `okButtonProps`, the catch-never-rethrow with the 409 reopen,
+and the collapsible section slice 1 added to `create-dialog.tsx`, which
+needed two mechanical additions and no change.
+
+**The typed models needed nothing at all**, for the second time:
+`SwiftGuestDataDisk`, `SwiftGuestBlankDisk`, `SwiftGuestNetwork`,
+`SwiftGuestPort`, `SwiftGuestInterface`, `SwiftGuestGpuResourceClaim` and
+`gpuProfileRef` were all already declared on `SwiftGuestSpec` from the
+CRD schema, so the "extend the types from the schema where needed" item of
+this slice found nothing under-typed. These are the places the
+implementation is more specific than, or different from, the text above:
+
+- **Two of the data-disk rules ARE in the schema, and the spec's own
+  recon says they are not.** The list above calls "every data-disk shape
+  rule" webhook-only; the disk NAME is constrained by the CRD itself, with
+  the DNS-label pattern and a `maxLength` of **36** - shorter than a DNS
+  label, because the name becomes part of the host device path
+  (`/dev/kubeswift-data-<name>`). The refusal says so with the count, and
+  the cap is the schema's rather than this form's. Everything else in the
+  section (exactly one source, `attachAsDisk` needing a Block `pvcRef`, at
+  most eight, unique names) is webhook-only as recorded.
+- **Two sources on one row are made inexpressible rather than validated**,
+  which is the boot-source treatment one level down: the row has a control
+  for what it is made of, and moving it empties the source it leaves
+  (`setDataDiskSource`). The rule is still implemented and unit-tested,
+  because the model is where the absent webhook's rules are written down
+  and a payload builder that trusted the control would be trusting a
+  rendering; the E2E case asserts the other half, that the UI cannot
+  produce the state at all.
+- **`attachAsDisk` has a refusal branch and a warning branch, and the
+  split is the point.** A claim that DECLARES `Filesystem` is refused with
+  the reason (a directory has no device to hand to a guest). A claim that
+  declares no `volumeMode`, or that could not be read at all, only warns:
+  the volume mode of an object this form did not create is a fact it may
+  not be allowed to read, and a read that was refused must never block a
+  write the API server would accept (W12). `attachAsDisk` is not offered
+  at all on an image or a blank row, where upstream attaches a raw VM disk
+  anyway - W12's option dropping, with the fact stated in its place.
+- **The PVC picker is the first read of this form that is not a KubeSwift
+  kind**, through the host's own `pvcApi`, and it is the one most likely
+  to be refused: `persistentvolumeclaims` is a core resource a
+  namespace-scoped role may well not carry. The T3 degradation therefore
+  reaches further here than anywhere else on this form - the picker
+  becomes a text input AND the `attachAsDisk` rule downgrades from a
+  refusal to a warning - which is why the two branches above exist.
+- **The data-disk image picker dims rather than filters**, exactly like
+  the boot image: upstream needs a Ready image to clone a data disk, a
+  guest created against an importing one waits for it in the same way, and
+  the warning says so. Section 8 above said "Ready-filtered" and is
+  corrected. The clone's snapshot picker remains the one picker of this
+  form that filters, for the reason slice 2 recorded.
+- **`expose` stays per port and is validated, rather than being lifted to
+  one control for the section.** One control would make the mix
+  inexpressible, which is what this form does everywhere else - but the
+  schema puts `expose` on the port, and the failure mode is a Service of
+  the WRONG TYPE rather than a missing one, so the form has to be able to
+  point at the port that disagrees. Two ports that both name a type must
+  name the same one (refused, naming both values); a mix of named and
+  unnamed only warns, because a port without `expose` is a legitimate
+  DNAT-only port that is simply not on the Service.
+- **The port name is refused as a DNS label and warned about as a Service
+  port name.** Upstream documents the field as a DNS label and validates
+  nothing; Kubernetes then applies its own `IANA_SVC_NAME` rule to the
+  Service the controller mints - at most 15 characters, at least one
+  letter - which is a downstream consequence rather than upstream's rule.
+  So the documented rule blocks and the consequence warns, and the warning
+  says which of the two objects would refuse it.
+- **The form never re-sends a value the API server would stamp**, which is
+  six of them in this slice: `network.binding: nat`, `ports[].protocol:
+  TCP`, `interfaces[].type: bridge`, `blank.volumeMode: Block`,
+  `gpuResourceClaim.tier: pcie`, and `attachAsDisk: false`. The whole
+  `network` block is omitted when nothing in it is set, which is the CRD's
+  own reading of a nil one ("nil preserves today's behavior"). The E2E
+  readback asserts BOTH halves - the keys the form sent and the keys the
+  server stamped into them - because a test that asserted only the first
+  would pass just as happily on a form that had started re-sending the
+  defaults.
+- **A new improvement, G14, came out of the schema rather than out of the
+  recon**: `spec.nodeName`'s own field documentation says the validating
+  webhook enforces `nodeName == status.gpu.nodeName` and that the pod
+  builder refuses to build the pod with `Resolved=False` when the two
+  disagree - and the node is chosen by the GPU controller AFTER the create,
+  so a form cannot know it. A guest that is pinned AND asks for a native
+  GPU profile therefore warns, at the node pin, with what upstream does
+  about it. It warns rather than blocks because the operator may know which
+  node holds the devices.
+- **The GPU is cleared when the boot source excludes it, and deliberately
+  NOT when the image does.** Kernel and clone boot clear the whole section
+  in `switchBootSource`, for the reason every other per-source field is
+  cleared: the payload builder refuses to emit a GPU there, so a leftover
+  value would be visible in the form and absent from the object. A Windows
+  image is different - it is one pick away from being a Linux one again -
+  so the values stay and the payload is guarded instead, by
+  `guestGpuPayload` consulting `guestGpuGuard` rather than the control.
+- **The GPU profile picker shows no readiness, and that is the CRD rather
+  than an omission.** SwiftGPUProfile declares `subresources: {}` and no
+  `status` at all (SPEC-0007), so nothing ever writes back to a profile and
+  there is no state that could make one unchoosable. What the option
+  carries instead is the request itself - count, model, tier - with the
+  empty `spec.model` read as "any model", the same reading the M3 list
+  uses. SPEC-0007's other decision is kept as it is: `tier: hgx-full` and
+  `partitionMode: full` are unimplemented in v0.13.12 and are still not
+  badged as such, because that is a controller-version fact that would go
+  stale the moment upstream ships the phase.
+- **The DRA claim's exclusivity is made inexpressible where it can be and
+  validated where it cannot.** Profile versus claim is one control, so a
+  guest can never carry both. Claim name versus template name is two text
+  fields, because they are two different objects an operator types the name
+  of, so that half is a refusal that names both fields.
+- **Data disks, ports and interfaces apply to every boot source,
+  including a clone.** Nothing in the CRD scopes any of them, and inventing
+  a scope would be inventing behaviour the recon could not confirm - the
+  limit W11 puts on the whole "better than upstream" exercise. Only the GPU
+  is per source, because upstream says so.
+- **The submit-disabled sentence names the row**, not just the field:
+  `Data disk 2 name`, `Port 1 expose`, `Interface 1 mac address`, `GPU
+  profile`. A form with three data disks and two ports has several fields
+  called Name, and a sentence that named one of them would be pointing at
+  nothing. `guestCreateBlockingIssues` is the new shape - every reason in
+  the reading order of the form, flat fields first - and
+  `guestCreateSubmitBlockReason` is its first element.
+- **The add control of a repeatable section is disabled with its reason**,
+  which is W4 applied to an add rather than to a submit: the ninth data
+  disk is refused with the count and with what upstream would do about it
+  (nothing - the webhook that enforces the limit ships disabled, so a ninth
+  disk would be stored and then ignored). Both the add and the remove
+  control are plain buttons rather than the host's `Button`, for the reason
+  the collapsible section's header already is one: inside the hardcoded
+  white `ConfirmDialog` box the host's button chrome paints itself from
+  tokens picked for a dark surface.
+- **The screenshots caught three things and they were fixed before the
+  fixtures were committed.** The GPU section rendered its parks-in-Pending
+  paragraph twice in one screen - once on the header line, where DESIGN.md
+  section 12 requires it, and again inside the open section - which is the
+  duplication slice 1 removed from the live-migration sentence, made a
+  second time; the in-section copy is gone and the summary still repeats it
+  below the fold. The Service line read "carrying all 2 of its ports" and
+  the interfaces line said "1 of them attached to a network" about a single
+  interface; both count plainly now.
+
+**The page fix, with the measurements.** The host's floating create button
+(`AddRemoveButtons`, the "+" the Guests page passes `addRemoveButtons` to)
+is `position: absolute; bottom: 0; right: 0; margin: 16px;
+margin-right: 32px; z-index: 99` inside the list's own `.items` box, and it
+measures **45.6 x 45.6** - so with its own bottom margin it covers the last
+**61.6px** of the list area, in the corner. Measured live against the E2E
+cluster, with the list scrolled all the way down: the kebab of the last row
+sits at `y 799.8-820.8` and the button at `y 768.4-814.0`, in overlapping
+`x` ranges - the kebab is **inside** the button, which wins the click, and
+the user gets no hint at all about why (Playwright at least names the
+intercepting element, which is how slice 2 found it). Slice 2 fixed it in
+`openRowMenu` by centring the row first; this is the fix in the product.
+
+The list is virtualized, which rules out the obvious repair: `Table`
+renders a `VirtualList` for its rows, react-window positions every
+`.TableRow` absolutely inside an element whose height it computes, and a
+margin on the last row changes nothing. What can be spaced is the scroll
+container itself - the block-end padding of a scroll container is part of
+its scrollable overflow - so the list simply stops scrolling 80px sooner
+and no row ever reaches the corner. The rule is
+`.page :global(.VirtualList .list) { padding-bottom: 80px }` in the page's
+own module, which stays inside this page's subtree because `Table` passes
+its `className` down to the `VirtualList` as well: `.page` is on both, and
+the rule cannot reach another page's list. Host class names are wrapped in
+`:global()` as DESIGN.md section 8 requires, and no host chrome is
+overridden.
+
+80px rather than the 61.6px the button strictly needs: at 64px the kebab
+came to rest at `y 725.8-746.8` against a button top of 768.4, which is
+5.6px of air, and a slightly taller row or a slightly larger button would
+bring the collision straight back. 80px leaves 21.6px, measured the same
+way. Verified live at the bottom of the scroll: the padding is applied, the
+last row's kebab and the "+" no longer intersect, and the kebab opens its
+menu from a plain click with no scrolling of the test's own. The E2E case
+asserts all three. Slice 2's centring stays in
+`openRowMenu` regardless: it protects every case in the suite on every
+page, and a helper that only worked because one page had been fixed would
+be a tolerance rather than a fix.
+
+**The E2E cases are five, and one of them writes for real**: a guest with
+two data disks (one image-backed, one blank), two `NodePort` ports, one
+additional bridge interface marked primary and a GPU profile, read back
+key-exact with the stamped defaults asserted explicitly; the three port
+refusals with their reasons, including the section that stays open while it
+holds one and closes again the moment it does not; the data-disk refusals
+(`attachAsDisk` against a Filesystem claim, the source that cannot be
+doubled, the ninth disk); the GPU section replaced by the guard's reason on
+kernel boot and on the Windows image, and back on a Linux one; and the page
+fix. **Two fixtures were added**, and they are the first objects in this
+suite that are not custom resources at all: `e2e-data-block` and
+`e2e-data-filesystem` in `195-swiftguest-create-volumes.yaml`, with their
+volume modes registered in `lib.sh`'s readback assertions. Both name a
+StorageClass that does not exist, so nothing is provisioned and both stay
+`Pending` forever, which is all a picker and a readback need - and is the
+same "no controller runs here" honesty the rest of the suite is built on.
+The M3 GPU profiles (`e2e-gpu-profile-pcie`) and the M1 `e2e-ubuntu-2404`
+image are reused as they are.
 
 ### Upstream drift found by this recon (2026-08-30)
 

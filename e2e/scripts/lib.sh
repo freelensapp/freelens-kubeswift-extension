@@ -270,6 +270,14 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-s3={.status.memorySnapshot.sizeBytes}=8589934592"
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-orphan={.status.phase}=Ready"
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-orphan={.spec.guestRef.name}=e2e-guest-create-vanished"
+	# The slice-3 subjects (SPEC-0013). The volume mode of each claim is what the
+	# attachAsDisk rule is decided by, and it is read at click time from an
+	# object KubeSwift did not create - the only data-disk rule that reads one -
+	# so a fixture that did not land would look like a UI regression. Neither
+	# claim is ever Bound: they name a StorageClass that does not exist, which is
+	# what keeps them from provisioning anything on a cluster nothing runs on.
+	"persistentvolumeclaims/e2e-data-block={.spec.volumeMode}=Block"
+	"persistentvolumeclaims/e2e-data-filesystem={.spec.volumeMode}=Filesystem"
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the

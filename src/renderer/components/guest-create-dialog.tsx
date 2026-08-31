@@ -46,17 +46,25 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
+import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import { SwiftImage } from "../api/kubeswift/swiftimage-v1alpha1";
 import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
 import { SwiftSeedProfile } from "../api/kubeswift/swiftseedprofile-v1alpha1";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
-import { CollapsibleSection, Field, WriteSummary } from "./create-dialog";
+import { AddRowButton, CollapsibleSection, Field, FormRow, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import {
+  addDataDisk,
+  addDataDiskGuard,
+  addInterface,
+  addPort,
+  attachAsDiskApplies,
+  attachAsDiskDroppedFact,
+  attachAsDiskVolumeMode,
   cloneInertClassNote,
   cloneMachineIdentityFact,
   cloneMacLockRule,
@@ -67,10 +75,23 @@ import {
   cloneSnapshotChoices,
   cloneTargetNodeApplies,
   createGuestTitle,
+  dataDiskErrors,
+  dataDisksSectionHasError,
+  dataDisksSectionHint,
+  dataDiskWarnings,
+  defaultBlankVolumeMode,
+  defaultGpuRequestName,
+  defaultGpuTier,
   defaultGuestForm,
   defaultNamespace,
+  defaultPortProtocol,
   excludedFieldsFooter,
   excludedSnapshotsReason,
+  gpuErrors,
+  gpuProfileChoices,
+  gpuSectionHasError,
+  gpuSectionHint,
+  gpuWarnings,
   guestAccessModes,
   guestBootSourceChoices,
   guestClassChoices,
@@ -82,48 +103,86 @@ import {
   guestCreateSuccessMessage,
   guestCreateSummary,
   guestCreateWarnings,
+  guestGpuBackendDescription,
+  guestGpuBackendLabels,
+  guestGpuBackends,
+  guestGpuGuard,
+  guestGpuTiers,
   guestImageChoices,
   guestKernelChoices,
+  guestNetworkBindings,
   guestNodeChoices,
   guestOsType,
+  guestPortExposures,
+  guestPortProtocols,
   guestRunPolicyChoices,
   guestVolumeModes,
   imageWillWaitFact,
+  interfaceErrors,
+  interfaceTypesFact,
+  interfaceWarnings,
   kernelCmdlineFact,
   kernelNodeRuleFact,
   kernelStorageDroppedFact,
   kernelWillWaitFact,
   liveMigrationFact,
   liveMigrationLabel,
+  networkBindingDescription,
+  networkSectionHasError,
+  networkSectionHint,
   nodePinApplies,
   nodePinFact,
   noGuestNodeReason,
+  pickedGpuProfile,
   pickedGuestClass,
   pickedImage,
   pickedKernel,
   pickedSnapshot,
+  portErrors,
+  portWarnings,
+  primaryInterfaceFact,
+  removeDataDisk,
+  removeInterface,
+  removePort,
   resolvedStorage,
   runPolicyNote,
   seedProfileApplies,
   seedProfileDroppedReason,
+  setDataDiskSource,
+  setGpuBackend,
   storageFields,
   storageOverridesApply,
   switchBootSource,
+  updateDataDisk,
+  updateInterface,
+  updatePort,
   windowsCloneWarning,
   windowsConstraintFact,
 } from "./guest-create";
 import { conflictStatusCode } from "./migration-create";
 import { backendWithArticle } from "./snapshot-create";
 
-import type { SwiftGuestRunPolicy } from "../api/kubeswift/swiftguest-v1alpha1";
+import type {
+  SwiftGuestGpuTier,
+  SwiftGuestNetworkBinding,
+  SwiftGuestProtocol,
+  SwiftGuestRunPolicy,
+} from "../api/kubeswift/swiftguest-v1alpha1";
 import type { FieldProps } from "./create-dialog";
 import type {
   GuestBootSource,
   GuestClassFacts,
   GuestCreateInputs,
+  GuestDataDiskRow,
+  GuestDataDiskSource,
   GuestFormValues,
+  GuestGpuBackend,
+  GuestGpuProfileFacts,
   GuestImageFacts,
+  GuestInterfaceRow,
   GuestKernelFacts,
+  GuestPortRow,
+  GuestPvcFacts,
   GuestSeedProfileFacts,
   GuestSnapshotFacts,
 } from "./guest-create";
@@ -133,7 +192,7 @@ const { observer } = MobxReact;
 
 const {
   Component: { Checkbox, ConfirmDialog, Input, NamespaceSelect, Notifications, Radio, RadioGroup, Select },
-  K8sApi: { namespaceStore, nodesApi },
+  K8sApi: { namespaceStore, nodesApi, pvcApi, pvcStore },
 } = Renderer;
 
 /**
@@ -165,13 +224,20 @@ export interface GuestCreateDialogModel {
   kernels: PickerFacts<GuestKernelFacts>;
   snapshots: PickerFacts<GuestSnapshotFacts>;
   seedProfiles: PickerFacts<GuestSeedProfileFacts>;
+  /** The namespace's PersistentVolumeClaims, for the data disks that attach one. */
+  pvcs: PickerFacts<GuestPvcFacts>;
+  /** The namespace's SwiftGPUProfiles, for the native GPU backend. */
+  gpuProfiles: PickerFacts<GuestGpuProfileFacts>;
   nodes: PickerFacts<NodeFacts>;
   /** The chosen namespace's SwiftGuest names, for the collision and gone-source warnings. */
   existingNames: string[];
   /** True when that read was refused, which the gone-source warning must not read as "gone". */
   existingNamesUnverified: boolean;
-  /** The storage section ships collapsed; this is what the user does about that. */
+  /** The four collapsed sections ship shut; these are what the user does about that. */
   storageOpen: boolean;
+  dataDisksOpen: boolean;
+  networkOpen: boolean;
+  gpuOpen: boolean;
   /** Read by the host's own render, so it must be observable to have any effect at all. */
   okButtonProps: { disabled: boolean; primary: boolean; accent: boolean };
 }
@@ -190,6 +256,10 @@ export function guestCreateInputs(model: GuestCreateDialogModel): GuestCreateInp
     imagesUnverified: model.images.state === "unavailable",
     seedProfiles: model.seedProfiles.items,
     seedProfilesUnverified: model.seedProfiles.state === "unavailable",
+    pvcs: model.pvcs.items,
+    pvcsUnverified: model.pvcs.state === "unavailable",
+    gpuProfiles: model.gpuProfiles.items,
+    gpuProfilesUnverified: model.gpuProfiles.state === "unavailable",
     kernels: model.kernels.items,
     kernelsUnverified: model.kernels.state === "unavailable",
     snapshots: model.snapshots.items,
@@ -220,6 +290,8 @@ export function createGuestDialogModel(
     kernels?: GuestKernelFacts[];
     snapshots?: GuestSnapshotFacts[];
     seedProfiles?: GuestSeedProfileFacts[];
+    pvcs?: GuestPvcFacts[];
+    gpuProfiles?: GuestGpuProfileFacts[];
     existingNames?: string[];
   } = {},
 ): GuestCreateDialogModel {
@@ -231,12 +303,19 @@ export function createGuestDialogModel(
       kernels: loadingPicker(seed.kernels ?? []),
       snapshots: loadingPicker(seed.snapshots ?? []),
       seedProfiles: loadingPicker(seed.seedProfiles ?? []),
+      pvcs: loadingPicker(seed.pvcs ?? []),
+      gpuProfiles: loadingPicker(seed.gpuProfiles ?? []),
       nodes: loadingPicker<NodeFacts>(),
       existingNames: seed.existingNames ?? [],
       existingNamesUnverified: false,
-      // Collapsed, per the section's own rule: everything in it is optional and
-      // every value it holds has a default the class already supplies.
+      // Collapsed, per the section's own rule (DESIGN.md section 12): every
+      // field inside is optional, every value it holds has a default the object
+      // would get anyway, and what each one changes is a consequence stated on
+      // the header line, which is visible whether the section is open or shut.
       storageOpen: false,
+      dataDisksOpen: false,
+      networkOpen: false,
+      gpuOpen: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
     {
@@ -272,9 +351,35 @@ export const changeBootSource = Mobx.action((model: GuestCreateDialogModel, sour
   syncOkButton(model);
 });
 
-/** The collapsed section's toggle, in the model so a 409 reopen does not shut it. */
+/** A collapsed section's toggle, in the model so a 409 reopen does not shut it. */
 export const toggleStorageSection = Mobx.action((model: GuestCreateDialogModel) => {
   model.storageOpen = !model.storageOpen;
+});
+
+export const toggleDataDisksSection = Mobx.action((model: GuestCreateDialogModel) => {
+  model.dataDisksOpen = !model.dataDisksOpen;
+});
+
+export const toggleNetworkSection = Mobx.action((model: GuestCreateDialogModel) => {
+  model.networkOpen = !model.networkOpen;
+});
+
+export const toggleGpuSection = Mobx.action((model: GuestCreateDialogModel) => {
+  model.gpuOpen = !model.gpuOpen;
+});
+
+/**
+ * Replaces the whole form with the one a pure function computed.
+ *
+ * The repeatable sections of slice 3 add and remove rows rather than setting a
+ * field, and every one of those transitions is a pure function of the form
+ * (`addDataDisk`, `setDataDiskSource`, `removePort`, ...): this is the single
+ * action that lands one, so the OK button can no more drift out of step with a
+ * removed row than it can with a changed field.
+ */
+export const applyGuestForm = Mobx.action((model: GuestCreateDialogModel, next: GuestFormValues) => {
+  model.values = next;
+  syncOkButton(model);
 });
 
 /**
@@ -291,10 +396,18 @@ export const changeNamespace = Mobx.action((model: GuestCreateDialogModel, names
   model.values.kernel = "";
   model.values.snapshot = "";
   model.values.seedProfile = "";
+  model.values.gpuProfile = "";
+  // Every data disk that named an object of the previous namespace names
+  // nothing in this one, so the rows keep their shape and lose their
+  // references - the stale-selection bug upstream carries across cluster
+  // switches, one level down.
+  model.values.dataDisks = model.values.dataDisks.map((row) => ({ ...row, image: "", pvc: "" }));
   model.images = loadingPicker();
   model.kernels = loadingPicker();
   model.snapshots = loadingPicker();
   model.seedProfiles = loadingPicker();
+  model.pvcs = loadingPicker();
+  model.gpuProfiles = loadingPicker();
   model.existingNames = [];
   model.existingNamesUnverified = false;
   syncOkButton(model);
@@ -345,6 +458,8 @@ export async function loadNamespacedObjects(model: GuestCreateDialogModel): Prom
     loadKernels(model, namespace),
     loadSnapshots(model, namespace),
     loadSeedProfiles(model, namespace),
+    loadPvcs(model, namespace),
+    loadGpuProfiles(model, namespace),
     loadGuestNames(model, namespace),
   ]);
 }
@@ -425,6 +540,74 @@ async function loadImages(model: GuestCreateDialogModel, namespace: string): Pro
       }
 
       model.images = { state: "unavailable", items: [] };
+      syncOkButton(model);
+    });
+  }
+}
+
+/**
+ * The chosen namespace's PersistentVolumeClaims, for the data disks that attach
+ * one.
+ *
+ * The one read of this form that is not about a KubeSwift kind, and the one
+ * most likely to be refused: `persistentvolumeclaims` is a core resource a
+ * namespace-scoped role may well not carry. A refusal costs the picker and
+ * nothing else - the field degrades to a typed name, and the `attachAsDisk`
+ * rule that reads the claim's volume mode degrades from a refusal to a warning,
+ * because a read nobody could make is not evidence of anything (W12).
+ */
+async function loadPvcs(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+  try {
+    const pvcs = await pvcApi.list({ namespace });
+
+    Mobx.runInAction(() => {
+      if (model.values.namespace.trim() !== namespace) {
+        return;
+      }
+
+      model.pvcs = {
+        state: "ready",
+        items: (pvcs ?? []).map((pvc) => ({
+          name: pvc.getName(),
+          volumeMode: pvc.spec?.volumeMode,
+          phase: pvc.status?.phase,
+          storageClassName: pvc.spec?.storageClassName,
+        })),
+      };
+      syncOkButton(model);
+    });
+  } catch {
+    Mobx.runInAction(() => {
+      if (model.values.namespace.trim() !== namespace) {
+        return;
+      }
+
+      model.pvcs = { state: "unavailable", items: [] };
+      syncOkButton(model);
+    });
+  }
+}
+
+/** The chosen namespace's GPU profiles, for the native GPU backend. */
+async function loadGpuProfiles(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+  try {
+    const profiles = await SwiftGPUProfile.getStore<SwiftGPUProfile>().api.list({ namespace });
+
+    Mobx.runInAction(() => {
+      if (model.values.namespace.trim() !== namespace) {
+        return;
+      }
+
+      model.gpuProfiles = { state: "ready", items: (profiles ?? []).map(gpuProfileFacts) };
+      syncOkButton(model);
+    });
+  } catch {
+    Mobx.runInAction(() => {
+      if (model.values.namespace.trim() !== namespace) {
+        return;
+      }
+
+      model.gpuProfiles = { state: "unavailable", items: [] };
       syncOkButton(model);
     });
   }
@@ -535,6 +718,23 @@ export function guestClassFacts(guestClass: SwiftGuestClass): GuestClassFacts {
 /** The slice of a live SwiftImage the picker and the osType sync read. */
 export function imageFacts(image: SwiftImage): GuestImageFacts {
   return { name: image.getName(), phase: SwiftImage.getPhase(image), osType: SwiftImage.getOsType(image) };
+}
+
+/**
+ * The slice of a live SwiftGPUProfile the picker reads.
+ *
+ * No phase and no readiness, and that is the CRD rather than an omission: the
+ * SwiftGPUProfile schema declares `subresources: {}` and no `status` at all
+ * (SPEC-0007), so the request it carries is the whole object.
+ */
+export function gpuProfileFacts(profile: SwiftGPUProfile): GuestGpuProfileFacts {
+  return {
+    name: profile.getName(),
+    count: SwiftGPUProfile.getCount(profile),
+    model: profile.spec?.model,
+    tier: SwiftGPUProfile.getTier(profile),
+    partitionMode: SwiftGPUProfile.getPartitionMode(profile),
+  };
 }
 
 /** The slice of a live SwiftKernel the picker and the cmdline override read. */
@@ -1371,6 +1571,765 @@ const StorageSection = observer(({ model }: { model: GuestCreateDialogModel }) =
   );
 });
 
+/**
+ * The data disks (SPEC-0013 section 8), collapsed.
+ *
+ * Every rule this section enforces belongs to a validating webhook that ships
+ * disabled, and every one of them fails silently when nobody enforces it: a
+ * guest that comes up without the disk it was given, or with a directory
+ * mounted in its launcher pod where the operator expected a device. The section
+ * is legal as a collapsed one because a guest with no data disks is the normal
+ * case, every field inside is optional, and what the section changes is stated
+ * on its header line whether it is open or shut.
+ */
+const DataDisksSection = observer(({ model }: { model: GuestCreateDialogModel }) => {
+  const inputs = guestCreateInputs(model);
+  const hasError = dataDisksSectionHasError(inputs, model.values);
+  const guard = addDataDiskGuard(model.values);
+
+  return (
+    <CollapsibleSection
+      title="Data disks"
+      hint={dataDisksSectionHint(model.values)}
+      open={model.dataDisksOpen || hasError}
+      onToggle={() => toggleDataDisksSection(model)}
+      testId="guest-create-data-disks-section"
+    >
+      {model.values.dataDisks.map((row, index) => (
+        <DataDiskFields key={row.id} model={model} row={row} index={index} />
+      ))}
+
+      <AddRowButton
+        label="Add a data disk"
+        onAdd={() => applyGuestForm(model, addDataDisk(model.values))}
+        blockedReason={guard.enabled ? undefined : guard.reason}
+        testId="guest-create-add-disk"
+        blockedTestId="guest-create-add-disk-blocked"
+      />
+    </CollapsibleSection>
+  );
+});
+
+/** One data disk: its name, what it is made of, and the fields that follow from that. */
+const DataDiskFields = observer(
+  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestDataDiskRow; index: number }) => {
+    const inputs = guestCreateInputs(model);
+    const errors = dataDiskErrors(inputs, model.values)[index] ?? {};
+    const warnings = dataDiskWarnings(inputs, model.values)[index] ?? {};
+    const prefix = `guest-create-disk-${index}`;
+    const update = (patch: Partial<GuestDataDiskRow>) =>
+      applyGuestForm(model, updateDataDisk(model.values, row.id, patch));
+
+    return (
+      <FormRow
+        title={`Data disk ${index + 1}`}
+        removeLabel="Remove"
+        onRemove={() => applyGuestForm(model, removeDataDisk(model.values, row.id))}
+        testId={prefix}
+        removeTestId={`${prefix}-remove`}
+      >
+        <Field
+          label="Name"
+          hint="A DNS label, unique on this guest: it becomes the volume's name and, for a Block disk, the device path inside the guest."
+          error={errors.name}
+        >
+          <Input
+            value={row.name}
+            data-testid={`${prefix}-name`}
+            onChange={(value: string) => update({ name: value })}
+          />
+        </Field>
+
+        {/* The source is a control rather than a rule, for the reason the boot
+            source is: "exactly one of imageRef/pvcRef/blank" lives in a webhook
+            that ships disabled, and a control that offers one of three makes
+            the violation inexpressible instead of validating it afterwards. */}
+        <div className={styles.field} data-testid={`${prefix}-source`}>
+          <div className={styles.label}>Made of</div>
+          <RadioGroup
+            className={styles.options}
+            value={row.source}
+            onChange={(source: GuestDataDiskSource) =>
+              applyGuestForm(model, setDataDiskSource(model.values, row.id, source))
+            }
+          >
+            {dataDiskSourceChoices.map((choice) => (
+              <Radio
+                key={choice.source}
+                value={choice.source}
+                label={
+                  <>
+                    <span data-testid={`${prefix}-source-${choice.source}`}>{choice.label}</span>
+                    <div className={styles.optionReason}>{choice.description}</div>
+                  </>
+                }
+              />
+            ))}
+          </RadioGroup>
+          {errors.source ? <div className={styles.error}>{errors.source}</div> : null}
+        </div>
+
+        {row.source === "image" ? (
+          <DataDiskImageField model={model} row={row} index={index} />
+        ) : row.source === "pvc" ? (
+          <DataDiskPvcFields model={model} row={row} index={index} />
+        ) : (
+          <>
+            <Field
+              label="Size"
+              hint="A Kubernetes quantity, for example 100Gi. The controller creates a PVC of this guest for it, and the guest formats it itself."
+              error={errors.blankSize}
+            >
+              <Input
+                value={row.blankSize}
+                placeholder="100Gi"
+                data-testid={`${prefix}-size`}
+                onChange={(value: string) => update({ blankSize: value })}
+              />
+            </Field>
+
+            <Field
+              label="Storage class"
+              hint="Empty uses the cluster's default class."
+              error={errors.blankStorageClass}
+            >
+              <Input
+                value={row.blankStorageClass}
+                placeholder="the cluster default"
+                data-testid={`${prefix}-storage-class`}
+                onChange={(value: string) => update({ blankStorageClass: value })}
+              />
+            </Field>
+
+            <Field
+              label="Volume mode"
+              hint={`Empty is ${defaultBlankVolumeMode}, which the API server stamps and which hands the guest a raw device. Filesystem is the escape hatch for a cluster that cannot do Block: a disk image inside a Filesystem claim.`}
+            >
+              <Select
+                id={`${prefix}-volume-mode`}
+                themeName="light"
+                menuClass={styles.selectMenu}
+                placeholder={`${defaultBlankVolumeMode} (stamped by the API server)`}
+                isClearable
+                value={row.blankVolumeMode || null}
+                options={guestVolumeModes.map((mode) => ({ value: mode, label: mode }))}
+                onChange={(option: { value: string } | null) => update({ blankVolumeMode: option?.value ?? "" })}
+              />
+            </Field>
+          </>
+        )}
+
+        {/* Offered on a PVC row and nowhere else: an image-backed or blank disk
+            is attached as a raw VM disk anyway, so a checkbox there would be a
+            control that changes nothing (W12's option dropping). */}
+        {attachAsDiskApplies(row) ? (
+          <div className={styles.checkboxRow} data-testid={`${prefix}-attach`}>
+            <Checkbox
+              label="Attach as a raw VM disk"
+              value={row.attachAsDisk}
+              onChange={(value: boolean) => update({ attachAsDisk: value })}
+            />
+            <div className={styles.hint}>
+              {`Off, the claim is mounted as a filesystem directory in the launcher pod and the guest never sees it. On, it is handed to the guest as a block device - which needs a ${attachAsDiskVolumeMode} claim.`}
+            </div>
+            {errors.attachAsDisk ? <div className={styles.error}>{errors.attachAsDisk}</div> : null}
+            {warnings.attachAsDisk ? <div className={styles.warning}>{warnings.attachAsDisk}</div> : null}
+          </div>
+        ) : (
+          <div className={styles.field} data-testid={`${prefix}-attach-dropped`}>
+            <div className={styles.label}>Attach as a raw VM disk</div>
+            <div className={styles.hint}>{attachAsDiskDroppedFact(row.source)}</div>
+          </div>
+        )}
+      </FormRow>
+    );
+  },
+);
+
+/** The three things a data disk can be made of, with what each one costs. */
+const dataDiskSourceChoices: { source: GuestDataDiskSource; label: string; description: string }[] = [
+  {
+    source: "image",
+    label: "A SwiftImage",
+    description:
+      "The image is cloned into a PVC owned by this guest and attached as a disk. The PVC is deleted with the guest.",
+  },
+  {
+    source: "pvc",
+    label: "An existing PVC",
+    description: "A claim that already exists is attached as it is. It is not owned by this guest and outlives it.",
+  },
+  {
+    source: "blank",
+    label: "A blank disk",
+    description: "A new, empty, sized PVC owned by this guest. It arrives unformatted - the guest partitions it.",
+  },
+];
+
+/** The image a data disk is cloned from, with the readiness upstream needs. */
+const DataDiskImageField = observer(
+  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestDataDiskRow; index: number }) => {
+    const inputs = guestCreateInputs(model);
+    const errors = dataDiskErrors(inputs, model.values)[index] ?? {};
+    const warnings = dataDiskWarnings(inputs, model.values)[index] ?? {};
+    const prefix = `guest-create-disk-${index}`;
+    const choices = guestImageChoices(inputs);
+    const hint = "The controller clones it into a PVC of this guest and attaches it as a raw VM disk.";
+
+    if (!isPicker(model.images, row.image)) {
+      return (
+        <Field
+          label="Image"
+          hint={
+            model.images.state === "unavailable"
+              ? "The SwiftImages of this namespace could not be listed, so this name is not verified: whether it exists, and whether it is Ready, are unknown from here."
+              : hint
+          }
+          error={errors.image}
+          warning={warnings.image}
+        >
+          <Input
+            value={row.image}
+            placeholder="the name of a SwiftImage"
+            data-testid={`${prefix}-image-input`}
+            onChange={(value: string) => applyGuestForm(model, updateDataDisk(model.values, row.id, { image: value }))}
+          />
+        </Field>
+      );
+    }
+
+    return (
+      <Field label="Image" hint={hint} error={errors.image} warning={warnings.image}>
+        <Select
+          id={`${prefix}-image`}
+          themeName="light"
+          menuClass={styles.selectMenu}
+          placeholder="Pick a SwiftImage"
+          value={row.image || null}
+          options={choices.map((choice) => ({
+            value: choice.name,
+            // Dimmed and selectable, like the boot image: upstream needs a
+            // Ready image to clone a data disk, and a guest created against an
+            // importing one waits for it rather than failing for good.
+            label: choice.ready ? choice.label : <span className={styles.dimOption}>{choice.label}</span>,
+          }))}
+          onChange={(option: { value: string } | null) =>
+            applyGuestForm(model, updateDataDisk(model.values, row.id, { image: option?.value ?? "" }))
+          }
+        />
+      </Field>
+    );
+  },
+);
+
+/** The claim a data disk attaches, and what its volume mode allows. */
+const DataDiskPvcFields = observer(
+  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestDataDiskRow; index: number }) => {
+    const inputs = guestCreateInputs(model);
+    const errors = dataDiskErrors(inputs, model.values)[index] ?? {};
+    const warnings = dataDiskWarnings(inputs, model.values)[index] ?? {};
+    const prefix = `guest-create-disk-${index}`;
+    const hint =
+      "The claim has to exist already: the controller attaches it, it does not create it, and it is not deleted with the guest.";
+
+    if (!isPicker(model.pvcs, row.pvc)) {
+      return (
+        <Field
+          label="PVC"
+          hint={
+            model.pvcs.state === "unavailable"
+              ? "The PersistentVolumeClaims of this namespace could not be listed, so a name typed here is not verified - including whether it is a Block claim, which is what attaching it as a disk needs."
+              : model.pvcs.state === "ready"
+                ? `${hint} This namespace holds no PersistentVolumeClaim yet, so the name has to be typed.`
+                : hint
+          }
+          error={errors.pvc}
+          warning={warnings.pvc}
+        >
+          <Input
+            value={row.pvc}
+            placeholder="the name of a PersistentVolumeClaim"
+            data-testid={`${prefix}-pvc-input`}
+            onChange={(value: string) => applyGuestForm(model, updateDataDisk(model.values, row.id, { pvc: value }))}
+          />
+        </Field>
+      );
+    }
+
+    return (
+      <Field label="PVC" hint={hint} error={errors.pvc} warning={warnings.pvc}>
+        <Select
+          id={`${prefix}-pvc`}
+          themeName="light"
+          menuClass={styles.selectMenu}
+          placeholder="Pick a PersistentVolumeClaim"
+          value={row.pvc || null}
+          options={model.pvcs.items.map((pvc) => ({ value: pvc.name, label: pvcOptionLabel(pvc) }))}
+          onChange={(option: { value: string } | null) =>
+            applyGuestForm(model, updateDataDisk(model.values, row.id, { pvc: option?.value ?? "" }))
+          }
+        />
+      </Field>
+    );
+  },
+);
+
+/**
+ * How a claim reads in the picker: its name, its volume mode and its phase.
+ *
+ * The volume mode rides on the option because it is what decides whether the
+ * claim can be attached as a disk at all, and a user who reads it there does
+ * not have to meet the rule as a refusal.
+ */
+function pvcOptionLabel(pvc: GuestPvcFacts): string {
+  const facts = [pvc.volumeMode, pvc.phase].filter(Boolean);
+
+  return facts.length > 0 ? `${pvc.name} - ${facts.join(", ")}` : pvc.name;
+}
+
+/**
+ * The network (SPEC-0013 section 9), collapsed.
+ *
+ * The binding, the declared ports and the additional interfaces, all three of
+ * which are consequence-bearing and optional. The rules are the webhook's, and
+ * their failure modes are the silent ones: a mixed `expose` mints a Service of
+ * the wrong type, and an `expose` under a bridge binding mints none at all and
+ * reports nothing.
+ */
+const NetworkSection = observer(({ model }: { model: GuestCreateDialogModel }) => {
+  const hasError = networkSectionHasError(model.values);
+
+  return (
+    <CollapsibleSection
+      title="Network and ports"
+      hint={networkSectionHint(model.values)}
+      open={model.networkOpen || hasError}
+      onToggle={() => toggleNetworkSection(model)}
+      testId="guest-create-network-section"
+    >
+      <div className={styles.field} data-testid="guest-create-binding">
+        <div className={styles.label}>Binding</div>
+        <RadioGroup
+          className={styles.options}
+          value={model.values.networkBinding}
+          onChange={(binding: SwiftGuestNetworkBinding) =>
+            applyGuestForm(model, { ...model.values, networkBinding: binding })
+          }
+        >
+          {guestNetworkBindings.map((binding) => (
+            <Radio
+              key={binding}
+              value={binding}
+              label={
+                <>
+                  <span data-testid={`guest-create-binding-${binding}`}>{binding}</span>
+                  <div className={styles.optionReason}>{networkBindingDescription(binding)}</div>
+                </>
+              }
+            />
+          ))}
+        </RadioGroup>
+        <div className={styles.hint}>{primaryInterfaceFact}</div>
+      </div>
+
+      {model.values.ports.map((row, index) => (
+        <PortFields key={row.id} model={model} row={row} index={index} />
+      ))}
+
+      <AddRowButton
+        label="Add a port"
+        onAdd={() => applyGuestForm(model, addPort(model.values))}
+        testId="guest-create-add-port"
+      />
+
+      {model.values.interfaces.map((row, index) => (
+        <InterfaceFields key={row.id} model={model} row={row} index={index} />
+      ))}
+
+      <AddRowButton
+        label="Add an interface"
+        onAdd={() => applyGuestForm(model, addInterface(model.values))}
+        testId="guest-create-add-interface"
+      />
+
+      <p className={styles.hint} data-testid="guest-create-interface-types">
+        {interfaceTypesFact}
+      </p>
+    </CollapsibleSection>
+  );
+});
+
+/** One declared port, and whether it asks for a Service. */
+const PortFields = observer(
+  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestPortRow; index: number }) => {
+    const errors = portErrors(model.values)[index] ?? {};
+    const warnings = portWarnings(model.values)[index] ?? {};
+    const prefix = `guest-create-port-${index}`;
+    const update = (patch: Partial<GuestPortRow>) => applyGuestForm(model, updatePort(model.values, row.id, patch));
+
+    return (
+      <FormRow
+        title={`Port ${index + 1}`}
+        removeLabel="Remove"
+        onRemove={() => applyGuestForm(model, removePort(model.values, row.id))}
+        testId={prefix}
+        removeTestId={`${prefix}-remove`}
+      >
+        <Field
+          label="Port"
+          hint="What the port is reachable as on the pod IP, and on the Service when there is one."
+          error={errors.port}
+        >
+          <Input
+            value={row.port}
+            placeholder="8080"
+            data-testid={`${prefix}-port`}
+            onChange={(value: string) => update({ port: value })}
+          />
+        </Field>
+
+        <Field
+          label="Name"
+          hint={
+            model.values.ports.length > 1
+              ? "Required above one port: it becomes this port's name on the guest's own Service."
+              : "Optional on a single port, and required as soon as there is a second one."
+          }
+          error={errors.name}
+          warning={warnings.name}
+        >
+          <Input
+            value={row.name}
+            placeholder="http"
+            data-testid={`${prefix}-name`}
+            onChange={(value: string) => update({ name: value })}
+          />
+        </Field>
+
+        <Field
+          label="Target port"
+          hint="What the guest itself listens on. Empty means the same number as the port above."
+          error={errors.targetPort}
+        >
+          <Input
+            value={row.targetPort}
+            placeholder="the same as the port"
+            data-testid={`${prefix}-target-port`}
+            onChange={(value: string) => update({ targetPort: value })}
+          />
+        </Field>
+
+        <Field label="Protocol" hint={`Empty is ${defaultPortProtocol}, which the API server stamps.`}>
+          <Select
+            id={`${prefix}-protocol`}
+            themeName="light"
+            menuClass={styles.selectMenu}
+            value={row.protocol}
+            options={guestPortProtocols.map((protocol) => ({ value: protocol, label: protocol }))}
+            onChange={(option: { value: SwiftGuestProtocol } | null) => option && update({ protocol: option.value })}
+          />
+        </Field>
+
+        <Field
+          label="Expose"
+          hint="Empty means no Service at all: the port is still reachable pod-to-guest through the in-pod DNAT. All exposed ports of a guest share ONE Service, so they all have to ask for the same type."
+          error={errors.expose}
+          warning={warnings.expose}
+        >
+          <Select
+            id={`${prefix}-expose`}
+            themeName="light"
+            menuClass={styles.selectMenu}
+            placeholder="No Service"
+            isClearable
+            value={row.expose || null}
+            options={guestPortExposures.map((exposure) => ({ value: exposure, label: exposure }))}
+            onChange={(option: { value: string } | null) => update({ expose: option?.value ?? "" })}
+          />
+        </Field>
+      </FormRow>
+    );
+  },
+);
+
+/** One additional interface: a bridge NIC, optionally on a network and optionally primary. */
+const InterfaceFields = observer(
+  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestInterfaceRow; index: number }) => {
+    const errors = interfaceErrors(model.values)[index] ?? {};
+    const warnings = interfaceWarnings(model.values)[index] ?? {};
+    const prefix = `guest-create-nic-${index}`;
+    const update = (patch: Partial<GuestInterfaceRow>) =>
+      applyGuestForm(model, updateInterface(model.values, row.id, patch));
+
+    return (
+      <FormRow
+        title={`Interface ${index + 1}`}
+        removeLabel="Remove"
+        onRemove={() => applyGuestForm(model, removeInterface(model.values, row.id))}
+        testId={prefix}
+        removeTestId={`${prefix}-remove`}
+      >
+        <Field label="Name" hint="How the guest's own status reports this NIC." error={errors.name}>
+          <Input
+            value={row.name}
+            placeholder="net1"
+            data-testid={`${prefix}-name`}
+            onChange={(value: string) => update({ name: value })}
+          />
+        </Field>
+
+        <Field
+          label="Network"
+          hint="The NetworkAttachmentDefinition Multus attaches this NIC to. Empty leaves it a node-local tap and bridge."
+          error={errors.networkName}
+        >
+          <Input
+            value={row.networkName}
+            placeholder="none"
+            data-testid={`${prefix}-network`}
+            onChange={(value: string) => update({ networkName: value })}
+          />
+        </Field>
+
+        <Field label="Network namespace" hint="Empty is the guest's own namespace." error={errors.networkNamespace}>
+          <Input
+            value={row.networkNamespace}
+            placeholder="this guest's namespace"
+            data-testid={`${prefix}-network-namespace`}
+            onChange={(value: string) => update({ networkNamespace: value })}
+          />
+        </Field>
+
+        <Field
+          label="MAC address"
+          hint="Empty is the deterministic address upstream generates. The pattern is a security boundary: the value is written into a file the privileged launcher sources."
+          error={errors.mac}
+        >
+          <Input
+            value={row.mac}
+            placeholder="52:54:00:12:34:56"
+            data-testid={`${prefix}-mac`}
+            onChange={(value: string) => update({ mac: value })}
+          />
+        </Field>
+
+        <div className={styles.checkboxRow} data-testid={`${prefix}-primary`}>
+          <Checkbox
+            label="Primary interface"
+            value={row.primary}
+            onChange={(value: boolean) => update({ primary: value })}
+          />
+          <div className={styles.hint}>
+            The NIC whose address the guest reports as its primary IP. At most one, and with none marked the first
+            interface without a network is the primary - which is what upstream does by default.
+          </div>
+          {errors.primary ? <div className={styles.error}>{errors.primary}</div> : null}
+          {warnings.primary ? <div className={styles.warning}>{warnings.primary}</div> : null}
+        </div>
+      </FormRow>
+    );
+  },
+);
+
+/**
+ * The GPU (SPEC-0013 section 10), collapsed and behind `guestGpuGuard`.
+ *
+ * Three boot-source-and-OS combinations refuse a GPU outright, and one of them
+ * is the rule upstream documents and enforces nowhere (G6): the section is
+ * replaced by the reason rather than rendered and ignored, which is W12's
+ * option dropping applied to a whole section.
+ */
+const GpuSection = observer(({ model }: { model: GuestCreateDialogModel }) => {
+  const inputs = guestCreateInputs(model);
+  const guard = guestGpuGuard(inputs, model.values);
+
+  if (!guard.enabled) {
+    return (
+      <Field label="GPU">
+        <div className={styles.hint} data-testid="guest-create-gpu-dropped">
+          {guard.reason}
+        </div>
+      </Field>
+    );
+  }
+
+  return (
+    <CollapsibleSection
+      title="GPU"
+      hint={gpuSectionHint(inputs, model.values)}
+      open={model.gpuOpen || gpuSectionHasError(inputs, model.values)}
+      onToggle={() => toggleGpuSection(model)}
+      testId="guest-create-gpu-section"
+    >
+      <div className={styles.field} data-testid="guest-create-gpu-backend">
+        <div className={styles.label}>Allocation backend</div>
+        <RadioGroup
+          className={styles.options}
+          value={model.values.gpuBackend}
+          onChange={(backend: GuestGpuBackend) => applyGuestForm(model, setGpuBackend(model.values, backend))}
+        >
+          {guestGpuBackends.map((backend) => (
+            <Radio
+              key={backend}
+              value={backend}
+              label={
+                <>
+                  <span data-testid={`guest-create-gpu-backend-${backend}`}>{guestGpuBackendLabels[backend]}</span>
+                  <div className={styles.optionReason}>{guestGpuBackendDescription(backend)}</div>
+                </>
+              }
+            />
+          ))}
+        </RadioGroup>
+      </div>
+
+      {/* The parks-in-Pending expectation is NOT repeated here: the section's
+          own header line carries it, and that line is visible whether the
+          section is open or shut. Screenshotting the open section showed the
+          same paragraph twice within one screen - the duplication slice 1
+          removed from the live-migration sentence, made again. The summary
+          states it a second time, below the fold, as it does for every
+          will-wait line on this form. */}
+      {model.values.gpuBackend === "profile" ? <GpuProfileField model={model} /> : null}
+      {model.values.gpuBackend === "claim" ? <GpuClaimFields model={model} /> : null}
+    </CollapsibleSection>
+  );
+});
+
+/** The native backend's profile, with the request it carries on every option. */
+const GpuProfileField = observer(({ model }: { model: GuestCreateDialogModel }) => {
+  const inputs = guestCreateInputs(model);
+  const errors = gpuErrors(inputs, model.values);
+  const warnings = gpuWarnings(inputs, model.values);
+  const choices = gpuProfileChoices(inputs);
+  const picked = pickedGpuProfile(inputs, model.values);
+  const hint =
+    "The profile is the request: how many GPUs, of which model, in which tier. A SwiftGPUProfile has no status of its own - nothing ever writes back to it - so there is no readiness to show here.";
+
+  return (
+    <>
+      {isPicker(model.gpuProfiles, model.values.gpuProfile) ? (
+        <Field label="GPU profile" hint={hint} error={errors.profile} warning={warnings.profile}>
+          <Select
+            id="guest-create-gpu-profile"
+            themeName="light"
+            menuClass={styles.selectMenu}
+            placeholder="Pick a SwiftGPUProfile"
+            value={model.values.gpuProfile || null}
+            options={choices.map((choice) => ({ value: choice.name, label: choice.label }))}
+            onChange={(option: { value: string } | null) =>
+              applyGuestForm(model, { ...model.values, gpuProfile: option?.value ?? "" })
+            }
+          />
+        </Field>
+      ) : (
+        <Field
+          label="GPU profile"
+          hint={
+            model.gpuProfiles.state === "unavailable"
+              ? "The SwiftGPUProfiles of this namespace could not be listed, so a name typed here is not verified."
+              : model.gpuProfiles.state === "ready"
+                ? `${hint} This namespace holds no SwiftGPUProfile yet, so the name has to be typed.`
+                : hint
+          }
+          error={errors.profile}
+          warning={warnings.profile}
+        >
+          <Input
+            value={model.values.gpuProfile}
+            placeholder="the name of a SwiftGPUProfile"
+            data-testid="guest-create-gpu-profile-input"
+            onChange={(value: string) => applyGuestForm(model, { ...model.values, gpuProfile: value })}
+          />
+        </Field>
+      )}
+
+      {picked?.partitionMode ? (
+        <p className={styles.hint} data-testid="guest-create-gpu-profile-facts">
+          {`${picked.name} asks for ${picked.count ?? "an unstated number of"} ${picked.count === 1 ? "GPU" : "GPUs"} in the ${picked.tier ?? "default"} tier, partitioned ${picked.partitionMode}.`}
+        </p>
+      ) : null}
+    </>
+  );
+});
+
+/** The DRA backend: a shared claim or a template, and never both. */
+const GpuClaimFields = observer(({ model }: { model: GuestCreateDialogModel }) => {
+  const inputs = guestCreateInputs(model);
+  const errors = gpuErrors(inputs, model.values);
+  const update = (patch: Partial<GuestFormValues>) => applyGuestForm(model, { ...model.values, ...patch });
+
+  return (
+    <>
+      <Field
+        label="Resource claim"
+        hint="A ResourceClaim that already exists and is shared. Exactly one of this and the template below."
+        error={errors.claimName}
+      >
+        <Input
+          value={model.values.gpuClaimName}
+          placeholder="none"
+          data-testid="guest-create-gpu-claim-name"
+          onChange={(value: string) => update({ gpuClaimName: value })}
+        />
+      </Field>
+
+      <Field
+        label="Resource claim template"
+        hint="A ResourceClaimTemplate the scheduler mints a claim of this guest's own from."
+        error={errors.claimTemplateName}
+      >
+        <Input
+          value={model.values.gpuClaimTemplateName}
+          placeholder="none"
+          data-testid="guest-create-gpu-claim-template"
+          onChange={(value: string) => update({ gpuClaimTemplateName: value })}
+        />
+      </Field>
+
+      <Field
+        label="Request name"
+        hint={`Which device request inside the claim the allocation is read back from. Empty is ${defaultGpuRequestName}, which upstream uses when the field is unset.`}
+        error={errors.requestName}
+      >
+        <Input
+          value={model.values.gpuRequestName}
+          placeholder={defaultGpuRequestName}
+          data-testid="guest-create-gpu-request-name"
+          onChange={(value: string) => update({ gpuRequestName: value })}
+        />
+      </Field>
+
+      <Field
+        label="Tier"
+        hint={`${defaultGpuTier} is what the API server stamps: Cloud Hypervisor with a flat PCI topology. The two hgx tiers switch the guest to QEMU.`}
+      >
+        <Select
+          id="guest-create-gpu-tier"
+          themeName="light"
+          menuClass={styles.selectMenu}
+          value={model.values.gpuTier}
+          options={guestGpuTiers.map((tier) => ({ value: tier, label: tier }))}
+          onChange={(option: { value: SwiftGuestGpuTier } | null) => option && update({ gpuTier: option.value })}
+        />
+      </Field>
+
+      <Field
+        label="Hugepages"
+        hint="The hugepage size backing the GPU memory, for example 1Gi. Empty means none, and most GPU workloads want 1Gi."
+        error={errors.hugepages}
+      >
+        <Input
+          value={model.values.gpuHugepages}
+          placeholder="none"
+          data-testid="guest-create-gpu-hugepages"
+          onChange={(value: string) => update({ gpuHugepages: value })}
+        />
+      </Field>
+    </>
+  );
+});
+
 /** The live write summary: the one create line, then the facts that are true of it (W1). */
 const GuestWriteSummary = observer(({ model }: { model: GuestCreateDialogModel }) => (
   <WriteSummary facts={guestCreateSummary(guestCreateInputs(model), model.values)} />
@@ -1420,6 +2379,12 @@ export const GuestCreateForm = observer(({ model }: { model: GuestCreateDialogMo
       <NodeField model={model} />
 
       <StorageSection model={model} />
+
+      <DataDisksSection model={model} />
+
+      <NetworkSection model={model} />
+
+      <GpuSection model={model} />
 
       <div className={styles.checkboxRow} data-testid="guest-create-guest-agent">
         <Checkbox
@@ -1542,6 +2507,8 @@ export function openCreateGuestDialog(): void {
     kernels: storedKernels(namespace),
     snapshots: storedSnapshots(namespace),
     seedProfiles: storedSeedProfiles(namespace),
+    pvcs: storedPvcs(namespace),
+    gpuProfiles: storedGpuProfiles(namespace),
     existingNames: storedGuestNames(namespace),
   });
 
@@ -1603,6 +2570,43 @@ function storedSeedProfiles(namespace: string): GuestSeedProfileFacts[] {
   return (store?.items ?? [])
     .filter((profile) => profile.getNs() === namespace)
     .map((profile) => ({ name: profile.getName(), datasource: SwiftSeedProfile.getDatasource(profile) }));
+}
+
+/**
+ * The namespace's PersistentVolumeClaims as the host's own store already holds
+ * them.
+ *
+ * The one seed that comes from a core store rather than from one of ours, and
+ * it is usually empty: the Storage pages of Freelens fill it, and a user who
+ * went straight to the Guests page has never opened one. The read on open is
+ * what fills the picker; this only saves a frame when they have.
+ */
+function storedPvcs(namespace: string): GuestPvcFacts[] {
+  if (!namespace) {
+    return [];
+  }
+
+  const items = maybe(() => pvcStore.items) ?? [];
+
+  return items
+    .filter((pvc) => pvc.getNs() === namespace)
+    .map((pvc) => ({
+      name: pvc.getName(),
+      volumeMode: pvc.spec?.volumeMode,
+      phase: pvc.status?.phase,
+      storageClassName: pvc.spec?.storageClassName,
+    }));
+}
+
+/** The namespace's GPU profiles as the store already holds them. */
+function storedGpuProfiles(namespace: string): GuestGpuProfileFacts[] {
+  if (!namespace) {
+    return [];
+  }
+
+  const store = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
+
+  return (store?.items ?? []).filter((profile) => profile.getNs() === namespace).map(gpuProfileFacts);
 }
 
 /** The namespace's guest names as the store already holds them, for the collision warning. */

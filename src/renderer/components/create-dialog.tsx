@@ -94,6 +94,72 @@ export function CollapsibleSection({ title, hint, open, onToggle, testId, childr
   );
 }
 
+export interface FormRowProps {
+  /** How the row is numbered in the form and in the submit-disabled sentence. */
+  title: string;
+  onRemove: () => void;
+  removeLabel: string;
+  testId?: string;
+  removeTestId?: string;
+  children?: React.ReactNode;
+}
+
+/**
+ * One row of a repeatable section: a data disk, a port, an interface
+ * (SPEC-0013 slice 3).
+ *
+ * Mechanical like the rest of this file. The remove control is a plain button
+ * rather than the host's own: inside the `ConfirmDialog` box, which is
+ * hardcoded white in both themes, `Button` paints itself from theme tokens that
+ * were chosen for a dark surface - the same fact the collapsible section's
+ * header already works around, recorded in DESIGN.md section 12.
+ */
+export function FormRow({ title, onRemove, removeLabel, testId, removeTestId, children }: FormRowProps) {
+  return (
+    <div className={styles.row} data-testid={testId}>
+      <div className={styles.rowHeader}>
+        <span className={styles.rowTitle}>{title}</span>
+        <button className={styles.rowButton} type="button" onClick={onRemove} data-testid={removeTestId}>
+          {removeLabel}
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export interface AddRowButtonProps {
+  label: string;
+  onAdd: () => void;
+  /** W4: a control whose click would do nothing is disabled WITH its reason, never hidden. */
+  blockedReason?: string;
+  testId?: string;
+  blockedTestId?: string;
+}
+
+/** The control that adds a row to a repeatable section, with the reason it cannot. */
+export function AddRowButton({ label, onAdd, blockedReason, testId, blockedTestId }: AddRowButtonProps) {
+  return (
+    <div className={styles.addRow}>
+      <button
+        className={styles.rowButton}
+        type="button"
+        onClick={onAdd}
+        disabled={Boolean(blockedReason)}
+        title={blockedReason}
+        data-testid={testId}
+      >
+        {label}
+      </button>
+      {blockedReason ? (
+        <div className={styles.blocked} data-testid={blockedTestId}>
+          {blockedReason}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * The live write summary: the one create line, then the facts that are true of
  * it (W1, rebuilt from the current field values on every change).

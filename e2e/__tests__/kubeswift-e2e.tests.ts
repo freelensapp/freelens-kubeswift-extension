@@ -136,6 +136,40 @@ async function openCreateGuestDialog(frame: Frame): Promise<void> {
 }
 
 /**
+ * Opens (or shuts) one of the Create Guest form's collapsed sections.
+ *
+ * The header is the section's own first child button - the disclosure the
+ * `CollapsibleSection` primitive renders - and it is a real button so the
+ * section is reachable by keyboard as well as by this.
+ */
+async function openGuestSection(frame: Frame, testId: string): Promise<void> {
+  await frame.locator(`[data-testid="${testId}"] > button`).first().click();
+}
+
+/** One source radio of a data-disk row, reached the way every host `Radio` is. */
+function dataDiskSourceRadio(frame: Frame, index: number, source: "image" | "pvc" | "blank") {
+  return frame
+    .locator(
+      `[data-testid="guest-create-disk-${index}-source"] .Radio:has([data-testid="guest-create-disk-${index}-source-${source}"])`,
+    )
+    .first();
+}
+
+/** One binding radio of the network section. */
+function bindingRadio(frame: Frame, binding: "nat" | "bridge") {
+  return frame
+    .locator(`[data-testid="guest-create-binding"] .Radio:has([data-testid="guest-create-binding-${binding}"])`)
+    .first();
+}
+
+/** One backend radio of the GPU section. */
+function gpuBackendRadio(frame: Frame, backend: "none" | "profile" | "claim") {
+  return frame
+    .locator(`[data-testid="guest-create-gpu-backend"] .Radio:has([data-testid="guest-create-gpu-backend-${backend}"])`)
+    .first();
+}
+
+/**
  * A guest name no earlier run can have taken.
  *
  * These cases create for real, and `pnpm e2e:cluster:up` is idempotent rather
@@ -3215,6 +3249,373 @@ describe("KubeSwift views against the fixture cluster", () => {
       await cluster.cancelDialog(frame);
 
       expect(guestNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "creates a guest with data disks, ports, an interface and a GPU, and reads back what the server stamped",
+    async () => {
+      // SPEC-0013 slice 3, the whole collapsed tail on one guest. The readback
+      // asserts two different things on purpose: the keys the FORM sent, and
+      // the keys the API SERVER stamped into them (network.binding, the port
+      // protocol, the interface type, the blank disk's volume mode). The form
+      // deliberately sends none of the second set - a re-sent default is a
+      // value it would be claiming to own - so the only way to keep that
+      // decision honest is to assert both halves here.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+
+      const name = createdGuestName("e2e-created-tail");
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill(name);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await pickGuestOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+
+      // Section 8: one image-backed disk and one blank one.
+      await openGuestSection(frame, "guest-create-data-disks-section");
+      await frame.locator('[data-testid="guest-create-add-disk"]').click();
+      await frame.locator('[data-testid="guest-create-disk-0-name"]').fill("extra");
+      await pickGuestOption(frame, "guest-create-disk-0-image", "e2e-ubuntu-2404");
+
+      await frame.locator('[data-testid="guest-create-add-disk"]').click();
+      await frame.locator('[data-testid="guest-create-disk-1-name"]').fill("scratch");
+      await dataDiskSourceRadio(frame, 1, "blank").click();
+      await frame.locator('[data-testid="guest-create-disk-1-size"]').fill("20Gi");
+
+      // Section 9: two exposed ports and one additional interface.
+      await openGuestSection(frame, "guest-create-network-section");
+      await frame.locator('[data-testid="guest-create-add-port"]').click();
+      await frame.locator('[data-testid="guest-create-port-0-port"]').fill("80");
+      await frame.locator('[data-testid="guest-create-port-0-name"]').fill("http");
+      await pickGuestOption(frame, "guest-create-port-0-expose", "NodePort");
+
+      await frame.locator('[data-testid="guest-create-add-port"]').click();
+      await frame.locator('[data-testid="guest-create-port-1-port"]').fill("443");
+      await frame.locator('[data-testid="guest-create-port-1-name"]').fill("https");
+      await frame.locator('[data-testid="guest-create-port-1-target-port"]').fill("8443");
+      await pickGuestOption(frame, "guest-create-port-1-expose", "NodePort");
+
+      await frame.locator('[data-testid="guest-create-add-interface"]').click();
+      await frame.locator('[data-testid="guest-create-nic-0-name"]').fill("net1");
+      await frame.locator('[data-testid="guest-create-nic-0-primary"] .Checkbox').click();
+
+      // Section 10: the native GPU backend.
+      await openGuestSection(frame, "guest-create-gpu-section");
+      await gpuBackendRadio(frame, "profile").click();
+      await pickGuestOption(frame, "guest-create-gpu-profile", "e2e-gpu-profile-pcie");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftGuest kubeswift-e2e/${name}`);
+      expect(dialog).toContain("Data disk extra: the image e2e-ubuntu-2404 is cloned into a PVC of this guest");
+      expect(dialog).toContain("Data disk scratch: a blank 20Gi Block PVC of this guest is created");
+      expect(dialog).toContain("One Service of type NodePort is created for this guest");
+      expect(dialog).toContain("The primary NIC is net1");
+      expect(dialog).toContain("It asks for the GPU profile e2e-gpu-profile-pcie");
+      // G11: the one thing on this form that makes a guest wait without failing.
+      expect(dialog).toContain("parks in Pending on its GPUAllocated condition");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuest kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftguests.swift.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "dataDiskRefs",
+        "gpuProfileRef",
+        "guestClassRef",
+        "imageRef",
+        "interfaces",
+        "network",
+        "osType",
+        "runPolicy",
+      ]);
+
+      // What the form sent, key by key.
+      expect(spec.dataDiskRefs[0]).toEqual({ name: "extra", imageRef: { name: "e2e-ubuntu-2404" } });
+      expect(spec.dataDiskRefs[1].name).toBe("scratch");
+      expect(spec.dataDiskRefs[1].blank.size).toBe("20Gi");
+      expect(spec.interfaces[0].name).toBe("net1");
+      expect(spec.interfaces[0].primary).toBe(true);
+      expect(spec.gpuProfileRef).toEqual({ name: "e2e-gpu-profile-pcie" });
+      expect(spec.network.ports[0].port).toBe(80);
+      expect(spec.network.ports[0].name).toBe("http");
+      expect(spec.network.ports[0].expose).toBe("NodePort");
+      expect(spec.network.ports[1].targetPort).toBe(8443);
+
+      // And what the API server stamped into it, which the form never sends.
+      expect(spec.network.binding).toBe("nat");
+      expect(spec.network.ports[0].protocol).toBe("TCP");
+      expect(spec.network.ports[1].protocol).toBe("TCP");
+      expect(spec.interfaces[0].type).toBe("bridge");
+      expect(spec.dataDiskRefs[1].blank.volumeMode).toBe("Block");
+      // Not defaulted anywhere, so absent is the proof the form sent nothing:
+      // `attachAsDisk` has no schema default, and `targetPort` is only filled
+      // in by the controller at runtime rather than by the API server.
+      expect(spec.dataDiskRefs[0].attachAsDisk).toBeUndefined();
+      expect(spec.network.ports[0].targetPort).toBeUndefined();
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses the port rules with their reasons, and keeps the section open on one",
+    async () => {
+      // Three webhook-only rules whose controller failure modes are all silent:
+      // a second port without a name, a mixed expose, and an expose under a
+      // bridge binding. On a default install nobody but this form ever says so.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill("e2e-created-ports-never");
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await pickGuestOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+
+      await openGuestSection(frame, "guest-create-network-section");
+      await frame.locator('[data-testid="guest-create-add-port"]').click();
+      await frame.locator('[data-testid="guest-create-port-0-port"]').fill("80");
+      await frame.locator('[data-testid="guest-create-add-port"]').click();
+      await frame.locator('[data-testid="guest-create-port-1-port"]').fill("443");
+
+      const unnamed = await cluster.confirmDialogText(frame);
+
+      expect(unnamed).toContain("A name is required once a guest declares more than one port");
+      expect(unnamed).toContain("Create Guest is disabled - Port 1 name:");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // The section holds the error, so it stays open even when the user shuts
+      // it: a submit blocked on a field nobody can see is the dead control W4
+      // forbids. Shut again afterwards, because the moment the error is fixed
+      // the section really does close - which is the other half of the rule.
+      await openGuestSection(frame, "guest-create-network-section");
+      expect(await frame.locator('[data-testid="guest-create-port-0-port"]').count()).toBe(1);
+      await openGuestSection(frame, "guest-create-network-section");
+
+      await frame.locator('[data-testid="guest-create-port-0-name"]').fill("http");
+      await frame.locator('[data-testid="guest-create-port-1-name"]').fill("https");
+      await pickGuestOption(frame, "guest-create-port-0-expose", "NodePort");
+      await pickGuestOption(frame, "guest-create-port-1-expose", "ClusterIP");
+
+      const mixed = await cluster.confirmDialogText(frame);
+
+      expect(mixed).toContain("this port asks for ClusterIP while another asks for NodePort");
+      expect(mixed).toContain("silently mints a Service");
+      expect(mixed).toContain("Create Guest is disabled - Port 2 expose:");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await pickGuestOption(frame, "guest-create-port-1-expose", "NodePort");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // The third rule: a bridge-bound guest gets no Service at all, and
+      // upstream reports nothing when it is asked for one.
+      await bindingRadio(frame, "bridge").click();
+
+      const bridged = await cluster.confirmDialogText(frame);
+
+      expect(bridged).toContain("A bridge-bound guest exposes nothing");
+      expect(bridged).toContain("mints no Service and reports no error");
+      expect(bridged).toContain("Create Guest is disabled - Port 1 expose:");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses the data-disk rules, and offers attachAsDisk on a PVC row alone",
+    async () => {
+      // The rules that read an object KubeSwift did not create: attachAsDisk is
+      // decided by the claim's own volumeMode, which is why this case needs two
+      // real PVCs. The ninth disk is the section's own guard (W4).
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill("e2e-created-disks-never");
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await pickGuestOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+
+      await openGuestSection(frame, "guest-create-data-disks-section");
+      await frame.locator('[data-testid="guest-create-add-disk"]').click();
+
+      // An image row is attached as a raw disk anyway, so the checkbox is not
+      // rendered at all and what it would have configured is stated instead.
+      expect(await frame.locator('[data-testid="guest-create-disk-0-attach"] .Checkbox').count()).toBe(0);
+      expect(await frame.locator('[data-testid="guest-create-disk-0-attach-dropped"]').innerText()).toContain(
+        "always attached as a raw VM disk",
+      );
+
+      await frame.locator('[data-testid="guest-create-disk-0-name"]').fill("vol");
+      await pickGuestOption(frame, "guest-create-disk-0-image", "e2e-ubuntu-2404");
+
+      // Two sources on one row are inexpressible rather than validated: moving
+      // the row to another source empties the one it leaves, so the image
+      // control is gone the moment the PVC one appears.
+      await dataDiskSourceRadio(frame, 0, "pvc").click();
+      expect(await frame.locator(".Select:has(#guest-create-disk-0-image)").count()).toBe(0);
+      expect(await frame.locator(".Select:has(#guest-create-disk-0-pvc)").count()).toBe(1);
+
+      await pickGuestOption(frame, "guest-create-disk-0-pvc", "e2e-data-filesystem");
+      await frame.locator('[data-testid="guest-create-disk-0-attach"] .Checkbox').click();
+
+      const refused = await cluster.confirmDialogText(frame);
+
+      expect(refused).toContain("The claim e2e-data-filesystem is Filesystem");
+      expect(refused).toContain("needs a Block claim");
+      expect(refused).toContain("Create Guest is disabled - Data disk 1 attach as disk:");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // The same row against the Block claim is accepted: the rule is about the
+      // claim, not about the checkbox.
+      await pickGuestOption(frame, "guest-create-disk-0-pvc", "e2e-data-block");
+
+      const accepted = await cluster.confirmDialogText(frame);
+
+      // Matched on the refusal's own opening rather than on the phrase "needs a
+      // Block claim", which the checkbox's hint says on every PVC row: an
+      // assertion that cannot tell the rule from the explanation of the rule
+      // would pass on a form that had stopped enforcing it.
+      expect(accepted).not.toContain("The claim e2e-data-filesystem is Filesystem");
+      expect(accepted).not.toContain("Create Guest is disabled");
+      expect(accepted).toContain("the existing claim e2e-data-block (Block) is attached to the guest as a raw VM");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // The ninth disk: the add control is disabled WITH its reason, never
+      // hidden and never silently inert.
+      for (let index = 1; index < 8; index += 1) {
+        await frame.locator('[data-testid="guest-create-add-disk"]').click();
+        await frame.locator(`[data-testid="guest-create-disk-${index}-name"]`).fill(`filler-${index}`);
+      }
+
+      expect(await frame.locator('[data-testid="guest-create-disk-7-name"]').count()).toBe(1);
+      expect(await frame.locator('[data-testid="guest-create-add-disk"]').isDisabled()).toBe(true);
+
+      const full = await frame.locator('[data-testid="guest-create-add-disk-blocked"]').innerText();
+
+      expect(full).toContain("at most 8 data disks");
+      expect(full).toContain("already has 8");
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "replaces the GPU section with the guard's reason on kernel boot and on a windows image",
+    async () => {
+      // Two of the three exclusions, and they are different kinds of fact: the
+      // kernel one is upstream's documented-but-unenforced rule (G6), which no
+      // webhook and no controller anywhere rejects, and the Windows one follows
+      // the picked image rather than the boot source.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await bootSourceRadio(frame, "kernel").click();
+
+      expect(await frame.locator('[data-testid="guest-create-gpu-section"]').count()).toBe(0);
+
+      const kernelReason = await frame.locator('[data-testid="guest-create-gpu-dropped"]').innerText();
+
+      expect(kernelReason).toContain("A kernel-boot guest takes no GPU");
+      expect(kernelReason).toContain("mutually exclusive");
+      expect(kernelReason).toContain("nothing in the API server, the webhook or the controller enforces it");
+
+      // Back to disk boot, on the Windows image: the section is refused again,
+      // for a reason about the OS rather than about the boot source.
+      await bootSourceRadio(frame, "image").click();
+      await pickGuestOption(frame, "guest-create-image", "e2e-windows-2022");
+
+      expect(await frame.locator('[data-testid="guest-create-gpu-section"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="guest-create-gpu-dropped"]').innerText()).toContain(
+        "A Windows guest takes no GPU profile",
+      );
+
+      // And the section is back on a linux image, with nothing asked for.
+      await pickGuestOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+      expect(await frame.locator('[data-testid="guest-create-gpu-section"]').count()).toBe(1);
+      expect(await frame.locator('[data-testid="guest-create-gpu-dropped"]').count()).toBe(0);
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "keeps the last row's menu clear of the host's floating create button",
+    async () => {
+      // The page fix of SPEC-0013 slice 3. The host draws the "+" over the
+      // bottom-right corner of the list, which is where the kebab of the last
+      // row lands once the list scrolls - and the button wins the click, with
+      // no way for the user to tell why. The list is virtualized, so the fix is
+      // block-end padding on the scroll container itself; this asserts the
+      // padding, the geometry it buys, and that the menu opens from a plain
+      // click with no scrolling of ours.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const list = frame.locator(".VirtualList .list").first();
+
+      await list.waitFor({ state: "visible", timeout: 60_000 });
+
+      const padding = await list.evaluate((element) => getComputedStyle(element).paddingBottom);
+
+      expect(padding).toBe("80px");
+
+      // All the way down, which is where the collision used to be. The case is
+      // only worth anything on a list that really scrolls - the collision needs
+      // the last row to reach the bottom of the viewport - so a list that fits
+      // is a failure rather than a pass: by this point the create cases above
+      // have added six guests to the sixteen the fixtures carry.
+      const scrolls = await list.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+
+        return element.scrollHeight > element.clientHeight;
+      });
+
+      expect(scrolls).toBe(true);
+      await frame.waitForTimeout(500);
+
+      const kebab = frame.locator(".TableRow").last().locator(".TableCell.menu .Icon").first();
+      const addButton = frame.locator(".AddRemoveButtons .add-button");
+      const kebabBox = await kebab.boundingBox();
+      const addBox = await addButton.boundingBox();
+
+      if (!kebabBox || !addBox) {
+        throw new Error("Both the last row's kebab and the create button must be on screen");
+      }
+
+      const overlaps =
+        kebabBox.x < addBox.x + addBox.width &&
+        addBox.x < kebabBox.x + kebabBox.width &&
+        kebabBox.y < addBox.y + addBox.height &&
+        addBox.y < kebabBox.y + kebabBox.height;
+
+      expect(overlaps).toBe(false);
+
+      // Clicked as it is, without the centring `openRowMenu` does: that helper
+      // keeps its scroll because it protects every case in this suite, and this
+      // one exists to prove the product no longer needs it.
+      await kebab.click();
+      await frame.waitForSelector(".Menu .MenuItem", { state: "visible", timeout: 60_000 });
+      await cluster.closeRowMenu(frame);
     },
     TIMEOUT,
   );

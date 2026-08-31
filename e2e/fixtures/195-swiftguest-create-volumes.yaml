@@ -1,0 +1,47 @@
+# The two PersistentVolumeClaims the Create Guest form's data-disk rows attach
+# (SPEC-0013 slice 3). The first fixtures of this suite that are not custom
+# resources at all: `attachAsDisk` is upstream's one data-disk rule that reads
+# an object KubeSwift did not create, so the rule cannot be exercised without
+# real claims.
+#
+# Both name a StorageClass that does not exist, so nothing is provisioned and
+# both stay Pending forever - which is exactly right for a picker and for a
+# readback, and which is the same "no controller runs here" honesty the rest of
+# the suite is built on. What the cases read is `spec.volumeMode`, and that is
+# set by the manifest rather than by any provisioner.
+#
+# Block: the mode upstream requires before it will hand a claim to the guest as
+# a raw VM disk.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: e2e-data-block
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Block
+  storageClassName: e2e-no-provisioner
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Filesystem: the mode that makes `attachAsDisk` a refusal with a reason, since
+# a Filesystem claim is a directory and there is no device to hand to a guest.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: e2e-data-filesystem
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  storageClassName: e2e-no-provisioner
+  resources:
+    requests:
+      storage: 1Gi

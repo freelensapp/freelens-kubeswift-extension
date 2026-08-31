@@ -1,4 +1,34 @@
+// The host's floating create button (`AddRemoveButtons`, the "+" this page
+// passes `addRemoveButtons` to) is absolutely positioned in the bottom-right
+// corner of the list area, 16px from the bottom and 32px from the right - and
+// that is exactly where the kebab of the LAST row lands once the list is long
+// enough to scroll. The button wins the click: it is a later sibling of the
+// table with `z-index: 99`, so the row's own menu is unreachable from the
+// mouse without scrolling the row away from the corner first (found while
+// implementing SPEC-0013 slice 2, where two E2E cases failed on a fresh
+// cluster and passed on a kept one, and fixed there in the test helper alone).
+//
+// The list is virtualized: the rows are absolutely positioned inside an
+// element whose height react-window computes, so nothing can be spaced by a
+// margin on the last row. What CAN be spaced is the scroll container itself -
+// padding at its block end is part of its scrollable overflow - so the list
+// simply stops scrolling that much sooner and the last row never reaches the
+// corner. The class is the host's own, wrapped in `:global()` as DESIGN.md
+// section 8 requires, and it is reached through this page's own class: the
+// Table passes its `className` down to the `VirtualList`, so `.page` is on
+// both and this rule cannot leak to another page's list.
+// 45.6px of button plus its own 16px bottom margin is 61.6px of the list's
+// bottom-right corner, measured live in the E2E cluster; 80px leaves about
+// 20px of air under the last row rather than the 5px that 64px left, so a
+// slightly taller row or a slightly larger button cannot bring the collision
+// back.
+$create-button-clearance: 80px;
+
 .page {
+  :global(.VirtualList .list) {
+    padding-bottom: $create-button-clearance;
+  }
+
   :global(.TableCell) {
     &.node {
       flex-grow: 1;

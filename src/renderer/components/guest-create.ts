@@ -91,9 +91,19 @@ import { backendWithArticle } from "./snapshot-create";
 import type {
   SwiftGuestAccessMode,
   SwiftGuestCloneFromSnapshot,
+  SwiftGuestDataDisk,
+  SwiftGuestGpuResourceClaim,
+  SwiftGuestGpuTier,
+  SwiftGuestInterface,
+  SwiftGuestInterfaceType,
+  SwiftGuestNetwork,
+  SwiftGuestNetworkBinding,
   SwiftGuestOsType,
+  SwiftGuestPort,
+  SwiftGuestProtocol,
   SwiftGuestRunPolicy,
   SwiftGuestSeedIdentityField,
+  SwiftGuestServiceExposure,
   SwiftGuestSpec,
   SwiftGuestVolumeMode,
 } from "../api/kubeswift/swiftguest-v1alpha1";
@@ -198,6 +208,46 @@ export const systemDefaultVolumeMode: SwiftGuestVolumeMode = "Filesystem";
 /** A DNS-1123 label, which is the longest a guest's name may be. */
 export const maxGuestNameLength = 63;
 
+/** The number of data disks the webhook allows on one guest. Nothing in the schema says so. */
+export const maxDataDisks = 8;
+
+/** The schema's own cap on a data disk's name, which is shorter than a DNS label. */
+export const maxDataDiskNameLength = 36;
+
+/** The volume mode `attachAsDisk` needs on the PVC it attaches: a raw device, not a directory. */
+export const attachAsDiskVolumeMode: SwiftGuestVolumeMode = "Block";
+
+/** The volume mode the API server stamps on a blank data disk when the form sends none. */
+export const defaultBlankVolumeMode: SwiftGuestVolumeMode = "Block";
+
+/** The binding the API server stamps on a `network` block that does not name one. */
+export const defaultNetworkBinding: SwiftGuestNetworkBinding = "nat";
+
+/** The protocol the API server stamps on a port that does not name one. */
+export const defaultPortProtocol: SwiftGuestProtocol = "TCP";
+
+/** The interface type the API server stamps on an interface that does not name one. */
+export const defaultInterfaceType: SwiftGuestInterfaceType = "bridge";
+
+/** The GPU tier the API server stamps on a DRA claim that does not name one. */
+export const defaultGpuTier: SwiftGuestGpuTier = "pcie";
+
+/** The lowest and the highest port number the schema accepts. */
+export const minPortNumber = 1;
+export const maxPortNumber = 65535;
+
+/** The protocols a port may declare, in the order the select offers them. */
+export const guestPortProtocols: SwiftGuestProtocol[] = ["TCP", "UDP", "SCTP"];
+
+/** The Service types a port may ask the controller to mint. */
+export const guestPortExposures: SwiftGuestServiceExposure[] = ["ClusterIP", "NodePort", "LoadBalancer"];
+
+/** The bindings the primary interface may have. */
+export const guestNetworkBindings: SwiftGuestNetworkBinding[] = ["nat", "bridge"];
+
+/** The tiers a DRA claim may ask for, which are the SwiftGPUProfile ones. */
+export const guestGpuTiers: SwiftGuestGpuTier[] = ["pcie", "hgx-shared", "hgx-full"];
+
 /** The slice of a SwiftGuestClass the sizing block and the storage merge read. */
 export interface GuestClassFacts {
   name: string;
@@ -278,6 +328,41 @@ export interface GuestSnapshotFacts {
 }
 
 /**
+ * The slice of a PersistentVolumeClaim a data-disk row reads.
+ *
+ * `volumeMode` is the interesting one: `attachAsDisk` attaches the claim as a
+ * raw VM block device, which upstream only accepts on a `Block` claim - and
+ * that is a fact of an object this form did not create and may not be allowed
+ * to read, so the rule has a readable branch and an unreadable one.
+ */
+export interface GuestPvcFacts {
+  name: string;
+  /** `spec.volumeMode`: `Block` or `Filesystem`, absent when the claim does not say. */
+  volumeMode?: string;
+  /** `status.phase`: shown on the option, never a reason to refuse one. */
+  phase?: string;
+  storageClassName?: string;
+}
+
+/**
+ * The slice of a SwiftGPUProfile the GPU picker reads.
+ *
+ * There is no readiness to show: the SwiftGPUProfile CRD declares
+ * `subresources: {}` and no `status` at all (SPEC-0007), so a profile is a
+ * request that nothing ever writes back to. What the option carries instead is
+ * the request itself - how many GPUs, of which model, in which tier - because
+ * that is the whole content of the object.
+ */
+export interface GuestGpuProfileFacts {
+  name: string;
+  count?: number;
+  /** `spec.model`: the empty string means "any model matches". */
+  model?: string;
+  tier?: string;
+  partitionMode?: string;
+}
+
+/**
  * Everything the dialog knows about the cluster when it decides something.
  *
  * One object rather than six parameters, for the reason the other create
@@ -301,6 +386,12 @@ export interface GuestCreateInputs {
   /** The chosen namespace's SwiftSnapshots, for clone boot. */
   snapshots: GuestSnapshotFacts[];
   snapshotsUnverified: boolean;
+  /** The chosen namespace's PersistentVolumeClaims, for the data disks that attach one. */
+  pvcs: GuestPvcFacts[];
+  pvcsUnverified: boolean;
+  /** The chosen namespace's SwiftGPUProfiles, for the native GPU backend. */
+  gpuProfiles: GuestGpuProfileFacts[];
+  gpuProfilesUnverified: boolean;
   /** The cluster's nodes, for the optional pin. */
   nodes: NodeFacts[];
   nodesUnverified: boolean;
@@ -318,6 +409,63 @@ export interface GuestCreateInputs {
    */
   existingNamesUnverified: boolean;
 }
+
+/** What one data-disk row is made of. Exactly one of the three, by construction. */
+export type GuestDataDiskSource = "image" | "pvc" | "blank";
+
+/**
+ * One row of the data disks section.
+ *
+ * `id` is stable for the life of the row so that removing the second of three
+ * does not renumber the third under the user's cursor; everything else is a
+ * string because it is what an input holds, and the payload parses it once.
+ */
+export interface GuestDataDiskRow {
+  id: string;
+  name: string;
+  source: GuestDataDiskSource;
+  /** `imageRef.name`: a SwiftImage cloned into a guest-owned PVC. */
+  image: string;
+  /** `pvcRef.name`: a claim that already exists, attached as it is. */
+  pvc: string;
+  /** `blank.size`: a Kubernetes quantity, the one required field of a blank disk. */
+  blankSize: string;
+  blankStorageClass: string;
+  /** `blank.volumeMode`: empty means the `Block` the API server stamps. */
+  blankVolumeMode: string;
+  /** Only ever true on a PVC row: upstream accepts it nowhere else. */
+  attachAsDisk: boolean;
+}
+
+/** One row of the ports list, as the inputs hold it. */
+export interface GuestPortRow {
+  id: string;
+  /** `port`: reachable on the pod IP, and the Service port when one is minted. */
+  port: string;
+  /** `name`: required above one port, because it becomes the Service port's name. */
+  name: string;
+  /** `targetPort`: what the guest listens on. Empty means "the same as the port". */
+  targetPort: string;
+  protocol: SwiftGuestProtocol;
+  /** `expose`: empty means DNAT only and no Service object at all. */
+  expose: string;
+}
+
+/** One row of the additional interfaces list. Bridge type only on this form. */
+export interface GuestInterfaceRow {
+  id: string;
+  name: string;
+  /** `networkRef.name`: a NetworkAttachmentDefinition. Empty means a node-local tap+bridge. */
+  networkName: string;
+  /** `networkRef.namespace`: empty means the guest's own namespace. */
+  networkNamespace: string;
+  primary: boolean;
+  /** `mac`: empty means the deterministic address upstream generates. */
+  mac: string;
+}
+
+/** Which GPU allocation backend this guest asks for, if any. */
+export type GuestGpuBackend = "none" | "profile" | "claim";
 
 /** Every field the form holds, in one flat object so the model is one observable. */
 export interface GuestFormValues {
@@ -353,6 +501,23 @@ export interface GuestFormValues {
   storageAccessMode: string;
   storageVolumeMode: string;
   storageClassName: string;
+  /** The secondary disks, at most eight of them. */
+  dataDisks: GuestDataDiskRow[];
+  /** `network.binding` of the PRIMARY interface. Sent only when it is not the stamped default. */
+  networkBinding: SwiftGuestNetworkBinding;
+  ports: GuestPortRow[];
+  /** The additional interfaces, all of them bridge type on this form. */
+  interfaces: GuestInterfaceRow[];
+  gpuBackend: GuestGpuBackend;
+  /** `gpuProfileRef.name`: the native backend. */
+  gpuProfile: string;
+  /** `gpuResourceClaim.resourceClaimName`: the DRA backend, shared claim. */
+  gpuClaimName: string;
+  /** `gpuResourceClaim.resourceClaimTemplateName`: the DRA backend, per-pod claim. */
+  gpuClaimTemplateName: string;
+  gpuRequestName: string;
+  gpuTier: SwiftGuestGpuTier;
+  gpuHugepages: string;
   guestAgentEnabled: boolean;
 }
 
@@ -387,6 +552,21 @@ export function defaultGuestForm(namespace = ""): GuestFormValues {
     storageAccessMode: "",
     storageVolumeMode: "",
     storageClassName: "",
+    // The three collapsed sections open on nothing at all: a form that arrived
+    // with one empty data disk, one empty port and one interface would be
+    // asking three questions nobody asked it to ask, and each of those rows
+    // would block the submit until it was filled in or removed.
+    dataDisks: [],
+    networkBinding: defaultNetworkBinding,
+    ports: [],
+    interfaces: [],
+    gpuBackend: "none",
+    gpuProfile: "",
+    gpuClaimName: "",
+    gpuClaimTemplateName: "",
+    gpuRequestName: "",
+    gpuTier: defaultGpuTier,
+    gpuHugepages: "",
     guestAgentEnabled: false,
   };
 }
@@ -423,11 +603,28 @@ export function defaultNamespace(contextNamespaces: readonly string[]): string {
  *   where the guest runs and a second pin could disagree with it;
  * - the STORAGE overrides on kernel boot, where there is no root-disk clone for
  *   them to apply to.
+ *
+ * Since slice 3 the GPU goes the same way on the two sources that exclude it
+ * outright (`guestGpuGuard`), and for the same reason: the payload builder
+ * refuses to emit a GPU there, so a value left behind would be visible in the
+ * form and absent from the object. The Windows exclusion is deliberately NOT
+ * cleared here - it follows the picked image rather than the boot source, and a
+ * user who tries a Windows image and goes back to a Linux one should find their
+ * GPU choice where they left it.
  */
 export function switchBootSource(values: GuestFormValues, source: GuestBootSource): GuestFormValues {
+  const keepsGpu = gpuAppliesToBootSource(source);
+
   return {
     ...values,
     bootSource: source,
+    gpuBackend: keepsGpu ? values.gpuBackend : "none",
+    gpuProfile: keepsGpu ? values.gpuProfile : "",
+    gpuClaimName: keepsGpu ? values.gpuClaimName : "",
+    gpuClaimTemplateName: keepsGpu ? values.gpuClaimTemplateName : "",
+    gpuRequestName: keepsGpu ? values.gpuRequestName : "",
+    gpuTier: keepsGpu ? values.gpuTier : defaultGpuTier,
+    gpuHugepages: keepsGpu ? values.gpuHugepages : "",
     image: source === "image" ? values.image : "",
     kernel: source === "kernel" ? values.kernel : "",
     kernelCmdline: source === "kernel" ? values.kernelCmdline : "",
@@ -439,6 +636,17 @@ export function switchBootSource(values: GuestFormValues, source: GuestBootSourc
     storageVolumeMode: storageOverridesApply(source) ? values.storageVolumeMode : "",
     storageClassName: storageOverridesApply(source) ? values.storageClassName : "",
   };
+}
+
+/**
+ * Whether a GPU can be attached to a guest with this boot source at all.
+ *
+ * The half of `guestGpuGuard` that depends on nothing but the source, which is
+ * what `switchBootSource` clears against: the Windows exclusion follows the
+ * picked image and cannot be answered from the source alone.
+ */
+export function gpuAppliesToBootSource(source: GuestBootSource): boolean {
+  return source === "image";
 }
 
 /**
@@ -1571,6 +1779,1038 @@ export const nodePinFact =
   "A pinned guest has its launcher pod bound to that node directly, bypassing the scheduler: a node that cannot fit " +
   "the guest rejects it within seconds instead of leaving it Pending forever.";
 
+// ---------------------------------------------------------------------------
+// Section 8: data disks.
+//
+// Every rule below is the admission webhook's, and NONE of them is in the
+// schema: upstream enforces "exactly one source", "attachAsDisk needs a
+// Block-mode pvcRef", "at most eight disks" and "unique names" in a validating
+// webhook that ships disabled, so on a normal install this form is the only
+// place they are enforced at all. What a violation costs is not an error
+// message from the API server but a guest that comes up missing a disk, or a
+// launcher pod that mounts a directory where the operator expected a device.
+// ---------------------------------------------------------------------------
+
+/** The Kubernetes quantity pattern, off the CRD: what a blank disk's size has to match. */
+const quantityPattern =
+  /^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$/;
+
+/** The DNS-1123 label rule, shared by the data disk, the port and the interface names. */
+const dnsLabelPattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+
+/** The name of a NetworkAttachmentDefinition: an object name, so a DNS subdomain. */
+const dnsSubdomainPattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
+
+/** The canonical colon-separated MAC the schema's own pattern accepts. */
+const macAddressPattern = /^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/;
+
+/** How the Service port name a Kubernetes Service accepts is capped (IANA_SVC_NAME). */
+export const maxServicePortNameLength = 15;
+
+/**
+ * The next id for a row of one of the repeatable sections.
+ *
+ * Derived from the rows that exist rather than from a counter, so the function
+ * stays pure and two forms opened in sequence cannot disagree about it.
+ */
+export function nextRowId(prefix: string, rows: readonly { id: string }[]): string {
+  const used = rows
+    .map((row) => Number.parseInt(row.id.startsWith(`${prefix}-`) ? row.id.slice(prefix.length + 1) : "", 10))
+    .filter((value) => Number.isFinite(value));
+
+  return `${prefix}-${used.length > 0 ? Math.max(...used) + 1 : 1}`;
+}
+
+/** A data-disk row as the section adds it: named by the user, image-backed by default. */
+export function newDataDiskRow(id: string): GuestDataDiskRow {
+  return {
+    id,
+    name: "",
+    source: "image",
+    image: "",
+    pvc: "",
+    blankSize: "",
+    blankStorageClass: "",
+    blankVolumeMode: "",
+    attachAsDisk: false,
+  };
+}
+
+/**
+ * Whether another data disk can be added, and why not when it cannot (W4).
+ *
+ * The one rule of this section that is about the section rather than about a
+ * row, so it disables a control instead of marking a field - and like every
+ * guard in this repository it produces the reason rather than a bare boolean.
+ */
+export function addDataDiskGuard(values: GuestFormValues): ActionGuard {
+  if (values.dataDisks.length < maxDataDisks) {
+    return { enabled: true };
+  }
+
+  return {
+    enabled: false,
+    reason:
+      `A guest takes at most ${maxDataDisks} data disks, and this one already has ${values.dataDisks.length}. ` +
+      "Upstream enforces the limit in its validating webhook, which ships disabled - so a ninth disk would be " +
+      "stored and then ignored by the controller rather than refused.",
+  };
+}
+
+/** The form with one more data-disk row, or unchanged when the guard refuses. */
+export function addDataDisk(values: GuestFormValues): GuestFormValues {
+  if (!addDataDiskGuard(values).enabled) {
+    return values;
+  }
+
+  return { ...values, dataDisks: [...values.dataDisks, newDataDiskRow(nextRowId("disk", values.dataDisks))] };
+}
+
+/** The form without the named row. */
+export function removeDataDisk(values: GuestFormValues, id: string): GuestFormValues {
+  return { ...values, dataDisks: values.dataDisks.filter((row) => row.id !== id) };
+}
+
+/** The form with one field of one data-disk row changed. */
+export function updateDataDisk(values: GuestFormValues, id: string, patch: Partial<GuestDataDiskRow>): GuestFormValues {
+  return { ...values, dataDisks: values.dataDisks.map((row) => (row.id === id ? { ...row, ...patch } : row)) };
+}
+
+/**
+ * Moves one row to another source, emptying the fields of the source it leaves.
+ *
+ * The same rule as `switchBootSource`, one level down and for the same reason:
+ * "exactly one of imageRef/pvcRef/blank" is a webhook rule on a webhook that is
+ * off, so the form makes the violation inexpressible instead of validating it
+ * after the fact. `attachAsDisk` goes with the PVC it belonged to, because
+ * upstream accepts it on nothing else.
+ */
+export function setDataDiskSource(values: GuestFormValues, id: string, source: GuestDataDiskSource): GuestFormValues {
+  return {
+    ...values,
+    dataDisks: values.dataDisks.map((row) =>
+      row.id === id
+        ? {
+            ...row,
+            source,
+            image: source === "image" ? row.image : "",
+            pvc: source === "pvc" ? row.pvc : "",
+            blankSize: source === "blank" ? row.blankSize : "",
+            blankStorageClass: source === "blank" ? row.blankStorageClass : "",
+            blankVolumeMode: source === "blank" ? row.blankVolumeMode : "",
+            attachAsDisk: source === "pvc" ? row.attachAsDisk : false,
+          }
+        : row,
+    ),
+  };
+}
+
+/** Whether `attachAsDisk` is offered at all on this row: upstream accepts it on a PVC only. */
+export function attachAsDiskApplies(row: GuestDataDiskRow): boolean {
+  return row.source === "pvc";
+}
+
+/** What stands where the `attachAsDisk` checkbox would be on the other two sources (W12). */
+export function attachAsDiskDroppedFact(source: GuestDataDiskSource): string {
+  return source === "image"
+    ? "An image-backed data disk is always attached as a raw VM disk, so there is nothing to choose here: attachAsDisk exists for the PVC case, where the default is a filesystem directory in the launcher pod instead."
+    : "A blank data disk is always attached as a raw VM disk, so there is nothing to choose here: attachAsDisk exists for the PVC case alone.";
+}
+
+/** The fields a data-disk row can carry a message on. */
+export type GuestDataDiskField =
+  | "name"
+  | "source"
+  | "image"
+  | "pvc"
+  | "blankSize"
+  | "blankStorageClass"
+  | "attachAsDisk";
+
+/** One message per field of one row, absent when the field has nothing to say. */
+export type GuestDataDiskMessages = Partial<Record<GuestDataDiskField, string>>;
+
+/** How the submit-disabled sentence names each field of a data-disk row. */
+export const guestDataDiskFieldLabels: Record<GuestDataDiskField, string> = {
+  name: "Name",
+  source: "Source",
+  image: "Image",
+  pvc: "PVC",
+  blankSize: "Size",
+  blankStorageClass: "Storage class",
+  attachAsDisk: "Attach as disk",
+};
+
+/** The order the submit-disabled sentence reports a data-disk row's first problem in. */
+const dataDiskFieldOrder: GuestDataDiskField[] = [
+  "name",
+  "source",
+  "image",
+  "pvc",
+  "blankSize",
+  "blankStorageClass",
+  "attachAsDisk",
+];
+
+/**
+ * The line the data disks header carries, open or shut.
+ *
+ * DESIGN.md section 12 lets a section ship collapsed only when what it hides is
+ * a consequence rather than a value, AND that consequence is stated on the
+ * header line - so this sentence is what makes the section legal, not
+ * decoration.
+ */
+export function dataDisksSectionHint(values: GuestFormValues): string {
+  const count = values.dataDisks.length;
+
+  if (count === 0) {
+    return (
+      "None. A data disk is a second disk beside the root one: a clone of a SwiftImage, an existing PVC, or a blank " +
+      `volume the controller creates. At most ${maxDataDisks}.`
+    );
+  }
+
+  return (
+    `${count} ${count === 1 ? "disk" : "disks"}. Image-backed and blank disks become PVCs owned by this guest, so ` +
+    "they are deleted with it; an attached PVC is not, and outlives the guest."
+  );
+}
+
+/** The line the network header carries, open or shut. */
+export function networkSectionHint(values: GuestFormValues): string {
+  const ports = values.ports.length;
+  const nics = values.interfaces.length;
+  const exposure = declaredExposure(values);
+  const parts: string[] = [`${values.networkBinding} binding`];
+
+  if (ports > 0) {
+    parts.push(`${ports} ${ports === 1 ? "port" : "ports"}`);
+  }
+
+  if (nics > 0) {
+    parts.push(`${nics} additional ${nics === 1 ? "interface" : "interfaces"}`);
+  }
+
+  const service =
+    values.networkBinding === "bridge"
+      ? "No per-guest Service is created under a bridge binding."
+      : exposure
+        ? `A per-guest Service of type ${exposure} is created for the exposed ports.`
+        : "No Service is created until a port asks to be exposed.";
+
+  return `${parts.join(", ")}. ${service}`;
+}
+
+/** The line the GPU header carries, open or shut. */
+export function gpuSectionHint(inputs: GuestCreateInputs, values: GuestFormValues): string {
+  const guard = guestGpuGuard(inputs, values);
+
+  if (!guard.enabled) {
+    return guard.reason;
+  }
+
+  if (values.gpuBackend === "none") {
+    return "None. A GPU is passed through to the guest whole, and the guest waits in Pending until one is free.";
+  }
+
+  return `${guestGpuBackendLabels[values.gpuBackend]}. ${gpuParksInPendingFact}`;
+}
+
+/** The PVC a row is pointing at, when the read returned it. */
+export function pickedPvc(inputs: GuestCreateInputs, row: GuestDataDiskRow): GuestPvcFacts | undefined {
+  const name = row.pvc.trim();
+
+  return name ? inputs.pvcs.find((pvc) => pvc.name === name) : undefined;
+}
+
+/** Which of the three sources this row names, counted rather than assumed. */
+function namedDataDiskSources(row: GuestDataDiskRow): GuestDataDiskSource[] {
+  const named: GuestDataDiskSource[] = [];
+
+  if (row.image.trim()) {
+    named.push("image");
+  }
+
+  if (row.pvc.trim()) {
+    named.push("pvc");
+  }
+
+  if (row.blankSize.trim()) {
+    named.push("blank");
+  }
+
+  return named;
+}
+
+/** How the source of a data disk reads in the sentences about it. */
+export const guestDataDiskSourceLabels: Record<GuestDataDiskSource, string> = {
+  image: "a SwiftImage",
+  pvc: "an existing PVC",
+  blank: "a blank disk",
+};
+
+/**
+ * Everything that would make a data disk wrong, one message set per row.
+ *
+ * The blocking half of the section. Every rule here is one upstream states in a
+ * webhook nobody has enabled, so the alternative to this function is a guest
+ * that is stored, admitted and then quietly missing a disk.
+ */
+export function dataDiskErrors(inputs: GuestCreateInputs, values: GuestFormValues): GuestDataDiskMessages[] {
+  const names = values.dataDisks.map((row) => row.name.trim());
+
+  return values.dataDisks.map((row) => {
+    const messages: GuestDataDiskMessages = {};
+    const name = row.name.trim();
+
+    if (!name) {
+      messages.name =
+        "A data disk needs a name: it is what the guest's volume and the host device path are built from " +
+        "(/dev/kubeswift-data-<name>).";
+    } else if (name.length > maxDataDiskNameLength) {
+      messages.name =
+        `A data disk name is at most ${maxDataDiskNameLength} characters; this one is ${name.length}. The cap is ` +
+        "the schema's own, and it is shorter than a DNS label because the name becomes part of a device path.";
+    } else if (!dnsLabelPattern.test(name)) {
+      messages.name =
+        "A data disk name is lowercase letters, digits and '-', starting and ending with a letter or a digit: it is " +
+        "a DNS label, and it becomes the guest's volume name.";
+    } else if (names.filter((candidate) => candidate === name).length > 1) {
+      messages.name =
+        `Two data disks are named ${name}. The names have to differ: they are what the volumes and the device paths ` +
+        "inside the guest are built from, and upstream refuses the collision in a webhook that ships disabled.";
+    }
+
+    const named = namedDataDiskSources(row);
+
+    if (named.length > 1) {
+      const listed = named.map((source) => guestDataDiskSourceLabels[source]);
+
+      messages.source =
+        "A data disk is exactly one of an image, an existing PVC or a blank size; this one names " +
+        `${listed.slice(0, -1).join(", ")} and ${listed[listed.length - 1]}. Upstream refuses more than one in a ` +
+        "webhook that ships disabled, and the controller would pick one of them without saying which.";
+    } else if (named.length === 0) {
+      if (row.source === "image") {
+        messages.image =
+          "Name the SwiftImage this disk is cloned from. The controller clones it into a PVC of this guest and " +
+          "attaches it as a raw VM disk.";
+      } else if (row.source === "pvc") {
+        messages.pvc =
+          "Name the PersistentVolumeClaim this disk attaches. It has to exist already: the controller attaches it, " +
+          "it does not create it.";
+      } else {
+        messages.blankSize =
+          "Give the blank disk a size, for example 100Gi. It is the one field a blank disk requires, and the " +
+          "controller creates a PVC of this guest for it.";
+      }
+    }
+
+    const blankSize = row.blankSize.trim();
+
+    if (blankSize && !quantityPattern.test(blankSize)) {
+      messages.blankSize =
+        "A size is a Kubernetes quantity, for example 100Gi, 10G or 1Ti. The API server refuses anything else " +
+        "outright, because the pattern is in the CRD.";
+    } else if (blankSize && !isPositiveQuantity(blankSize)) {
+      messages.blankSize = "A blank disk has to be larger than zero: upstream refuses a size that is not.";
+    }
+
+    const storageClass = row.blankStorageClass.trim();
+
+    if (storageClass && !dnsSubdomainPattern.test(storageClass)) {
+      messages.blankStorageClass =
+        "A StorageClass name is lowercase letters, digits, '-' and '.', starting and ending with a letter or a digit.";
+    }
+
+    if (row.attachAsDisk && row.source !== "pvc") {
+      messages.attachAsDisk =
+        `attachAsDisk only applies to a PVC: ${row.source === "image" ? "an image-backed" : "a blank"} disk is ` +
+        "attached as a raw VM disk anyway. Upstream refuses the combination in a webhook that ships disabled.";
+    } else if (row.attachAsDisk) {
+      const pvc = pickedPvc(inputs, row);
+
+      // A claim that DECLARES another mode is a refusal; one that declares none
+      // is a warning, because the claim may still have been provisioned as a
+      // Block one and a client-side guess must not block a create the API
+      // server would accept (W12).
+      if (pvc?.volumeMode !== undefined && pvc.volumeMode !== attachAsDiskVolumeMode) {
+        messages.attachAsDisk =
+          `The claim ${pvc.name} is ${pvc.volumeMode}, and attaching it as a raw VM disk needs a ` +
+          `${attachAsDiskVolumeMode} claim: a Filesystem claim is a directory, and there is no device to hand to the ` +
+          `guest. Leave it off to mount it in the launcher pod instead, or attach a ${attachAsDiskVolumeMode} claim.`;
+      }
+    }
+
+    return messages;
+  });
+}
+
+/** Whether a quantity is greater than zero, which the CRD's pattern does not say. */
+function isPositiveQuantity(value: string): boolean {
+  const digits = value.replace(/^[+-]/, "").match(/^[0-9]*\.?[0-9]*/)?.[0] ?? "";
+
+  return !value.startsWith("-") && Number.parseFloat(digits) > 0;
+}
+
+/**
+ * Everything worth saying about a data disk that would still be accepted.
+ *
+ * The `attachAsDisk` rule has a warning branch as well as an error one, and the
+ * split is the point: the volume mode of a claim this form did not create is a
+ * fact of an object the user may not be allowed to read, and a read that was
+ * refused must never block a write the API server would accept (W12).
+ */
+export function dataDiskWarnings(inputs: GuestCreateInputs, values: GuestFormValues): GuestDataDiskMessages[] {
+  return values.dataDisks.map((row) => {
+    const messages: GuestDataDiskMessages = {};
+    const image = row.image.trim();
+
+    if (row.source === "image" && image) {
+      const picked = inputs.images.find((candidate) => candidate.name === image);
+
+      if (!picked) {
+        messages.image = inputs.imagesUnverified
+          ? `The SwiftImages of this namespace could not be listed, so ${image} is not verified: whether it exists, ` +
+            "and whether it is Ready, are unknown from here."
+          : `No SwiftImage named ${image} is in this namespace. Upstream needs a Ready image to clone a data disk ` +
+            "from, so the guest waits, Resolved=False, until one exists.";
+      } else if (picked.phase !== readyImagePhase) {
+        messages.image =
+          `The image ${image} ${picked.phase ? `is ${picked.phase}` : "has not reported a phase yet"}, not ` +
+          `${readyImagePhase}: upstream clones a data disk from a Ready image only, so this guest waits for it the ` +
+          "same way it would wait for a boot image.";
+      }
+    }
+
+    const pvcName = row.pvc.trim();
+
+    if (row.source === "pvc" && pvcName) {
+      const pvc = pickedPvc(inputs, row);
+
+      if (!pvc) {
+        messages.pvc = inputs.pvcsUnverified
+          ? `The PersistentVolumeClaims of this namespace could not be listed, so ${pvcName} is not verified: ` +
+            "whether it exists, and whether it is a Block claim, are unknown from here." +
+            (row.attachAsDisk
+              ? ` Attaching it as a raw VM disk needs a ${attachAsDiskVolumeMode} claim, and this form cannot check ` +
+                "that from here."
+              : "")
+          : `No PersistentVolumeClaim named ${pvcName} is in this namespace. The controller attaches an existing ` +
+            "claim rather than creating one, so the guest waits until it exists.";
+      } else if (row.attachAsDisk && pvc.volumeMode === undefined) {
+        messages.attachAsDisk =
+          `The claim ${pvc.name} declares no volumeMode, so whether it can be attached as a raw VM disk is not ` +
+          `verifiable from here: upstream needs a ${attachAsDiskVolumeMode} claim. This warns rather than blocks, ` +
+          "because a claim that says nothing may still have been provisioned as one.";
+      }
+    }
+
+    return messages;
+  });
+}
+
+/** What one data disk does, for the write summary. */
+export function dataDiskSummaryNote(inputs: GuestCreateInputs, row: GuestDataDiskRow): string | undefined {
+  const name = row.name.trim();
+
+  if (!name) {
+    return undefined;
+  }
+
+  if (row.source === "image") {
+    const image = row.image.trim();
+
+    return image
+      ? `Data disk ${name}: the image ${image} is cloned into a PVC of this guest and attached as a raw VM disk.`
+      : undefined;
+  }
+
+  if (row.source === "pvc") {
+    const pvc = row.pvc.trim();
+
+    if (!pvc) {
+      return undefined;
+    }
+
+    const facts = pickedPvc(inputs, row);
+    const mode = facts?.volumeMode ? ` (${facts.volumeMode})` : "";
+
+    return row.attachAsDisk
+      ? `Data disk ${name}: the existing claim ${pvc}${mode} is attached to the guest as a raw VM block disk.`
+      : `Data disk ${name}: the existing claim ${pvc}${mode} is mounted as a filesystem directory in the launcher ` +
+          "pod, not as a disk the guest sees. Tick attachAsDisk to hand it to the guest as a device.";
+  }
+
+  const size = row.blankSize.trim();
+
+  if (!size) {
+    return undefined;
+  }
+
+  const volumeMode = row.blankVolumeMode.trim() || defaultBlankVolumeMode;
+  const storageClass = row.blankStorageClass.trim();
+
+  return (
+    `Data disk ${name}: a blank ${size} ${volumeMode} PVC of this guest is created ` +
+    `${storageClass ? `on the storage class ${storageClass}` : "on the cluster's default storage class"} and ` +
+    "attached as a disk. It arrives unformatted - the guest partitions it."
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section 9: network binding, ports and additional interfaces.
+//
+// The same webhook-only territory, with a sharper failure mode: the controller
+// does not refuse a bad `expose` mix, it mints a Service of the wrong type, and
+// it does not refuse `expose` under a bridge binding, it mints no Service at
+// all and says nothing. Both are silent, both survive a `kubectl get`, and both
+// are the kind of thing an operator finds out about from a user.
+// ---------------------------------------------------------------------------
+
+/** What each binding does to the primary interface, in one sentence apiece. */
+export function networkBindingDescription(binding: SwiftGuestNetworkBinding): string {
+  return binding === "bridge"
+    ? "The primary NIC rides a multi-node L2 network (a Multus NAD), so the guest keeps a portable IP. Ports are " +
+        "not DNAT'd through the pod IP and upstream refuses expose entirely: no per-guest Service is created."
+    : "The VM sits behind the pod IP, and each port below installs an in-pod DNAT from the pod to the guest. This " +
+        "is the only binding under which a port can ask for a Service.";
+}
+
+/** A port row as the section adds it: TCP, unexposed, and nothing filled in. */
+export function newPortRow(id: string): GuestPortRow {
+  return { id, port: "", name: "", targetPort: "", protocol: defaultPortProtocol, expose: "" };
+}
+
+/** The form with one more port row. */
+export function addPort(values: GuestFormValues): GuestFormValues {
+  return { ...values, ports: [...values.ports, newPortRow(nextRowId("port", values.ports))] };
+}
+
+/** The form without the named port row. */
+export function removePort(values: GuestFormValues, id: string): GuestFormValues {
+  return { ...values, ports: values.ports.filter((row) => row.id !== id) };
+}
+
+/** The form with one field of one port row changed. */
+export function updatePort(values: GuestFormValues, id: string, patch: Partial<GuestPortRow>): GuestFormValues {
+  return { ...values, ports: values.ports.map((row) => (row.id === id ? { ...row, ...patch } : row)) };
+}
+
+/** The fields a port row can carry a message on. */
+export type GuestPortField = "port" | "name" | "targetPort" | "protocol" | "expose";
+
+/** One message per field of one port row. */
+export type GuestPortMessages = Partial<Record<GuestPortField, string>>;
+
+/** How the submit-disabled sentence names each field of a port row. */
+export const guestPortFieldLabels: Record<GuestPortField, string> = {
+  port: "Port",
+  name: "Name",
+  targetPort: "Target port",
+  protocol: "Protocol",
+  expose: "Expose",
+};
+
+const portFieldOrder: GuestPortField[] = ["port", "name", "targetPort", "protocol", "expose"];
+
+/** The expose value every exposed port has to share: the first one that names it. */
+export function declaredExposure(values: GuestFormValues): string | undefined {
+  return values.ports.map((row) => row.expose.trim()).find((expose) => expose !== "");
+}
+
+/** Whether a port number is what the schema accepts, and nothing else. */
+function portNumberError(value: string, label: string): string | undefined {
+  if (!/^[0-9]+$/.test(value)) {
+    return `${label} is a whole number: the schema declares it as an int32 and the API server refuses anything else.`;
+  }
+
+  const port = Number.parseInt(value, 10);
+
+  if (port < minPortNumber || port > maxPortNumber) {
+    return `${label} is between ${minPortNumber} and ${maxPortNumber}; this one is ${port}. The bounds are the CRD's own.`;
+  }
+
+  return undefined;
+}
+
+/**
+ * Everything that would make a port wrong, one message set per row.
+ *
+ * Four of the five rules are the webhook's and the fifth is the schema's, and
+ * the difference is worth keeping: a port outside 1-65535 is refused by the API
+ * server with a message, while a second port without a name, a mixed `expose`
+ * and an `expose` under a bridge binding are all accepted in silence.
+ */
+export function portErrors(values: GuestFormValues): GuestPortMessages[] {
+  const names = values.ports.map((row) => row.name.trim());
+  const exposure = declaredExposure(values);
+  const bridge = values.networkBinding === "bridge";
+
+  return values.ports.map((row, index) => {
+    const messages: GuestPortMessages = {};
+    const port = row.port.trim();
+    const name = row.name.trim();
+    const targetPort = row.targetPort.trim();
+    const expose = row.expose.trim();
+
+    if (!port) {
+      messages.port = "A port is required: it is the only field of a port the schema requires.";
+    } else {
+      const error = portNumberError(port, "A port");
+
+      if (error) {
+        messages.port = error;
+      }
+    }
+
+    if (!name && values.ports.length > 1) {
+      messages.name =
+        `A name is required once a guest declares more than one port: it becomes the port's name on the Service ` +
+        "the controller mints, and Kubernetes refuses a multi-port Service whose ports are unnamed. Upstream " +
+        "enforces it in a webhook that ships disabled.";
+    } else if (name && !dnsLabelPattern.test(name)) {
+      messages.name =
+        "A port name is lowercase letters, digits and '-', starting and ending with a letter or a digit: it is a " +
+        "DNS label, and it becomes the name of a port on the guest's own Service.";
+    } else if (name && names.filter((candidate) => candidate === name).length > 1) {
+      messages.name = `Two ports are named ${name}. A Service cannot carry two ports with one name.`;
+    }
+
+    if (targetPort) {
+      const error = portNumberError(targetPort, "A target port");
+
+      if (error) {
+        messages.targetPort = error;
+      }
+    }
+
+    const duplicate = values.ports.findIndex(
+      (candidate) => candidate.port.trim() === port && candidate.protocol === row.protocol,
+    );
+
+    if (port && duplicate !== -1 && duplicate < index) {
+      messages.port =
+        `Port ${port}/${row.protocol} is declared twice. Upstream refuses the duplicate in a webhook that ships ` +
+        "disabled, and a Service with two identical ports is refused by Kubernetes itself.";
+    }
+
+    if (expose && bridge) {
+      messages.expose =
+        "A bridge-bound guest exposes nothing: its ports reach the network's own IP rather than the pod IP, so " +
+        "upstream " +
+        "rejects expose for the bridge binding - and on an install whose webhook is off it simply mints no Service " +
+        "and reports no error. The same rule applies to a guest whose primary interface is an sriov one.";
+    } else if (expose && exposure && expose !== exposure) {
+      messages.expose =
+        `All exposed ports share ONE per-guest Service, so they have to ask for one type: this port asks for ` +
+        `${expose} while another asks for ${exposure}. Upstream refuses the mix in a webhook that ships disabled, ` +
+        "and the controller silently mints a Service of whichever type it read first.";
+    }
+
+    return messages;
+  });
+}
+
+/**
+ * Everything worth saying about a port that would still be accepted.
+ *
+ * The partial-exposure line is the one that matters: a guest with three ports
+ * of which two are exposed is a legitimate configuration - the third is
+ * reachable pod-to-VM through the DNAT and is simply not on the Service - and
+ * it is also exactly what a half-finished form looks like.
+ */
+export function portWarnings(values: GuestFormValues): GuestPortMessages[] {
+  const exposure = declaredExposure(values);
+  const exposed = values.ports.filter((row) => row.expose.trim() !== "").length;
+
+  return values.ports.map((row) => {
+    const messages: GuestPortMessages = {};
+    const name = row.name.trim();
+
+    if (name && (name.length > maxServicePortNameLength || !/[a-z]/.test(name))) {
+      messages.name =
+        `Kubernetes caps a Service port name at ${maxServicePortNameLength} characters and requires at least one ` +
+        "letter in it. Upstream calls this field a DNS label and does not check either rule, so a longer name is " +
+        "stored here and refused later, by the API server, on the Service the controller mints.";
+    }
+
+    if (exposure && exposed < values.ports.length && row.expose.trim() === "") {
+      messages.expose =
+        `This port is not on the Service: only the ports that name a type are, and the others stay reachable ` +
+        "pod-to-VM through the in-pod DNAT alone. That is a legitimate configuration and this is a reminder, not a " +
+        "refusal.";
+    }
+
+    return messages;
+  });
+}
+
+/** An interface row as the section adds it: a bridge NIC with nothing filled in. */
+export function newInterfaceRow(id: string): GuestInterfaceRow {
+  return { id, name: "", networkName: "", networkNamespace: "", primary: false, mac: "" };
+}
+
+/** The form with one more interface row. */
+export function addInterface(values: GuestFormValues): GuestFormValues {
+  return { ...values, interfaces: [...values.interfaces, newInterfaceRow(nextRowId("nic", values.interfaces))] };
+}
+
+/** The form without the named interface row. */
+export function removeInterface(values: GuestFormValues, id: string): GuestFormValues {
+  return { ...values, interfaces: values.interfaces.filter((row) => row.id !== id) };
+}
+
+/** The form with one field of one interface row changed. */
+export function updateInterface(
+  values: GuestFormValues,
+  id: string,
+  patch: Partial<GuestInterfaceRow>,
+): GuestFormValues {
+  return { ...values, interfaces: values.interfaces.map((row) => (row.id === id ? { ...row, ...patch } : row)) };
+}
+
+/** The fields an interface row can carry a message on. */
+export type GuestInterfaceField = "name" | "networkName" | "networkNamespace" | "primary" | "mac";
+
+/** One message per field of one interface row. */
+export type GuestInterfaceMessages = Partial<Record<GuestInterfaceField, string>>;
+
+/** How the submit-disabled sentence names each field of an interface row. */
+export const guestInterfaceFieldLabels: Record<GuestInterfaceField, string> = {
+  name: "Name",
+  networkName: "Network",
+  networkNamespace: "Network namespace",
+  primary: "Primary",
+  mac: "MAC address",
+};
+
+const interfaceFieldOrder: GuestInterfaceField[] = ["name", "networkName", "networkNamespace", "primary", "mac"];
+
+/**
+ * Everything that would make an additional interface wrong.
+ *
+ * The MAC rule is the one with teeth: its pattern is in the schema, and
+ * upstream's own comment says why - the value is written into a shell env file
+ * the launcher sources, so an unconstrained one would execute in a privileged
+ * container. The API server refuses it; this says so before the create does.
+ */
+export function interfaceErrors(values: GuestFormValues): GuestInterfaceMessages[] {
+  const names = values.interfaces.map((row) => row.name.trim());
+  const primaries = values.interfaces.filter((row) => row.primary).length;
+
+  return values.interfaces.map((row) => {
+    const messages: GuestInterfaceMessages = {};
+    const name = row.name.trim();
+    const networkName = row.networkName.trim();
+    const networkNamespace = row.networkNamespace.trim();
+    const mac = row.mac.trim();
+
+    if (!name) {
+      messages.name =
+        "An interface needs a name: the schema requires it, and the guest's status reports each NIC by it.";
+    } else if (!dnsLabelPattern.test(name)) {
+      messages.name =
+        "An interface name is lowercase letters, digits and '-', starting and ending with a letter or a digit.";
+    } else if (names.filter((candidate) => candidate === name).length > 1) {
+      messages.name = `Two interfaces are named ${name}. The names identify the NICs in the guest's own status.`;
+    }
+
+    if (networkName && !dnsSubdomainPattern.test(networkName)) {
+      messages.networkName =
+        "A NetworkAttachmentDefinition name is lowercase letters, digits, '-' and '.', starting and ending with a " +
+        "letter or a digit.";
+    }
+
+    if (networkNamespace && !networkName) {
+      messages.networkNamespace =
+        "A namespace without a network name points at nothing. Name the NetworkAttachmentDefinition, or clear the " +
+        "namespace to leave this a node-local tap+bridge interface.";
+    } else if (networkNamespace && !dnsLabelPattern.test(networkNamespace)) {
+      messages.networkNamespace =
+        "A namespace is lowercase letters, digits and '-', starting and ending with a letter or a digit.";
+    }
+
+    if (row.primary && primaries > 1) {
+      messages.primary =
+        `At most one interface may be the primary, and ${primaries} are marked. Upstream refuses more than one in a ` +
+        "webhook that ships disabled; with none marked, the first interface without a network reference is the " +
+        "primary, which is the behaviour a guest gets anyway.";
+    }
+
+    if (mac && !macAddressPattern.test(mac)) {
+      messages.mac =
+        "A MAC address is six colon-separated hex pairs, for example 52:54:00:12:34:56. The pattern is in the CRD, " +
+        "and it is a security boundary rather than a formality: upstream writes the value into a shell file the " +
+        "privileged launcher sources.";
+    }
+
+    return messages;
+  });
+}
+
+/** Everything worth saying about an interface that would still be accepted. */
+export function interfaceWarnings(values: GuestFormValues): GuestInterfaceMessages[] {
+  return values.interfaces.map((row) => {
+    const messages: GuestInterfaceMessages = {};
+
+    if (row.primary && row.networkName.trim()) {
+      messages.primary =
+        "Marking a network-backed interface as the primary is upstream's own attestation that the network really is " +
+        "a multi-node L2: the guest's IP then comes from the network's IPAM instead of the node-local bridge, and " +
+        "the SwiftMigration webhook treats the guest as IP-preserving on that basis.";
+    }
+
+    return messages;
+  });
+}
+
+/** What this form does not offer on an interface, named rather than silently absent (G1). */
+export const interfaceTypesFact =
+  `Additional interfaces are ${defaultInterfaceType} type here - a tap and a bridge, virtio-net inside the guest. ` +
+  "The sriov and vhost-user types need a device-plugin resource name or a node-local socket path, and they live in " +
+  "the YAML editor with the other excluded fields.";
+
+/** What the binding and the ports below apply to, which is not every NIC of the guest. */
+export const primaryInterfaceFact =
+  "The binding and the ports apply to the guest's PRIMARY interface. Any additional interface below is a secondary " +
+  "NIC, and nothing here exposes one.";
+
+// ---------------------------------------------------------------------------
+// Section 10: the GPU, behind `guestGpuGuard`.
+//
+// Two backends that do the same thing by opposite routes: the native one, where
+// the SwiftGPU controller picks the node and the devices before the pod exists,
+// and the DRA one, where a resource claim rides on the pod and the scheduler
+// allocates the device. Exactly one, and a guest that has neither is the normal
+// case rather than an unfinished one.
+// ---------------------------------------------------------------------------
+
+/** How the two backends read, in the control and in the sentences about them. */
+export const guestGpuBackendLabels: Record<GuestGpuBackend, string> = {
+  none: "No GPU",
+  profile: "SwiftGPUProfile (native allocation)",
+  claim: "Resource claim (DRA)",
+};
+
+/** What choosing each backend means, in one line apiece. */
+export function guestGpuBackendDescription(backend: GuestGpuBackend): string {
+  switch (backend) {
+    case "profile":
+      return (
+        "The SwiftGPU controller finds a node with free devices and allocates them before the launcher pod is " +
+        "created, from the profile's own request (count, model, tier)."
+      );
+    case "claim":
+      return (
+        "The launcher pod carries a ResourceClaim, and the Kubernetes scheduler with a DRA driver allocates the " +
+        "device at schedule time; the controller reads the result back and passes it into the VM."
+      );
+    default:
+      return "The guest gets no GPU, which is what almost every guest wants.";
+  }
+}
+
+/** The backends the control offers, in the order it offers them. */
+export const guestGpuBackends: GuestGpuBackend[] = ["none", "profile", "claim"];
+
+/**
+ * Moves the GPU section to another backend, emptying the one it leaves.
+ *
+ * `gpuProfileRef` and `gpuResourceClaim` are mutually exclusive in upstream's
+ * own words, and nothing enforces it: the same shape as the boot source, so the
+ * violation is made inexpressible rather than validated.
+ */
+export function setGpuBackend(values: GuestFormValues, backend: GuestGpuBackend): GuestFormValues {
+  return {
+    ...values,
+    gpuBackend: backend,
+    gpuProfile: backend === "profile" ? values.gpuProfile : "",
+    gpuClaimName: backend === "claim" ? values.gpuClaimName : "",
+    gpuClaimTemplateName: backend === "claim" ? values.gpuClaimTemplateName : "",
+    gpuRequestName: backend === "claim" ? values.gpuRequestName : "",
+    gpuTier: backend === "claim" ? values.gpuTier : defaultGpuTier,
+    gpuHugepages: backend === "claim" ? values.gpuHugepages : "",
+  };
+}
+
+/** One option of the GPU profile picker, with the request it carries. */
+export interface GuestGpuProfileChoice {
+  name: string;
+  label: string;
+  facts: GuestGpuProfileFacts;
+}
+
+/** The request a profile makes, in one short line, for the option label. */
+export function gpuProfileSummary(profile: GuestGpuProfileFacts): string {
+  const parts: string[] = [];
+
+  if (profile.count !== undefined) {
+    parts.push(`${profile.count} ${profile.count === 1 ? "GPU" : "GPUs"}`);
+  }
+
+  // The empty string is the schema's way of saying "any model matches", which
+  // is a fact rather than a missing value - the same reading the M3 list uses.
+  if (profile.model) {
+    parts.push(profile.model);
+  } else if (profile.model === "") {
+    parts.push("any model");
+  }
+
+  if (profile.tier) {
+    parts.push(profile.tier);
+  }
+
+  return parts.join(", ");
+}
+
+/**
+ * The profiles the picker offers: every SwiftGPUProfile of the namespace.
+ *
+ * Nothing is filtered and nothing is dimmed, and that is a fact of the CRD
+ * rather than a choice: a SwiftGPUProfile has no status at all (SPEC-0007), so
+ * there is no readiness to show and no state that could make one unchoosable.
+ * What the option carries instead is the request itself.
+ */
+export function gpuProfileChoices(inputs: GuestCreateInputs): GuestGpuProfileChoice[] {
+  return inputs.gpuProfiles.map((profile) => {
+    const summary = gpuProfileSummary(profile);
+
+    return { name: profile.name, label: summary ? `${profile.name} - ${summary}` : profile.name, facts: profile };
+  });
+}
+
+/** The GPU profile the form is pointing at, when the read returned it. */
+export function pickedGpuProfile(inputs: GuestCreateInputs, values: GuestFormValues): GuestGpuProfileFacts | undefined {
+  const name = values.gpuProfile.trim();
+
+  return name ? inputs.gpuProfiles.find((profile) => profile.name === name) : undefined;
+}
+
+/** The fields the GPU section can carry a message on. */
+export type GuestGpuField = "profile" | "claimName" | "claimTemplateName" | "requestName" | "hugepages";
+
+/** One message per field of the GPU section. */
+export type GuestGpuMessages = Partial<Record<GuestGpuField, string>>;
+
+/** How the submit-disabled sentence names each GPU field. */
+export const guestGpuFieldLabels: Record<GuestGpuField, string> = {
+  profile: "GPU profile",
+  claimName: "Resource claim",
+  claimTemplateName: "Resource claim template",
+  requestName: "Request name",
+  hugepages: "Hugepages",
+};
+
+const gpuFieldOrder: GuestGpuField[] = ["profile", "claimName", "claimTemplateName", "requestName", "hugepages"];
+
+/**
+ * Everything that would make the GPU section wrong.
+ *
+ * Empty whenever the guard refuses, because a section that is not rendered
+ * cannot block a submit: the reason the guard gives is what stands in its
+ * place, and the payload emits nothing for it either.
+ */
+export function gpuErrors(inputs: GuestCreateInputs, values: GuestFormValues): GuestGpuMessages {
+  const messages: GuestGpuMessages = {};
+
+  if (!guestGpuGuard(inputs, values).enabled || values.gpuBackend === "none") {
+    return messages;
+  }
+
+  if (values.gpuBackend === "profile") {
+    if (!values.gpuProfile.trim()) {
+      messages.profile =
+        "Name the SwiftGPUProfile this guest asks for: it is what says how many GPUs, of which model and in which " +
+        "tier, and the allocation cannot start without it.";
+    }
+
+    return messages;
+  }
+
+  const claimName = values.gpuClaimName.trim();
+  const templateName = values.gpuClaimTemplateName.trim();
+
+  if (claimName && templateName) {
+    messages.claimName =
+      "A DRA claim is either a pre-created ResourceClaim or a ResourceClaimTemplate the scheduler mints one from, " +
+      "never both: upstream declares the two mutually exclusive and enforces it in a webhook that ships disabled.";
+    messages.claimTemplateName = messages.claimName;
+  } else if (!claimName && !templateName) {
+    messages.claimName =
+      "Name a ResourceClaim to share, or a ResourceClaimTemplate for a claim of this guest's own. A DRA backend " +
+      "with neither allocates nothing.";
+  }
+
+  const hugepages = values.gpuHugepages.trim();
+
+  if (hugepages && !quantityPattern.test(hugepages)) {
+    messages.hugepages =
+      "Hugepages is a size, for example 1Gi or 2Mi. Leave it empty for none - most GPU workloads want 1Gi.";
+  }
+
+  const requestName = values.gpuRequestName.trim();
+
+  if (requestName && !dnsLabelPattern.test(requestName)) {
+    messages.requestName =
+      "A request name is lowercase letters, digits and '-', starting and ending with a letter or a digit: it names " +
+      "one device request inside the claim.";
+  }
+
+  return messages;
+}
+
+/** Everything worth saying about the GPU section that would still be accepted. */
+export function gpuWarnings(inputs: GuestCreateInputs, values: GuestFormValues): GuestGpuMessages {
+  const messages: GuestGpuMessages = {};
+
+  if (!guestGpuGuard(inputs, values).enabled || values.gpuBackend !== "profile") {
+    return messages;
+  }
+
+  const named = values.gpuProfile.trim();
+
+  if (named && !pickedGpuProfile(inputs, values)) {
+    messages.profile = inputs.gpuProfilesUnverified
+      ? `The SwiftGPUProfiles of this namespace could not be listed, so ${named} is not verified: how many GPUs it ` +
+        "asks for, and of which tier, are unknown from here."
+      : `No SwiftGPUProfile named ${named} is in the namespace ${values.namespace || "of this guest"}. A guest whose ` +
+        "profile cannot be resolved parks in Pending on GPUAllocated rather than failing.";
+  }
+
+  return messages;
+}
+
+/**
+ * Whether this guest really asks for a GPU through the native backend.
+ *
+ * The guard is consulted as well as the backend, because a Windows image turns
+ * the whole section off without touching the values it holds: the answer has to
+ * be "what will be sent", not "what the control says".
+ */
+export function usesNativeGpuProfile(inputs: GuestCreateInputs, values: GuestFormValues): boolean {
+  return (
+    guestGpuGuard(inputs, values).enabled && values.gpuBackend === "profile" && values.gpuProfile.trim().length > 0
+  );
+}
+
+/** What the request name defaults to when the claim does not name one. */
+export const defaultGpuRequestName = "gpu";
+
+/** What a GPU costs this guest at create time, which is a wait rather than a failure. */
+export const gpuParksInPendingFact =
+  "A GPU is allocated before the launcher pod is created, so a guest whose devices are not available yet parks in " +
+  "Pending on its GPUAllocated condition instead of failing. It starts by itself once a node has the devices this " +
+  "asks for - and it stays parked, without an error, for as long as none does.";
+
+/** Why a node pin and a native GPU profile disagree, which upstream states and nothing shows. */
+export const gpuNodePinWarning =
+  "This guest is pinned to a node AND asks for a native GPU profile. Upstream requires the pin to name the node its " +
+  "GPU controller allocated on, and the two are decided independently: the validating webhook refuses the pair when " +
+  "they disagree, and with the webhook off the pod builder refuses to build the pod and reports Resolved=False. " +
+  "Leave the pin empty and let the allocation choose the node, unless the node is known to be the one that has the " +
+  "devices.";
+
 /** The fields validation and the warnings are keyed on, so a message renders next to its input. */
 export type GuestCreateField =
   | "namespace"
@@ -1812,6 +3052,13 @@ export function guestCreateWarnings(inputs: GuestCreateInputs, values: GuestForm
         "can take this guest is unknown from here."
       : `No Ready, schedulable node named ${nodeName} is in this cluster. A pinned pod that no node accepts is ` +
         "rejected rather than rescheduled.";
+  } else if (nodeName && nodePinApplies(values.bootSource) && usesNativeGpuProfile(inputs, values)) {
+    // Upstream states this one in the `nodeName` field's own documentation and
+    // enforces it nowhere an operator can see: the GPU controller picks the
+    // node from the devices it finds, and a pin that names another node makes
+    // the pod builder refuse to build with Resolved=False. Not a block: the
+    // operator may know which node holds the devices.
+    warnings.nodeName = gpuNodePinWarning;
   } else if (nodeName && pinned && !pinned.guard.enabled) {
     // The one case a node the picker holds is still the wrong answer: the pin
     // survived a switch to kernel boot, and the node it names cannot run a
@@ -1846,10 +3093,107 @@ export function guestCreateWarnings(inputs: GuestCreateInputs, values: GuestForm
  * puts its button below the fold of its own scroll area.
  */
 export function guestCreateSubmitBlockReason(inputs: GuestCreateInputs, values: GuestFormValues): string | undefined {
-  const errors = guestCreateErrors(inputs, values);
-  const field = fieldOrder.find((candidate) => errors[candidate]);
+  const [first] = guestCreateBlockingIssues(inputs, values);
 
-  return field ? `${guestCreateFieldLabels[field]}: ${errors[field]}` : undefined;
+  return first ? `${first.label}: ${first.message}` : undefined;
+}
+
+/** One reason the form cannot be submitted, named the way the sentence names it. */
+export interface GuestCreateBlockingIssue {
+  /** How the field reads in the sentence, including which row it belongs to. */
+  label: string;
+  message: string;
+}
+
+/**
+ * Every reason the form cannot be submitted, in the reading order of the form.
+ *
+ * The flat fields first, then the three repeatable sections row by row, then
+ * the GPU: a sentence that pointed at the fifth data disk while the namespace
+ * was still empty would be pointing past the first thing the user has to fix.
+ * The row labels carry the row's number, because "Name" alone means nothing on
+ * a form with three data disks and two ports.
+ */
+export function guestCreateBlockingIssues(
+  inputs: GuestCreateInputs,
+  values: GuestFormValues,
+): GuestCreateBlockingIssue[] {
+  const issues: GuestCreateBlockingIssue[] = [];
+  const errors = guestCreateErrors(inputs, values);
+
+  for (const field of fieldOrder) {
+    const message = errors[field];
+
+    if (message) {
+      issues.push({ label: guestCreateFieldLabels[field], message });
+    }
+  }
+
+  dataDiskErrors(inputs, values).forEach((messages, index) => {
+    for (const field of dataDiskFieldOrder) {
+      const message = messages[field];
+
+      if (message) {
+        issues.push({ label: `Data disk ${index + 1} ${guestDataDiskFieldLabels[field].toLowerCase()}`, message });
+      }
+    }
+  });
+
+  portErrors(values).forEach((messages, index) => {
+    for (const field of portFieldOrder) {
+      const message = messages[field];
+
+      if (message) {
+        issues.push({ label: `Port ${index + 1} ${guestPortFieldLabels[field].toLowerCase()}`, message });
+      }
+    }
+  });
+
+  interfaceErrors(values).forEach((messages, index) => {
+    for (const field of interfaceFieldOrder) {
+      const message = messages[field];
+
+      if (message) {
+        issues.push({ label: `Interface ${index + 1} ${guestInterfaceFieldLabels[field].toLowerCase()}`, message });
+      }
+    }
+  });
+
+  const gpu = gpuErrors(inputs, values);
+
+  for (const field of gpuFieldOrder) {
+    const message = gpu[field];
+
+    if (message) {
+      issues.push({ label: guestGpuFieldLabels[field], message });
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * Whether a collapsed section holds an error, so the dialog can open it.
+ *
+ * A submit blocked on a field nobody can see is the dead control W4 forbids,
+ * and the three sections this slice adds are all collapsed by default
+ * (DESIGN.md section 12).
+ */
+export function dataDisksSectionHasError(inputs: GuestCreateInputs, values: GuestFormValues): boolean {
+  return dataDiskErrors(inputs, values).some((messages) => Object.keys(messages).length > 0);
+}
+
+/** The same question for the network section, whose errors live on its rows. */
+export function networkSectionHasError(values: GuestFormValues): boolean {
+  return (
+    portErrors(values).some((messages) => Object.keys(messages).length > 0) ||
+    interfaceErrors(values).some((messages) => Object.keys(messages).length > 0)
+  );
+}
+
+/** The same question for the GPU section. */
+export function gpuSectionHasError(inputs: GuestCreateInputs, values: GuestFormValues): boolean {
+  return Object.keys(gpuErrors(inputs, values)).length > 0;
 }
 
 /**
@@ -1883,6 +3227,242 @@ export function guestStorageOverrides(values: GuestFormValues): SwiftGuestSpec["
   }
 
   return Object.keys(storage).length > 0 ? storage : undefined;
+}
+
+/**
+ * The data disks the create sends, or `undefined` when the section is untouched.
+ *
+ * Exactly the keys each row set, and never the legacy singular `dataDiskRef` -
+ * which this list supersedes and which can only carry an image, on the fixed
+ * device path `/dev/vdb`. A row without a name or without a source is dropped
+ * rather than sent: the submit is blocked on it anyway, and an empty-name
+ * reference is the one thing this form never emits (G7).
+ */
+export function guestDataDiskPayload(values: GuestFormValues): SwiftGuestDataDisk[] | undefined {
+  const disks = values.dataDisks
+    .map((row) => dataDiskPayload(row))
+    .filter((disk): disk is SwiftGuestDataDisk => disk !== undefined);
+
+  return disks.length > 0 ? disks : undefined;
+}
+
+/** One data disk, with exactly the keys its own source needs. */
+function dataDiskPayload(row: GuestDataDiskRow): SwiftGuestDataDisk | undefined {
+  const name = row.name.trim();
+
+  if (!name) {
+    return undefined;
+  }
+
+  if (row.source === "image") {
+    const image = row.image.trim();
+
+    return image ? { name, imageRef: { name: image } } : undefined;
+  }
+
+  if (row.source === "pvc") {
+    const pvc = row.pvc.trim();
+
+    if (!pvc) {
+      return undefined;
+    }
+
+    const disk: SwiftGuestDataDisk = { name, pvcRef: { name: pvc } };
+
+    // `false` is the schema's own default and the behaviour a PVC row gets
+    // without it, so it is not sent: an explicit false would be this form
+    // writing a value the API server would have written anyway.
+    if (row.attachAsDisk) {
+      disk.attachAsDisk = true;
+    }
+
+    return disk;
+  }
+
+  const size = row.blankSize.trim();
+
+  if (!size) {
+    return undefined;
+  }
+
+  const blank: NonNullable<SwiftGuestDataDisk["blank"]> = { size };
+  const storageClassName = row.blankStorageClass.trim();
+  const volumeMode = row.blankVolumeMode.trim();
+
+  if (storageClassName) {
+    blank.storageClassName = storageClassName;
+  }
+
+  // Only when it is not the `Block` the API server stamps: a re-sent default is
+  // a value this form claims to own and does not.
+  if (volumeMode === "Filesystem") {
+    blank.volumeMode = volumeMode;
+  }
+
+  return { name, blank };
+}
+
+/**
+ * The network block, or `undefined` when nothing in it was set.
+ *
+ * `nil preserves today's behavior` in the CRD's own words - nat binding, no
+ * Service - so a form that touched nothing sends no `network` at all rather
+ * than an empty object. The binding itself is sent only when it is not the
+ * `nat` the API server stamps, and a port's protocol only when it is not `TCP`,
+ * for the same reason: what the server would write anyway is not this form's to
+ * claim.
+ */
+export function guestNetworkPayload(values: GuestFormValues): SwiftGuestNetwork | undefined {
+  const network: SwiftGuestNetwork = {};
+  const ports = values.ports
+    .map((row) => portPayload(row))
+    .filter((port): port is SwiftGuestPort => port !== undefined);
+
+  if (values.networkBinding !== defaultNetworkBinding) {
+    network.binding = values.networkBinding;
+  }
+
+  if (ports.length > 0) {
+    network.ports = ports;
+  }
+
+  return Object.keys(network).length > 0 ? network : undefined;
+}
+
+/** One port, with exactly the keys the row set. */
+function portPayload(row: GuestPortRow): SwiftGuestPort | undefined {
+  const port = Number.parseInt(row.port.trim(), 10);
+
+  if (!Number.isFinite(port)) {
+    return undefined;
+  }
+
+  const payload: SwiftGuestPort = { port };
+  const name = row.name.trim();
+  const targetPort = Number.parseInt(row.targetPort.trim(), 10);
+  const expose = row.expose.trim();
+
+  if (name) {
+    payload.name = name;
+  }
+
+  if (Number.isFinite(targetPort)) {
+    payload.targetPort = targetPort;
+  }
+
+  if (row.protocol !== defaultPortProtocol) {
+    payload.protocol = row.protocol;
+  }
+
+  if (expose === "ClusterIP" || expose === "NodePort" || expose === "LoadBalancer") {
+    payload.expose = expose;
+  }
+
+  return payload;
+}
+
+/**
+ * The additional interfaces, or `undefined` when none was added.
+ *
+ * `type` is never sent: every interface this form builds is a `bridge` one, and
+ * that is the value the API server stamps. `primary: false` is not sent either
+ * - with nothing marked, upstream makes the first interface without a network
+ * reference the primary, which is what an unmarked list means.
+ */
+export function guestInterfacesPayload(values: GuestFormValues): SwiftGuestInterface[] | undefined {
+  const interfaces = values.interfaces
+    .map((row) => interfacePayload(row))
+    .filter((nic): nic is SwiftGuestInterface => nic !== undefined);
+
+  return interfaces.length > 0 ? interfaces : undefined;
+}
+
+/** One interface, with exactly the keys the row set. */
+function interfacePayload(row: GuestInterfaceRow): SwiftGuestInterface | undefined {
+  const name = row.name.trim();
+
+  if (!name) {
+    return undefined;
+  }
+
+  const nic: SwiftGuestInterface = { name };
+  const networkName = row.networkName.trim();
+  const networkNamespace = row.networkNamespace.trim();
+  const mac = row.mac.trim();
+
+  if (networkName) {
+    nic.networkRef = networkNamespace ? { name: networkName, namespace: networkNamespace } : { name: networkName };
+  }
+
+  if (row.primary) {
+    nic.primary = true;
+  }
+
+  if (mac) {
+    nic.mac = mac;
+  }
+
+  return nic;
+}
+
+/**
+ * The GPU half of the spec: the native reference, the DRA claim, or nothing.
+ *
+ * The guard is what decides, not the control: a Windows image turns the section
+ * off without emptying it, and a payload that read the backend alone would send
+ * a GPU upstream refuses on a guest whose OS the form itself chose.
+ */
+export function guestGpuPayload(
+  inputs: GuestCreateInputs,
+  values: GuestFormValues,
+): Pick<SwiftGuestSpec, "gpuProfileRef" | "gpuResourceClaim"> {
+  if (!guestGpuGuard(inputs, values).enabled) {
+    return {};
+  }
+
+  if (values.gpuBackend === "profile") {
+    const profile = values.gpuProfile.trim();
+
+    return profile ? { gpuProfileRef: { name: profile } } : {};
+  }
+
+  if (values.gpuBackend !== "claim") {
+    return {};
+  }
+
+  const claimName = values.gpuClaimName.trim();
+  const templateName = values.gpuClaimTemplateName.trim();
+
+  if (!claimName && !templateName) {
+    return {};
+  }
+
+  const claim: SwiftGuestGpuResourceClaim = {};
+  const requestName = values.gpuRequestName.trim();
+  const hugepages = values.gpuHugepages.trim();
+
+  // Exactly one, which is what upstream declares and nothing enforces. The
+  // shared claim wins on a form that somehow holds both, and the submit is
+  // blocked on that state anyway.
+  if (claimName) {
+    claim.resourceClaimName = claimName;
+  } else {
+    claim.resourceClaimTemplateName = templateName;
+  }
+
+  if (requestName) {
+    claim.requestName = requestName;
+  }
+
+  if (values.gpuTier !== defaultGpuTier) {
+    claim.tier = values.gpuTier;
+  }
+
+  if (hugepages) {
+    claim.hugepages = hugepages;
+  }
+
+  return { gpuResourceClaim: claim };
 }
 
 /**
@@ -1949,6 +3529,24 @@ export function guestCreatePayload(
   if (storage) {
     spec.storage = storage;
   }
+
+  const dataDisks = guestDataDiskPayload(values);
+  const network = guestNetworkPayload(values);
+  const interfaces = guestInterfacesPayload(values);
+
+  if (dataDisks) {
+    spec.dataDiskRefs = dataDisks;
+  }
+
+  if (network) {
+    spec.network = network;
+  }
+
+  if (interfaces) {
+    spec.interfaces = interfaces;
+  }
+
+  Object.assign(spec, guestGpuPayload(inputs, values));
 
   if (values.guestAgentEnabled) {
     spec.guestAgent = { enabled: true };
@@ -2068,6 +3666,14 @@ export function guestCreateSummary(inputs: GuestCreateInputs, values: GuestFormV
     cloneSummaryNotes(inputs, values, notes);
   }
 
+  for (const row of values.dataDisks) {
+    const note = dataDiskSummaryNote(inputs, row);
+
+    if (note) {
+      notes.push(note);
+    }
+  }
+
   if (seedProfile && seedProfileApplies(values.bootSource)) {
     notes.push(
       `The seed profile ${seedProfile} is rendered into a Secret of this guest and attached as its cloud-init ` +
@@ -2079,6 +3685,24 @@ export function guestCreateSummary(inputs: GuestCreateInputs, values: GuestFormV
 
   if (nodeName && nodePinApplies(values.bootSource)) {
     notes.push(`It is pinned to the node ${nodeName}. ${nodePinFact}`);
+  }
+
+  const serviceNote = serviceSummaryNote(values);
+
+  if (serviceNote) {
+    notes.push(serviceNote);
+  }
+
+  const interfacesNote = interfacesSummaryNote(values);
+
+  if (interfacesNote) {
+    notes.push(interfacesNote);
+  }
+
+  const gpuNote = gpuSummaryNote(inputs, values);
+
+  if (gpuNote) {
+    notes.push(gpuNote);
   }
 
   notes.push(liveMigrationFact(storage, values.bootSource));
@@ -2100,6 +3724,13 @@ export function guestCreateSummary(inputs: GuestCreateInputs, values: GuestFormV
 
   if (osType.osType === "windows") {
     warnings.push(values.bootSource === "clone" ? windowsCloneWarning : windowsConstraintFact);
+  }
+
+  // A GPU is the one thing on this form that makes a guest WAIT without failing
+  // (G11): the allocation runs before the launcher pod exists, so a guest whose
+  // devices are not free parks in Pending and starts by itself later.
+  if (values.gpuBackend !== "none" && guestGpuGuard(inputs, values).enabled) {
+    warnings.push(gpuParksInPendingFact);
   }
 
   if (osType.unverified) {
@@ -2131,6 +3762,15 @@ export function guestCreateSummary(inputs: GuestCreateInputs, values: GuestFormV
     }
   }
 
+  // The GPU profile joins them for the same reason: a profile that could not be
+  // verified is a guest that parks in Pending, and the picker is inside a
+  // section that ships collapsed.
+  const gpuProfileWarning = gpuWarnings(inputs, values).profile;
+
+  if (gpuProfileWarning) {
+    warnings.push(gpuProfileWarning);
+  }
+
   return { write: `Create SwiftGuest ${namespace}/${name}`, notes, warnings };
 }
 
@@ -2156,6 +3796,131 @@ function runPolicySummaryNote(values: GuestFormValues): string {
   return runPolicyStarts(values.runPolicy)
     ? `${head} A launcher pod is created for it as soon as its ${values.bootSource === "kernel" ? "kernel artifact" : "root disk"} is ready.`
     : `${head} No launcher pod is created now.`;
+}
+
+/**
+ * What the ports do, which is two different things depending on the binding.
+ *
+ * The per-guest Service is the one object of this create the operator did not
+ * ask for by name, so W1 requires it on its own line - and its absence under a
+ * bridge binding is worth the same line, because that is the silent failure the
+ * inline rule exists to prevent.
+ */
+function serviceSummaryNote(values: GuestFormValues): string | undefined {
+  const ports = values.ports.filter((row) => row.port.trim() !== "");
+
+  if (ports.length === 0) {
+    return undefined;
+  }
+
+  const declared = ports
+    .map((row) => `${row.port.trim()}/${row.protocol}${row.targetPort.trim() ? ` to ${row.targetPort.trim()}` : ""}`)
+    .join(", ");
+
+  if (values.networkBinding === "bridge") {
+    return (
+      `It declares ${ports.length === 1 ? "one port" : `${ports.length} ports`} (${declared}) on a bridge-bound ` +
+      "primary interface: no Service is created and no in-pod DNAT is installed, because the ports reach the " +
+      "network's own IP. They are declarable for NetworkPolicy to target."
+    );
+  }
+
+  const exposure = declaredExposure(values);
+  const exposed = ports.filter((row) => row.expose.trim() !== "").length;
+
+  if (!exposure) {
+    return (
+      `It declares ${ports.length === 1 ? "one port" : `${ports.length} ports`} (${declared}), each installing an ` +
+      "in-pod DNAT from the pod IP to the guest. No Service is created: none of them asks to be exposed."
+    );
+  }
+
+  const carried =
+    exposed === ports.length
+      ? ports.length === 1
+        ? "its one port"
+        : `every one of its ${ports.length} ports`
+      : `${exposed} of its ${ports.length} ports`;
+
+  return (
+    `One Service of type ${exposure} is created for this guest, carrying ${carried} (${declared}). All exposed ports ` +
+    "share that one Service, and it is deleted with the guest."
+  );
+}
+
+/** What the additional interfaces add, for the summary. */
+function interfacesSummaryNote(values: GuestFormValues): string | undefined {
+  const nics = values.interfaces.filter((row) => row.name.trim() !== "");
+
+  if (nics.length === 0) {
+    return undefined;
+  }
+
+  const primary = nics.find((row) => row.primary);
+  const attached = nics.filter((row) => row.networkName.trim() !== "").length;
+
+  const count =
+    nics.length === 1
+      ? `one additional ${defaultInterfaceType} interface`
+      : `${nics.length} additional ${defaultInterfaceType} interfaces`;
+  const multus =
+    attached === 0
+      ? ""
+      : nics.length === 1
+        ? ", attached to a network by Multus"
+        : `, ${attached} of them attached to a network by Multus`;
+
+  return (
+    `It gets ${count}${multus}. ` +
+    (primary
+      ? `The primary NIC is ${primary.name.trim()}: that is the one whose address the guest reports as its primary IP.`
+      : "None is marked primary, so the first interface without a network reference is the primary, as upstream " +
+        "does by default.")
+  );
+}
+
+/** What a GPU commits this guest to, for the summary. */
+function gpuSummaryNote(inputs: GuestCreateInputs, values: GuestFormValues): string | undefined {
+  if (!guestGpuGuard(inputs, values).enabled) {
+    return undefined;
+  }
+
+  if (values.gpuBackend === "profile") {
+    const profile = values.gpuProfile.trim();
+
+    if (!profile) {
+      return undefined;
+    }
+
+    const facts = pickedGpuProfile(inputs, values);
+    const summary = facts ? gpuProfileSummary(facts) : "";
+
+    return (
+      `It asks for the GPU profile ${profile}${summary ? ` (${summary})` : ""} through the native backend: the ` +
+      "SwiftGPU controller picks the node and the devices before the launcher pod is created, and passes them " +
+      "through with VFIO."
+    );
+  }
+
+  if (values.gpuBackend !== "claim") {
+    return undefined;
+  }
+
+  const claimName = values.gpuClaimName.trim();
+  const templateName = values.gpuClaimTemplateName.trim();
+
+  if (!claimName && !templateName) {
+    return undefined;
+  }
+
+  const requestName = values.gpuRequestName.trim() || defaultGpuRequestName;
+
+  return (
+    `It asks for a GPU through DRA: the launcher pod carries ` +
+    `${claimName ? `the ResourceClaim ${claimName}` : `a claim minted from the template ${templateName}`}, the ` +
+    `scheduler and the DRA driver allocate the device for the request ${requestName}, and the tier is ` +
+    `${values.gpuTier}${values.gpuTier === defaultGpuTier ? " (the value the API server stamps)" : ""}.`
+  );
 }
 
 /** The lines a clone-boot create is answerable for (SPEC-0011's grammar, G10). */

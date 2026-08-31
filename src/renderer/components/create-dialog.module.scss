@@ -280,3 +280,53 @@ $ink-secondary: rgba(0, 0, 0, 0.6);
   color: $ink-secondary;
   font-size: 0.9em;
 }
+
+// One row of a repeatable section - a data disk, a port, an interface
+// (SPEC-0013 slice 3). Boxed rather than merely spaced: a form with three data
+// disks and two ports has to say where one row ends and the next begins, and
+// the border is the same faint ink the collapsed section's own rule uses.
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin * 0.75;
+  padding: vars.$padding * 0.75;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: var(--border-radius);
+}
+
+.rowHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: vars.$margin;
+}
+
+.rowTitle {
+  font-weight: 500;
+}
+
+// The add and remove controls of a repeatable section. Plain buttons for the
+// reason the section header is one: the host's own `Button` paints itself from
+// theme tokens picked for a dark surface, and the ConfirmDialog box is
+// hardcoded white in both themes.
+.rowButton {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--blue);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+
+  &:disabled {
+    color: $ink-secondary;
+    cursor: default;
+  }
+}
+
+.addRow {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin * 0.25;
+}

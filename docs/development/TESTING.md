@@ -80,7 +80,8 @@ delete a guest, create a SwiftSnapshot, create a SwiftRestore, create a
 SwiftMigration and create SwiftGuests from the Guests page's own create button,
 for real, against dedicated fixtures nothing else reads
 (`160-swiftguest-actions.yaml`, `170-swiftrestore-actions.yaml`,
-`180-swiftmigration-actions.yaml`, `190-swiftguest-create.yaml`). They
+`180-swiftmigration-actions.yaml`, `190-swiftguest-create.yaml`,
+`195-swiftguest-create-volumes.yaml`). They
 assert the UI **and** read the result back with `kubectl`, because the point of
 a write case is that the cluster changed. What they must never assert is what a
 controller would do next: no reconciler runs here, so a stopped guest never
@@ -103,9 +104,31 @@ that leaves the disk-only and not-Ready captures out and counts them, the
 gone-source warning that never blocks, and the node the kernel-node label rule
 disables. Their fixtures are `e2e-kernel-pulling`, `e2e-snapshot-create-s3` and
 `e2e-snapshot-create-orphan` in `190-swiftguest-create.yaml`, with SPEC-0011's
-`e2e-snapshot-memory-ready` reused for the local clone. The
-pre-review pass (layer 4) stays read-only by construction and by assert, because
-it runs against the demo cluster a human reviewer is about to walk through.
+`e2e-snapshot-memory-ready` reused for the local clone.
+
+The slice-3 cases cover the form's collapsed tail. One writes a whole guest -
+two data disks (one image-backed, one blank), two `NodePort` ports, an
+additional bridge interface and a GPU profile - and reads it back key-exact,
+asserting both the keys the form sent and the ones the API server stamped into
+them (`network.binding`, `ports[].protocol`, `interfaces[].type`,
+`blank.volumeMode`), because the form deliberately sends none of the second set.
+Three assert what it refuses and why: the port rules (a second port without a
+name, a mixed `expose`, an `expose` under a `bridge` binding, with the section
+staying open while it holds an error), the data-disk rules (`attachAsDisk`
+against a `Filesystem` claim, a source that cannot be doubled, the ninth disk),
+and the GPU section replaced by its guard's reason on kernel boot and on the
+Windows image. The fifth asserts the Guests page fix: the virtualized list's
+clearance, that the last row's kebab no longer intersects the host's floating
+create button, and that it opens from a plain click. Their fixtures are
+`e2e-data-block` and `e2e-data-filesystem` in
+`195-swiftguest-create-volumes.yaml` - the first objects in this suite that are
+not custom resources, because `attachAsDisk` is the one rule that reads an
+object KubeSwift did not create - with the M3 GPU profiles and the M1
+`e2e-ubuntu-2404` image reused as they are.
+
+The pre-review pass (layer 4) stays read-only by construction and by assert,
+because it runs against the demo cluster a human reviewer is about to walk
+through.
 
 A freshly connected cluster shows the `default` namespace only, not all of
 them, so the suite moves the namespace filter once after connecting.
