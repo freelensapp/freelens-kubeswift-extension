@@ -70,6 +70,18 @@ export type ResolvedMigrationMode = "live" | "offline";
 export const kernelNodeLabel = "kubeswift.io/kernel-node";
 export const kernelNodeLabelValue = "true";
 
+/**
+ * Whether this node is one a kernel-boot guest can run on.
+ *
+ * One function for the rule, because two surfaces ask it: the Migrate dialog's
+ * target picker (this file) and the Create Guest form's node pin on kernel boot
+ * (SPEC-0013 slice 2). The controller pulls the kernel artifact onto the
+ * labelled nodes only, so an unlabelled node cannot start such a guest at all.
+ */
+export function isKernelNode(node: Pick<NodeFacts, "labels">): boolean {
+  return node.labels?.[kernelNodeLabel] === kernelNodeLabelValue;
+}
+
 /** The storage the live path needs: both nodes must be able to hold the disk at once. */
 export const liveAccessMode: SwiftGuestAccessMode = "ReadWriteMany";
 export const liveVolumeMode: SwiftGuestVolumeMode = "Block";
@@ -569,7 +581,7 @@ export function nodeChoices(inputs: MigrationInputs): NodeChoice[] {
   return inputs.nodes
     .filter((node) => node.ready && node.schedulable && node.name !== current)
     .map((node) => {
-      if (needsKernelNode && node.labels?.[kernelNodeLabel] !== kernelNodeLabelValue) {
+      if (needsKernelNode && !isKernelNode(node)) {
         return {
           name: node.name,
           guard: disabled(

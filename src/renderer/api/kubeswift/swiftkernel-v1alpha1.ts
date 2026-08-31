@@ -72,6 +72,17 @@ export class SwiftKernel extends Renderer.K8sApi.LensExtensionKubeObject<
     return object.spec?.profile;
   }
 
+  /**
+   * The command line this kernel boots with unless a guest overrides it.
+   *
+   * Read by the Create Guest form, which shows it as the default the guest's own
+   * `spec.kernelCmdline` replaces: the guest's value is not appended to this
+   * one, it stands in for it (SPEC-0013).
+   */
+  static getKernelCmdline(object: SwiftKernel): string | undefined {
+    return object.spec?.kernelCmdline || undefined;
+  }
+
   static getNodeStatuses(object: SwiftKernel): SwiftKernelNodeStatus[] {
     return object.status?.nodeStatuses ?? [];
   }

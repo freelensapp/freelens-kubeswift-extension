@@ -159,6 +159,15 @@ E2E_STATUS_PATCHES=(
 	# every guest this form creates looks like on a cluster with no controller.
 	"swiftimages.image.kubeswift.io/e2e-image-importing=swiftimage-e2e-image-importing.yaml"
 	"swiftimages.image.kubeswift.io/e2e-windows-2022=swiftimage-e2e-windows-2022.yaml"
+	# The M6 Create Guest kernel and clone subjects (SPEC-0013 slice 2). The
+	# kernel that is still Pulling is what the will-wait line is computed from -
+	# and it says something different from the image one, because kernels are not
+	# watched. The two snapshots are the tiers the clone grammar turns on: an s3
+	# capture, which has to be told which node to download onto, and a local one
+	# whose source guest is not in this namespace at all.
+	"swiftkernels.kernel.kubeswift.io/e2e-kernel-pulling=swiftkernel-e2e-kernel-pulling.yaml"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-s3=swiftsnapshot-e2e-snapshot-create-s3.yaml"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-orphan=swiftsnapshot-e2e-snapshot-create-orphan.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -250,6 +259,17 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftimages.image.kubeswift.io/e2e-image-importing={.status.phase}=Importing"
 	"swiftimages.image.kubeswift.io/e2e-windows-2022={.status.phase}=Ready"
 	"swiftimages.image.kubeswift.io/e2e-windows-2022={.spec.osType}=windows"
+	# The slice-2 subjects, for the same reason: all four facts are read at click
+	# time, and a fixture that did not land would look like a UI regression. The
+	# backend of the s3 snapshot is what makes the target node required, and the
+	# memory image of each is what makes them offerable at all - a snapshot with
+	# no memorySnapshot is not in the picker.
+	"swiftkernels.kernel.kubeswift.io/e2e-kernel-pulling={.status.phase}=Pulling"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-s3={.spec.backend.type}=s3"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-s3={.status.phase}=Ready"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-s3={.status.memorySnapshot.sizeBytes}=8589934592"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-orphan={.status.phase}=Ready"
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-orphan={.spec.guestRef.name}=e2e-guest-create-vanished"
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the
@@ -288,6 +308,10 @@ E2E_NODE_NAME_FIELDS=(
 	# the picker excludes the node a guest is already on, so this substitution is
 	# what makes the empty-picker case empty.
 	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-inflight={.status.nodeName}"
+	# The clone's own local capture (SPEC-0013 slice 2): the Create Guest form
+	# names this node where the target node picker would otherwise be, so the
+	# substitution is what makes that sentence true rather than fictional.
+	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-orphan={.status.nodeName}"
 )
 
 log() {

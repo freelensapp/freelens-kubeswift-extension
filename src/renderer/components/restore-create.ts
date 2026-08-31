@@ -227,6 +227,19 @@ export function canRestore(snapshot: RestoreSnapshotFacts): ActionGuard {
 }
 
 /**
+ * The two fields the memory derivation below reads, and nothing else.
+ *
+ * Narrower than `RestoreSnapshotFacts` on purpose: the Create Guest form's
+ * clone boot asks the same question of a snapshot shape of its own (SPEC-0013
+ * slice 2), and one rule with two implementations is a rule that drifts.
+ */
+export interface MemorySnapshotFacts {
+  backend?: SwiftSnapshotBackendType;
+  /** `status.memorySnapshot`: the capture really holds a memory image. */
+  hasMemorySnapshot?: boolean;
+}
+
+/**
  * Whether this snapshot holds a memory image, which is what makes the MAC rule
  * bind, the memory restore mode meaningful and the fresh-disk sentence true.
  *
@@ -236,8 +249,12 @@ export function canRestore(snapshot: RestoreSnapshotFacts): ActionGuard {
  * that a memory image exists. The CRD's field documentation names only `local`
  * and `s3`; the derivation is wider, and being wider here is the cheap direction
  * to be wrong in - it locks a checkbox upstream would have required anyway.
+ *
+ * `spec.includeMemory` is deliberately not read: the CRD documents it as a
+ * no-op on every backend - the captured set is decided by the backend - so a
+ * snapshot with `includeMemory: false` on a memory backend still holds memory.
  */
-export function snapshotCapturesMemory(snapshot: RestoreSnapshotFacts): boolean {
+export function snapshotCapturesMemory(snapshot: MemorySnapshotFacts): boolean {
   return Boolean(snapshot.hasMemorySnapshot) || (snapshot.backend !== undefined && isMemoryBackend(snapshot.backend));
 }
 

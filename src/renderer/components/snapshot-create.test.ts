@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   backendChoices,
+  backendWithArticle,
   canTakeSnapshot,
   createFailureMessage,
   csiCaptureWaits,
@@ -42,6 +43,18 @@ const form = (patch: Partial<SnapshotFormValues> = {}): SnapshotFormValues => ({
 });
 
 const summaryText = (facts: { notes: string[]; warnings: string[] }) => [...facts.notes, ...facts.warnings].join(" ");
+
+describe("backendWithArticle", () => {
+  it("gives the two names that are read out letter by letter their vowel article", () => {
+    expect(backendWithArticle("s3")).toBe("an s3");
+    expect(backendWithArticle("oci")).toBe("an oci");
+  });
+
+  it("leaves the two that are read as words on 'a'", () => {
+    expect(backendWithArticle("local")).toBe("a local");
+    expect(backendWithArticle("csi-volume-snapshot")).toBe("a csi-volume-snapshot");
+  });
+});
 
 describe("canTakeSnapshot", () => {
   // The verb has no state in which it writes nothing: csi accepts a running and

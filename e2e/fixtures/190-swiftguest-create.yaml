@@ -74,3 +74,68 @@ spec:
     name: e2e-ubuntu-2404
   osType: linux
   runPolicy: Stopped
+---
+# The kernel that is still being pulled (SPEC-0013 slice 2). A guest created
+# against it is born Failed with Resolved=False and heals by itself - but on the
+# controller's 30-second resync rather than immediately, because kernels are not
+# watched the way images are, which is the difference the form's will-wait line
+# is about. Its status is injected by cluster-up.sh as Pulling, which no
+# controller here will ever move on.
+apiVersion: kernel.kubeswift.io/v1alpha1
+kind: SwiftKernel
+metadata:
+  name: e2e-kernel-pulling
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  ociRef:
+    # Fictional: nothing is pulled, the status is injected.
+    image: ghcr.io/freelensapp/kubeswift-e2e/kernel:6.14
+  profile: e2e-linux-6.14
+---
+# The Ready memory capture on a downloaded tier: an s3 snapshot is an object in
+# a bucket rather than an artifact on a node, so a clone of it has to be told
+# which node to download it onto. It is the subject of the case that asserts the
+# target node is required, and it is a snapshot of its own rather than the M2 or
+# SPEC-0011 ones, whose tiers are what those cases are about.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftSnapshot
+metadata:
+  name: e2e-snapshot-create-s3
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-create-taken
+  backend:
+    type: s3
+    s3:
+      bucket: kubeswift-e2e-snapshots
+      endpoint: https://s3.invalid
+      prefix: create-guest
+      region: eu-south-1
+  deletionPolicy: Retain
+---
+# The capture whose source guest is gone: nothing in this namespace is named
+# e2e-guest-create-vanished, and nothing ever creates it. A local capture rather
+# than a full-state oci one, because that is the case the warning is sharp
+# about - only an oci capture that carries the disk can be cloned without its
+# source guest. The warning never blocks, which is the other half of what the
+# case asserts.
+apiVersion: snapshot.kubeswift.io/v1alpha1
+kind: SwiftSnapshot
+metadata:
+  name: e2e-snapshot-create-orphan
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestRef:
+    name: e2e-guest-create-vanished
+  backend:
+    type: local
+    local:
+      hostPath: /var/lib/kubeswift/snapshots/e2e-snapshot-create-orphan
+  deletionPolicy: Delete

@@ -107,6 +107,19 @@ function guestCreateControl(frame: Frame, id: string) {
   return frame.locator(`.Select:has(#${id}) .Select__control`);
 }
 
+/**
+ * One boot-source radio of the Create Guest form.
+ *
+ * The host's `Radio` takes no test id of its own - the same fact the Restore
+ * dialog's mode radios work around - so the form puts one on the span inside the
+ * label, and the row is the ancestor that holds the input.
+ */
+function bootSourceRadio(frame: Frame, source: "image" | "kernel" | "clone") {
+  return frame
+    .locator(`[data-testid="guest-create-boot-source"] .Radio:has([data-testid="guest-create-boot-source-${source}"])`)
+    .first();
+}
+
 /** Picks one option of a Create Guest select, by the text of the option. */
 async function pickGuestOption(frame: Frame, id: string, text: string): Promise<void> {
   await guestCreateControl(frame, id).click();
@@ -2871,6 +2884,337 @@ describe("KubeSwift views against the fixture cluster", () => {
       expect(guestNames()).toEqual(before);
       expect(cluster.kubectlExists("swiftguests.swift.kubeswift.io", "e2e-created-never")).toBe(false);
       await cluster.expectNoRow(frame, "e2e-created-never");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "creates a kernel-boot guest, and refuses the node that cannot run one",
+    async () => {
+      // SPEC-0013 slice 2. Everything about this create differs from the image
+      // one: no root disk is cloned, the OS type is a property of the boot
+      // source rather than a reading, the seed profile and the storage
+      // overrides are dropped because upstream ignores them, and the only node
+      // of this cluster is offered disabled because it does not carry the
+      // kernel-node label.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+
+      const name = createdGuestName("e2e-created-kernel");
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill(name);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await bootSourceRadio(frame, "kernel").click();
+
+      // The image field is gone with its source, and so is the seed profile -
+      // with what it would have configured said in its place (W12).
+      expect(await frame.locator(".Select:has(#guest-create-image)").count()).toBe(0);
+      expect(await frame.locator(".Select:has(#guest-create-seed)").count()).toBe(0);
+      expect(await frame.locator('[data-testid="guest-create-seed-dropped"]').innerText()).toContain("disk boot");
+      expect(await frame.locator('[data-testid="guest-create-storage-dropped"]').innerText()).toContain(
+        "no root disk of its own",
+      );
+
+      await guestCreateControl(frame, "guest-create-kernel").click();
+
+      const kernels = await frame.locator(".guest-create-kernel-options .Select__option").allInnerTexts();
+
+      expect(kernels.some((option) => option.includes("e2e-kernel-6-12 - Ready"))).toBe(true);
+      expect(kernels.some((option) => option.includes("e2e-kernel-pulling - Pulling"))).toBe(true);
+      // Dimmed, never disabled: a kernel that is still being pulled is a wait.
+      expect(await frame.locator(".guest-create-kernel-options .Select__option--is-disabled").count()).toBe(0);
+
+      await frame
+        .locator(".guest-create-kernel-options .Select__option", { hasText: "e2e-kernel-6-12" })
+        .first()
+        .click();
+
+      // The kernel's own command line is shown as the default this field
+      // replaces, which is the one thing a user cannot guess here.
+      expect(await frame.locator('[data-testid="guest-create-boot-source"]').count()).toBe(1);
+      await frame.locator('[data-testid="guest-create-kernel-cmdline"]').fill("console=ttyS0 quiet");
+
+      const osType = await frame.locator('[data-testid="guest-create-os-type"]').innerText();
+
+      expect(osType).toContain("linux");
+      expect(osType).toContain("Linux only");
+
+      // The SPEC-0012 rule from the other end: this cluster's single node has no
+      // kernel-node label, so it is offered disabled with the reason rather than
+      // dropped - the fix is a label on a node the operator can see.
+      await guestCreateControl(frame, "guest-create-node").click();
+      expect(await frame.locator(".guest-create-node-options .Select__option--is-disabled").count()).toBe(1);
+      expect(
+        await frame.locator(".guest-create-node-options .Select__option span").first().getAttribute("title"),
+      ).toContain("kubeswift.io/kernel-node: true");
+      // Closed by clicking the control again, the idiom the Take Snapshot case
+      // established: react-select stops Escape from propagating so it never
+      // closes the dialog around it, but a second click is unambiguous.
+      await guestCreateControl(frame, "guest-create-node").click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftGuest kubeswift-e2e/${name}`);
+      expect(dialog).toContain("It boots the kernel e2e-kernel-6-12 and its initramfs directly");
+      expect(dialog).toContain("no image is cloned and no root disk is created");
+      expect(dialog).toContain('Its kernel command line is "console=ttyS0 quiet"');
+      expect(dialog).toContain("console=ttyS0 reboot=k panic=1");
+      expect(dialog).toContain("kubeswift.io/kernel-node: true");
+      expect(dialog).toContain("exempts it from that rule");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuest kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftguests.swift.kubeswift.io", name, "{.spec}"));
+
+      // The exact key set: no imageRef, no seedProfileRef, no storage - and the
+      // osType this form sends itself rather than letting the schema default it.
+      expect(Object.keys(spec).sort()).toEqual(["guestClassRef", "kernelCmdline", "kernelRef", "osType", "runPolicy"]);
+      expect(spec.kernelRef).toEqual({ name: "e2e-kernel-6-12" });
+      expect(spec.kernelCmdline).toBe("console=ttyS0 quiet");
+      expect(spec.osType).toBe("linux");
+      expect(spec.runPolicy).toBe("Running");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "offers a kernel that is not Ready, and says the guest waits for the resync",
+    async () => {
+      // The same shape as the image will-wait case and deliberately not the same
+      // sentence: kernels are not watched, so the recovery is the controller's
+      // periodic resync rather than the instant an artifact lands.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill("e2e-created-kernel-waiting");
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await bootSourceRadio(frame, "kernel").click();
+      await pickGuestOption(frame, "guest-create-kernel", "e2e-kernel-pulling");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("The kernel e2e-kernel-pulling is Pulling, not Ready");
+      expect(dialog).toContain("born Failed");
+      expect(dialog).toContain("30-second resync");
+      expect(dialog).toContain("not watched the way images are");
+      // A wait never blocks the submit.
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "clones a local memory snapshot, with the MAC lock and the explicit regenerate list",
+    async () => {
+      // The clone grammar on the tier that needs no node: a local capture lives
+      // on one node and pins the clone to it, so the target node field is not
+      // rendered at all and the node it will run on is stated instead (W12).
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+
+      const name = createdGuestName("e2e-created-clone");
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill(name);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await bootSourceRadio(frame, "clone").click();
+      await pickGuestOption(frame, "guest-create-snapshot", "e2e-snapshot-memory-ready");
+
+      // No target node field, and the node the capture lives on named where it
+      // would have been.
+      expect(await frame.locator(".Select:has(#guest-create-clone-target-node)").count()).toBe(0);
+      expect(await frame.locator('[data-testid="guest-create-clone-node-fact"]').innerText()).toContain(
+        `runs on ${cluster.clusterNodeName()}`,
+      );
+      // The node pin is dropped too: the snapshot places this guest.
+      expect(await frame.locator(".Select:has(#guest-create-node)").count()).toBe(0);
+      expect(await frame.locator('[data-testid="guest-create-node-dropped"]').innerText()).toContain(
+        "placed by its snapshot",
+      );
+
+      // The MAC rewrite is a fact, not a checkbox that cannot be unticked.
+      const macLock = await frame.locator('[data-testid="guest-create-mac-locked"]').innerText();
+
+      expect(macLock).toContain("always regenerated");
+      expect(macLock).toContain("cannot be turned off");
+
+      // The class is stored and inert: the snapshot's own sizing is what the
+      // resumed VM comes up with, and it is rendered next to the class block.
+      const sizing = await frame.locator('[data-testid="guest-create-class-sizing"]').innerText();
+
+      expect(sizing.replace(/\s+/g, " ")).toContain("Resumed CPU 2 (from e2e-snapshot-memory-ready)");
+      expect(sizing.replace(/\s+/g, " ")).toContain("Resumed memory 4096Mi (from e2e-snapshot-memory-ready)");
+      expect(await frame.locator('[data-testid="guest-create-inert-class"]').innerText()).toContain(
+        "does not size this clone",
+      );
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("It resumes the memory state of the local snapshot e2e-snapshot-memory-ready");
+      expect(dialog).toContain("regenerate is sent as hostname, machineId, sshHostKeys, macAddresses");
+      expect(dialog).toContain("An empty list means all four");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuest kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftguests.swift.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual(["cloneFromSnapshot", "guestClassRef", "osType", "runPolicy"]);
+      // The list the form showed is the list the object carries: an empty one
+      // would have meant all four items to upstream, which is the opposite of
+      // what an unticked checkbox would have said.
+      expect(spec.cloneFromSnapshot).toEqual({
+        snapshotRef: { name: "e2e-snapshot-memory-ready" },
+        regenerate: ["hostname", "machineId", "sshHostKeys", "macAddresses"],
+      });
+      expect(spec.osType).toBe("linux");
+      expect(spec.runPolicy).toBe("Running");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "requires a target node for an s3 snapshot, and writes it into the clone",
+    async () => {
+      // G10: the requirement is computed from the snapshot's own backend rather
+      // than asked of the user, and the submit says which field and why until a
+      // node is picked (W12).
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+
+      const name = createdGuestName("e2e-created-s3clone");
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill(name);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await bootSourceRadio(frame, "clone").click();
+      await pickGuestOption(frame, "guest-create-snapshot", "e2e-snapshot-create-s3");
+
+      const blocked = await cluster.confirmDialogText(frame);
+
+      expect(blocked).toContain("Create Guest is disabled - Target node:");
+      expect(blocked).toContain("s3 capture");
+      expect(blocked).toContain("downloaded");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+      // Only this tier asks: the local case above renders no such control.
+      expect(await frame.locator(".Select:has(#guest-create-clone-target-node)").count()).toBe(1);
+
+      await pickGuestOption(frame, "guest-create-clone-target-node", cluster.clusterNodeName());
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Its artifacts are downloaded onto ${cluster.clusterNodeName()}`);
+      expect(dialog).not.toContain("Create Guest is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuest kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftguests.swift.kubeswift.io", name, "{.spec}"));
+
+      expect(spec.cloneFromSnapshot).toEqual({
+        snapshotRef: { name: "e2e-snapshot-create-s3" },
+        regenerate: ["hostname", "machineId", "sshHostKeys", "macAddresses"],
+        targetNode: cluster.clusterNodeName(),
+      });
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "leaves the snapshots a clone cannot resume out of the picker, and says how many",
+    async () => {
+      // The one picker of this form that filters rather than dims, because
+      // neither rejected kind is a wait: a disk-only capture has nothing to
+      // resume and never will, and the CRD requires a Ready snapshot. What was
+      // left out is counted under the control, so an empty picker is never
+      // mistaken for a broken one.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await bootSourceRadio(frame, "clone").click();
+      await guestCreateControl(frame, "guest-create-snapshot").click();
+
+      const options = await frame.locator(".guest-create-snapshot-options .Select__option").allInnerTexts();
+
+      expect(options.some((option) => option.includes("e2e-snapshot-memory-ready - local, Ready"))).toBe(true);
+      expect(options.some((option) => option.includes("e2e-snapshot-create-s3 - s3, Ready"))).toBe(true);
+      // The csi capture is disk-only and the oci one is still uploading.
+      expect(options.some((option) => option.includes("e2e-snapshot-ready"))).toBe(false);
+      expect(options.some((option) => option.includes("e2e-snapshot-uploading"))).toBe(false);
+      expect(await frame.locator(".guest-create-snapshot-options .Select__option--is-disabled").count()).toBe(0);
+
+      await guestCreateControl(frame, "guest-create-snapshot").click();
+
+      const excluded = await frame.locator('[data-testid="guest-create-snapshot-excluded"]').innerText();
+
+      // The counts themselves are deliberately not asserted: the Take Snapshot
+      // case writes a snapshot of its own into this namespace, and a kept
+      // cluster accumulates them, so the numbers depend on what else ran. The
+      // exact arithmetic is a unit test; what this case owns is that both rules
+      // are reported and that the sentence says what a clone needs.
+      expect(excluded).toContain("no memory image (a disk-only capture has nothing to resume)");
+      expect(excluded).toContain("not Ready yet");
+      expect(excluded).toContain("a clone needs a Ready one that captured memory");
+      // The seed profile is gone with the boot source, and says why.
+      expect(await frame.locator(".Select:has(#guest-create-seed)").count()).toBe(0);
+      expect(await frame.locator('[data-testid="guest-create-seed-dropped"]').innerText()).toContain("already seeded");
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that a clone's source guest is gone, and submits anyway",
+    async () => {
+      // A warning never blocks (W12): the store can be stale, and the only
+      // authority on whether this create works is the API server and the
+      // controller behind it.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill("e2e-created-orphan-clone");
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await bootSourceRadio(frame, "clone").click();
+      await pickGuestOption(frame, "guest-create-snapshot", "e2e-snapshot-create-orphan");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("The guest e2e-guest-create-vanished");
+      expect(dialog).toContain("is gone from kubeswift-e2e");
+      expect(dialog).toContain("full-state oci capture");
+      expect(dialog).not.toContain("Create Guest is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
     },
     TIMEOUT,
   );

@@ -538,6 +538,14 @@ export async function openRowMenu(frame: Frame, name: string): Promise<void> {
   const row = tableRow(frame, name);
 
   await row.waitFor({ state: "visible", timeout: ELEMENT_TIMEOUT });
+  // Centred rather than merely scrolled into view: since the Guests page gained
+  // the host's floating create button (SPEC-0013), the "+" sits over the
+  // bottom-right corner of the list - which is exactly where the kebab of the
+  // LAST row is, and the click is intercepted by the button whenever the row
+  // lands there. Playwright's own scrolling is minimal and can leave it there;
+  // this puts the row in the middle of the scroll area, away from both the
+  // button and the sticky header.
+  await row.evaluate((element) => element.scrollIntoView({ block: "center" }));
   await row.locator(".TableCell.menu .Icon").first().click();
   await frame.waitForSelector(".Menu .MenuItem", { state: "visible", timeout: ELEMENT_TIMEOUT });
 }

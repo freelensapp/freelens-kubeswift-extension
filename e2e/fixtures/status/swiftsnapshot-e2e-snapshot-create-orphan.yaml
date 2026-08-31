@@ -1,0 +1,35 @@
+# Merge patch applied to the status subresource of
+# swiftsnapshot/e2e-snapshot-create-orphan. A finished local capture whose
+# source guest does not exist in this namespace and never will: the shape the
+# clone's gone-source warning is about (SPEC-0013 slice 2). The node it lives on
+# is the cluster's own, substituted by cluster-up.sh, because a local capture
+# pins the clone to the node that holds it.
+status:
+  phase: Ready
+  capturedAt: "2026-08-30T22:41:19Z"
+  totalSizeBytes: 2147483648
+  hypervisor: cloud-hypervisor
+  nodeName: __NODE_NAME__
+  observedPauseWindowMs: 980
+  memorySnapshot:
+    handle: /var/lib/kubeswift/snapshots/e2e-snapshot-create-orphan/memory.bin
+    sizeBytes: 2147483648
+  guestSpec:
+    cpu: "2"
+    memoryMi: 2048
+    imageName: e2e-ubuntu-2404
+    osType: linux
+    rootDiskSize: 20Gi
+    hasSeed: false
+    hasDataDisks: false
+    guestAgent: false
+    network: true
+    interfaceNames:
+      - eth0
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: SnapshotCaptured
+      message: The snapshot was captured and is ready to restore.
+      lastTransitionTime: "2026-08-30T22:41:19Z"
+      observedGeneration: 1

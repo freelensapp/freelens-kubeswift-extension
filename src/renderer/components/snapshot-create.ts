@@ -124,6 +124,19 @@ export function backendContents(type: SwiftSnapshotBackendType): string {
   }
 }
 
+/**
+ * A backend's name behind the indefinite article English gives it, for the
+ * sentences that put one in front of it.
+ *
+ * `s3` and `oci` are read out letter by letter and start on a vowel sound, so
+ * they take "an" - interpolating the raw name produced "a s3 capture" in every
+ * sentence that named a tier. The article is a property of the name rather than
+ * of the sentence, so every sentence that needs one asks here.
+ */
+export function backendWithArticle(type: SwiftSnapshotBackendType): string {
+  return type === "s3" || type === "oci" ? `an ${type}` : `a ${type}`;
+}
+
 /** Whether this backend captures memory, and therefore pauses the VM. */
 export function isMemoryBackend(type: SwiftSnapshotBackendType): boolean {
   return memoryBackendTypes.includes(type);

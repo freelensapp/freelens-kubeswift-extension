@@ -46,6 +46,17 @@ describe("SwiftKernel (v1alpha1)", () => {
     it("returns undefined for the optional profile", () => {
       expect(SwiftKernel.getProfile(buildSwiftKernel({ ociRef }))).toBeUndefined();
     });
+
+    it("reads the command line a guest's own kernelCmdline would replace", () => {
+      expect(SwiftKernel.getKernelCmdline(buildSwiftKernel({ ociRef, kernelCmdline: "console=ttyS0" }))).toBe(
+        "console=ttyS0",
+      );
+    });
+
+    it("reads an absent and an empty command line as the same thing", () => {
+      expect(SwiftKernel.getKernelCmdline(buildSwiftKernel({ ociRef }))).toBeUndefined();
+      expect(SwiftKernel.getKernelCmdline(buildSwiftKernel({ ociRef, kernelCmdline: "" }))).toBeUndefined();
+    });
   });
 
   describe("getReadyNodeCount", () => {

@@ -1,0 +1,17 @@
+# Merge patch applied to the status subresource of
+# swiftkernel/e2e-kernel-pulling. The artifact is on its way to the cluster's
+# single node and has not arrived: the phase a guest created against this kernel
+# waits out, on the controller's 30-second resync rather than on a watch
+# (SPEC-0013 slice 2).
+status:
+  phase: Pulling
+  nodeStatuses:
+    - nodeName: __NODE_NAME__
+      phase: Pulling
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: Pulling
+      message: The kernel artifact is being pulled onto the candidate nodes.
+      lastTransitionTime: "2026-08-31T09:12:00Z"
+      observedGeneration: 1

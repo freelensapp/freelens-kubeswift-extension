@@ -89,7 +89,21 @@ created from the form stays phaseless forever - which is what makes them cheap
 to assert, and what nobody should later "fix". The create cases name the guests
 they write after the wall clock, because `pnpm e2e:cluster:up` is idempotent
 rather than destructive and a second run against a kept cluster must not collide
-with what the first one wrote. The
+with what the first one wrote.
+
+The Create Guest cases cover all three boot sources, one create per source read
+back key-exact: an image-boot guest with its eight fields, a kernel-boot one
+(`kernelRef` plus the `kernelCmdline` override, `osType: linux`, no seed and no
+storage - a kernel-boot guest clones no root disk), and two clones, one from a
+`local` capture (no target node, the explicit `regenerate` list) and one from an
+`s3` capture (submit disabled with its reason until a node is picked, then
+`targetNode` in the object). The rest of the slice-2 cases assert what the form
+refuses or explains: the not-Ready kernel's will-wait line, the snapshot picker
+that leaves the disk-only and not-Ready captures out and counts them, the
+gone-source warning that never blocks, and the node the kernel-node label rule
+disables. Their fixtures are `e2e-kernel-pulling`, `e2e-snapshot-create-s3` and
+`e2e-snapshot-create-orphan` in `190-swiftguest-create.yaml`, with SPEC-0011's
+`e2e-snapshot-memory-ready` reused for the local clone. The
 pre-review pass (layer 4) stays read-only by construction and by assert, because
 it runs against the demo cluster a human reviewer is about to walk through.
 

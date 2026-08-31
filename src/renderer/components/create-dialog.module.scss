@@ -184,9 +184,10 @@ $ink-secondary: rgba(0, 0, 0, 0.6);
   gap: vars.$margin * 0.5;
 }
 
-// The mode radios of the Restore dialog. Each option carries its own reason
-// under its label when it is refused (W4), so the group is a column rather than
-// the host's default inline row.
+// The mode radios of the Restore dialog, and the boot-source radios of the
+// Create Guest form. Each option carries a line under its label - the reason it
+// is refused (W4), or what choosing it does - so the group is a column rather
+// than the host's default inline row.
 .options {
   display: flex;
   flex-direction: column;

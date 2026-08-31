@@ -243,35 +243,50 @@ re-sent (except `runPolicy`, argued above).
    root disk size and format, storage mode with the live-migratable
    derivation, core scheduling). A missing class list degrades to a
    text input, T3-style.
-3. **Boot source**: segmented image / kernel / clone from snapshot.
+3. **Boot source**: one radio per source - image / kernel / clone from
+   snapshot - each with a line saying what that source does (the host
+   has no segmented control; slice 2's note below).
    - *Image*: picker over the namespace's SwiftImages showing each
      option's phase and greying non-Ready ones (selectable, with the
      will-wait note - creating early is safe and the guest self-heals
      when the image turns Ready). OS type shown as a synced fact from
      the image, activating the Windows rules when `windows`.
-   - *Kernel*: picker over the namespace's Ready SwiftKernels (phase
-     shown), cmdline override text; kernel boot disables GPU (the
-     documented-unenforced rule) and Windows.
+   - *Kernel*: picker over the namespace's SwiftKernels with the phase
+     on every option, the non-Ready ones dimmed and still selectable
+     with their own will-wait line (the recovery is the 30-second
+     resync, not the watch an image gets); cmdline override text with
+     the kernel's own `spec.kernelCmdline` shown as the line it
+     replaces; osType is the fact `linux`; the node pin applies the
+     kernel-node label rule; the seed profile and the storage
+     overrides are dropped (no root-disk clone); kernel boot disables
+     GPU (the documented-unenforced rule) and Windows.
    - *Clone*: picker over the namespace's Ready memory-backend
-     SwiftSnapshots (backend shown), conditional target node (node
-     picker, required exactly for `s3`/`oci` - computed from the
-     picked snapshot, not asked of the user), identity regeneration
-     with the SPEC-0011 honest granularity (machine-identity trio +
-     MAC, MAC locked on), the inert-class note, the gone-source
-     warning from the store, GPU excluded with the VFIO reason.
+     SwiftSnapshots (backend shown), with what was left out counted
+     underneath; conditional target node (node picker, required
+     exactly for `s3`/`oci` - computed from the picked snapshot, not
+     asked of the user) and the capture's own node stated where the
+     field does not apply; identity regeneration with the SPEC-0011
+     honest granularity (machine-identity trio + MAC, MAC locked on
+     and rendered as a fact), `regenerate` always sent explicitly, the
+     inert-class note, the gone-source warning from the store, the
+     node pin and the seed profile dropped, GPU excluded with the
+     VFIO reason.
 4. **Seed profile**: picker over the namespace's profiles (optional);
-   a clone-boot seed pick is refused with the upstream fact that the
-   clone path ignores it. (The empty-`datasource` warning this section
-   planned is G9, dropped in slice 1: the schema makes the field
-   required.)
+   a kernel-boot or clone-boot seed pick is refused with the upstream
+   fact that both paths ignore it. (The empty-`datasource` warning
+   this section planned is G9, dropped in slice 1: the schema makes
+   the field required.)
 5. **Run policy**: select, default `Running`, each option one
-   sentence (the SPEC-0010 vocabulary).
+   sentence (the SPEC-0010 vocabulary), with the clone's own reading
+   of it (a launcher pod that resumes rather than boots).
 6. **Placement**: optional node pin (the SPEC-0012 node picker,
-   kernel-node label rule applied for kernel boot).
+   kernel-node label rule applied for kernel boot); dropped on clone
+   boot, where the snapshot places the guest.
 7. **Storage overrides** (collapsed by default): accessMode /
    volumeMode / storageClassName over the class's values, with the
    CEL rule enforced inline (`ReadWriteMany` requires `Block`) and
-   the live-migratability consequence stated both ways.
+   the live-migratability consequence stated both ways; dropped on
+   kernel boot, which creates no root-disk PVC for them to apply to.
 8. **Data disks** (collapsed): repeatable rows, each exactly one of
    image (Ready-filtered picker) / existing PVC (picker) / blank
    (size + class + volume mode), `attachAsDisk` only on PVC rows
@@ -287,7 +302,9 @@ re-sent (except `runPolicy`, argued above).
 10. **GPU** (collapsed, image boot only): profile picker XOR a
     minimal DRA claim (claim name or template name - exactly one),
     with the parks-in-Pending expectation stated; excluded for
-    Windows, kernel and clone with reasons.
+    Windows, kernel and clone with reasons (the three exclusions are
+    a pure rule since slice 2, `guestGpuGuard`; slice 3 renders the
+    section behind it).
 11. **Guest agent**: one checkbox (it decides how a future clone
     regenerates identity - the cross-reference is the help text).
 12. **The YAML footer**: one line naming the excluded fields and the
@@ -428,9 +445,16 @@ never hiding a required field).
   (kubectl readback of the exact key set, row on the page, toast);
   the non-Ready image selectable with the will-wait line; osType
   synced from a windows fixture image and the GPU section absent;
-  DNS-1123 and collision warnings; cancel writes nothing. Slice 2:
-  kernel boot readback; clone boot readback with MAC lock and
-  conditional target node per backend. Slice 3: port-rule and
+  DNS-1123 and collision warnings; cancel writes nothing. Slice 2, as
+  shipped (`e2e/__tests__/kubeswift-e2e.tests.ts`): "creates a
+  kernel-boot guest, and refuses the node that cannot run one";
+  "offers a kernel that is not Ready, and says the guest waits for the
+  resync"; "clones a local memory snapshot, with the MAC lock and the
+  explicit regenerate list"; "requires a target node for an s3
+  snapshot, and writes it into the clone"; "leaves the snapshots a
+  clone cannot resume out of the picker, and says how many"; "warns
+  that a clone's source guest is gone, and submits anyway". Slice 3:
+  port-rule and
   data-disk-rule refusals with reasons; a full guest with disks and
   ports read back key-exact. Fixture additions per slice, named in
   the slice PRs.
@@ -590,6 +614,187 @@ different from, the text above:
   cases write for real and `pnpm e2e:cluster:up` is idempotent rather
   than destructive, so a fixed name would make the second run against a
   kept cluster fail on an AlreadyExists that says nothing about the code.
+
+### Create Guest slice 2 as implemented (2026-08-31)
+
+Slice 2 adds section 3's other two boot sources - kernel and clone from
+snapshot - with their rules, warnings, summary lines, payload and
+fixtures, on the slice-1 machinery unchanged. The typed models needed
+one addition and no change: `SwiftGuestCloneFromSnapshot`,
+`kernelRef`, `kernelCmdline` and `SwiftSnapshotCapturedGuestSpec`
+(`status.guestSpec`) were already declared from the CRD schema, and the
+only new reader is `SwiftKernel.getKernelCmdline`. Two rules were
+extracted rather than reimplemented, because one rule with two
+implementations is a rule that drifts: `isKernelNode` out of
+SPEC-0012's `nodeChoices`, and `snapshotCapturesMemory` narrowed to the
+two fields it reads so SPEC-0011's derivation could be reused as it is.
+These are the places the implementation is more specific than, or
+different from, the text above:
+
+- **The boot-source control is the host's radio group, not a segmented
+  control.** Freelens has no segmented control, and DESIGN.md's first
+  pillar forbids inventing one where a native control exists; the
+  Restore dialog's mode radios are the precedent this repository
+  already ships. Each option carries a one-line description under its
+  label, which a segmented control could not have shown: these are
+  three different kinds of guest (a cloned root disk, no disk at all, a
+  memory image that is resumed), not three settings of one field. No
+  "coming soon" string exists; `implementedBootSources` now lists all
+  three and slice 1's "there is no boot-source control" note is
+  superseded. The host's `Radio` centres its tick against the whole
+  label block, so with a two-line label the tick sits between the two
+  lines - the same rendering the Restore dialog's refused option has
+  had since SPEC-0011, left alone rather than fixed by overriding host
+  chrome.
+- **Switching the source clears the other sources' fields**, in the
+  pure model (`switchBootSource`), and a unit property asserts that the
+  payload of a form which held all three sources' values names exactly
+  one of them. This is not tidiness: the payload builder branches on
+  the boot source, so a leftover value would be invisible in the stored
+  object and visible in the form, which is the one place this form must
+  never be. Three fields are cleared for reasons of their own - the
+  seed profile on kernel and clone, the node pin on clone, the storage
+  overrides on kernel - each of them below.
+- **The seed profile is refused on kernel boot as well as on clone
+  boot.** The spec asked for the clone refusal only; the CRD scopes
+  `seedProfileRef` to disk boot in the field's own documentation, and a
+  kernel-boot guest clones no root disk for a seed to be attached to.
+  W12's option dropping applies to both: the control is not rendered
+  and what it would have configured is stated in its place, with the
+  reason that is true of that source.
+- **The storage overrides are dropped on kernel boot, and no `storage`
+  block is sent there.** A kernel-boot guest creates no root-disk PVC,
+  which is the same fact SPEC-0012 uses to exempt it from the
+  `ReadWriteMany` + `Block` storage a live migration needs. The
+  collapsed section is therefore replaced by that fact, the class
+  sizing block marks its root-disk and storage rows unused, and the
+  summary's live-migration line becomes the exemption sentence. The
+  alternative - rendering three selects that change nothing - is
+  exactly the no-op W12 forbids.
+- **The node pin is dropped on clone boot.** A clone is placed by its
+  snapshot: the downloaded tiers take the target node, and a `local`
+  capture pins the clone to the node that holds it. Two independent
+  pins could name two different nodes, so `spec.nodeName` is neither
+  offered nor sent there, and the sentence that says so names the
+  control that decides instead.
+- **The clone's snapshot picker filters rather than dims.** It is the
+  one picker of this form that does, and the reason is that neither
+  rejected kind is a wait: a disk-only capture has nothing to resume
+  and never will (the backend decided that, not a phase), and the CRD
+  requires a Ready snapshot. What the dimmed-and-selectable treatment
+  buys for images - "create it now, it heals" - does not exist here.
+  What was left out is counted under the control, by rule, so a short
+  or empty picker is never mistaken for a broken one.
+- **`spec.includeMemory` is not consulted.** The CRD documents it as a
+  no-op on every backend - the captured set is backend-determined, and
+  the field survives for forward compatibility - so a `local` capture
+  with the flag off still holds memory and a `csi-volume-snapshot` with
+  it on still does not. The memory test is SPEC-0011's shipped
+  derivation (a memory backend, or the controller's own
+  `status.memorySnapshot`), which is why that function was narrowed
+  rather than copied.
+- **Identity regeneration is two controls, and the MAC one is not a
+  checkbox at all.** The trio is one checkbox, the SPEC-0011
+  granularity: upstream regenerates hostname, machine ID and SSH host
+  keys together, so three checkboxes would promise a precision the
+  implementation does not have. The MAC rewrite is rendered as a fact
+  ("always regenerated") with the collision it prevents as its reason,
+  because here the lock is unconditional - a disabled checkbox is a
+  control that lies about being a control (W4). The Restore dialog
+  keeps its disabled checkbox because its lock is conditional (a memory
+  clone only), and the two surfaces are therefore deliberately not
+  identical.
+- **`regenerate` is always sent explicitly**, which the spec left open.
+  It is a correctness rule rather than a readability preference: an
+  empty list means all four items to upstream, so a form that showed an
+  unticked machine-identity checkbox and sent nothing would regenerate
+  exactly what the operator chose to keep. The list on the wire is the
+  list on screen, and the summary says so.
+- **The run policy is still sent explicitly on clone boot** (G8
+  unchanged). `swiftctl guest import` - upstream's own client for this
+  very path - sets `runPolicy: Running` on the guest it creates, so
+  sending it here keeps the stored object identical with and without
+  the mutating webhook, as on the other two sources. What changes is
+  the sentence: for a clone, the launcher pod resumes a memory image
+  rather than boots, and `Stopped` means the capture is not resumed
+  until the guest is started.
+- **The clone's osType comes from `status.guestSpec.osType`** - the G4
+  move made against the snapshot instead of the image - with three
+  readings kept apart: read, recorded-nothing (the capture is silent,
+  so `linux` is the schema default and is marked unverified), and
+  unreadable. A capture whose guest was Windows is sent as `windows`
+  **and warned about**: the CRD scopes `windows` to disk boot, so a
+  cluster with the validating webhook enabled may refuse that create.
+  Claiming the machine is Linux to dodge the rule would be worse than
+  saying where the rule lives.
+- **The gone-source warning distinguishes an empty guest list from an
+  unreadable one.** It fires on a name that is *missing* from the
+  namespace's guests, so the slice-1 read that swallowed its failure
+  had to start recording it (`existingNamesUnverified`): an empty list
+  from a refused read would otherwise accuse every snapshot in the
+  namespace of having lost its source. Its tail differs for a
+  full-state `oci` capture, which carries the disk as well as the
+  memory and therefore does not need the source guest at all.
+- **The kernel's will-wait line is not the image's.** Images are
+  watched and kernels are not, so the recovery is the controller's
+  30-second resync rather than the instant the artifact lands. Half a
+  minute of `Failed` that nobody has to act on is a different thing to
+  be told about than an immediate recovery, and stating one as the
+  other is how a form teaches an operator to distrust it.
+- **The kernel-node rule disables nodes rather than dropping them**,
+  the SPEC-0012 treatment applied to the create side: the refusal is
+  about the guest rather than about the node, and the fix is a label on
+  a node the operator can see in the list. A pin that survives a switch
+  to kernel boot warns instead of blocking, because a label is one
+  command away and the read behind it can be stale.
+- **The GPU exclusivity rules land in the model now, ahead of slice 3's
+  section**: kernel boot (G6, upstream's documented-but-unenforced
+  rule, with its own stated reason - GPU boot needs a disk boot with
+  UEFI), clone boot (the device state a memory snapshot does not
+  capture), and Windows (upstream's v1 limit). Upstream writes the
+  clone exclusion against `gpuProfileRef` only; this form extends it to
+  the DRA claim for the same reason, and the reason says which half is
+  ours.
+- **`guestCreateErrors` and `guestCreateSubmitBlockReason` now take the
+  inputs as well as the values.** The target-node requirement is a
+  property of the picked snapshot's backend rather than of the form, so
+  a validator that could not see the snapshot would have had to ask the
+  user which tier they were on - which is the upstream behaviour G10
+  exists to remove.
+- **The screenshots caught one thing and it was fixed before the
+  fixtures were committed**: the four "this field is not here, and this
+  is why" sentences were rendering in the monospace `readOnlyValue`
+  style meant for a short value (a guest name), which made three-line
+  paragraphs read as code. They now take the hint style; the MAC lock's
+  own two-word value keeps the monospace one.
+- **The E2E cases are five, and they write for real**: a kernel-boot
+  create read back key-exact (`guestClassRef`, `kernelCmdline`,
+  `kernelRef`, `osType`, `runPolicy`), the not-Ready kernel with its
+  resync line, a local clone (no target node field, the MAC lock, the
+  inert class with the snapshot's own sizing, and the explicit
+  `regenerate` list in the readback), an s3 clone whose submit is
+  disabled with the reason until a node is picked and whose readback
+  carries the `targetNode`, the filtered picker with its count, and the
+  gone-source warning that does not block. The single-node E2E cluster
+  carries no kernel-node label, which turned into an assert rather than
+  a problem: the only node is offered disabled, with the rule as its
+  reason.
+- **One slice-1 latent bug surfaced and was fixed in the shared E2E
+  helper**: the host's floating create button sits over the
+  bottom-right corner of the Guests list, which is where the kebab of
+  the alphabetically last row is, and Playwright's minimal scrolling
+  can leave that row exactly under it - the call log names the button
+  as the element intercepting the click. Two SPEC-0011 cases that open
+  the menu of `e2e-guest-running` failed that way on a fresh cluster
+  and passed on a kept one, whose extra rows moved the row. The fix is
+  in `openRowMenu`, which now centres the row before clicking: it
+  applies to every case that opens a row menu, and it is a cause that
+  was found rather than a tolerance that was added.
+- **Three fixtures were added** (`e2e-kernel-pulling`,
+  `e2e-snapshot-create-s3`, `e2e-snapshot-create-orphan`, with their
+  status patches registered in `lib.sh`), and SPEC-0011's
+  `e2e-snapshot-memory-ready` is reused for the local clone: its tier
+  is what that case is about, and nothing else mutates it.
 
 ### Upstream drift found by this recon (2026-08-30)
 
