@@ -1,8 +1,8 @@
 # SPEC-0015: Create SwiftGuestPool form (M6)
 
-- **Status:** Approved (Roberto, 2026-08-31, in chat: the completion of
-  M6 was delegated in conversation; drafted and reviewed under that
-  delegation)
+- **Status:** Implemented (PR #98, one slice with the values-owner
+  extraction as its first commit, merged 2026-08-31, main CI green;
+  Verified pending the end-of-milestone pre-review pass and review)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (`724b5ef`; at `main`
   `d66cff5` the pool CRD differs by two description lines inside its own
