@@ -77,8 +77,9 @@ VMs), driven through a real Freelens by Playwright's Electron API.
 **Since M6 the suite also writes** (SPEC-0010, SPEC-0011, SPEC-0012,
 SPEC-0013, SPEC-0014): a handful of cases patch `spec.runPolicy`, delete a
 launcher pod, delete a guest, create a SwiftSnapshot, create a SwiftRestore,
-create a SwiftMigration and create SwiftGuests, SwiftGuestClasses and
-SwiftKernels from those pages' own create buttons, for real, against dedicated
+create a SwiftMigration and create SwiftGuests, SwiftGuestClasses,
+SwiftKernels, SwiftImages and SwiftSeedProfiles from those pages' own create
+buttons, for real, against dedicated
 fixtures nothing else reads (`160-swiftguest-actions.yaml`,
 `170-swiftrestore-actions.yaml`, `180-swiftmigration-actions.yaml`,
 `190-swiftguest-create.yaml`, `195-swiftguest-create-volumes.yaml`,
@@ -143,6 +144,29 @@ the write happens anyway. Their fixture is `200-create-form-references.yaml`:
 two StorageClasses behind a provisioner that does not exist, and an image-pull
 Secret whose auth map is empty rather than fake. No status patches are needed,
 because nothing has to bind for a picker and a readback.
+
+The SPEC-0014 slice-2 cases add the two forms that needed new shapes. Three
+write and read back key-exact: an **OCI image pinned by digest**, asserting the
+two Secret references it sent, the absent tag, the absent `rootDisk` (10Gi is a
+controller constant, not a stamped value) and the `osType: linux` and
+`cloneStrategy: copy` the API server stamps from the CRD's own defaults; an
+image whose `.qcow2` URL is declared `raw`, which is warned about as a guess
+about a filename and submitted anyway (W12); and two seed profiles, one whose
+user data is a **Secret key** and one whose user data is a **ConfigMap key**,
+each read back as a selector carrying exactly a name and a key - no `optional`,
+which nothing reads, and no empty name, which the core API would have defaulted
+in. Four assert what the forms refuse or cannot express: the snapshot strategy
+without a volume snapshot class (with the field created inside the collapsed
+section rather than hidden by it), an OCI source with neither a tag nor a digest
+in both directions of the pin-by control, the CEL rule's own words for empty
+user data, and the inline-beside-a-reference shape upstream's own edit path
+produces, which here has no state to exist in. Their fixture is the slice-2 half
+of `200-create-form-references.yaml`: an opaque cosign-key Secret, and a Secret
+and a ConfigMap carrying `user-data` and `network-config` keys - the keys are
+what the key-in-object selector's second control is a picker over, so their
+names are part of the fixture's contract. The slice-1 `dockerconfigjson` Secret
+is reused as the image's registry credentials, because that is exactly the type
+that field wants. No status patches are needed here either.
 
 The pre-review pass (layer 4) stays read-only by construction and by assert,
 because it runs against the demo cluster a human reviewer is about to walk

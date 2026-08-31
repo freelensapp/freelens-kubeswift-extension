@@ -97,7 +97,8 @@ function guestNames(): string[] {
  * the idiom core's Namespaces page uses for "Add Namespace"), and the extension
  * passes it only an `onAdd` and a tooltip - so the stable selector is the host's
  * own markup, which is exactly what makes it the native control (SPEC-0013).
- * Three pages carry it since SPEC-0014: Guests, Guest Classes and Kernels.
+ * Five pages carry it since SPEC-0014: Guests, Guest Classes, Kernels, Images
+ * and Seed Profiles.
  */
 function pageCreateControl(frame: Frame) {
   return frame.locator(".AddRemoveButtons .add-button");
@@ -221,6 +222,90 @@ async function openCreateKernelDialog(frame: Frame): Promise<void> {
   await frame.waitForSelector('[data-testid="swiftkernel-create-form"]', { state: "visible", timeout: 60_000 });
   await frame.waitForSelector(".Select:has(#kernel-create-pull-secret)", { state: "visible", timeout: 60_000 });
 }
+
+/** The SwiftImages the cluster holds, by name. */
+function imageNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftimages.image.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
+/** The same, for the objects the Create Seed Profile dialog creates. */
+function seedProfileNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftseedprofiles.seed.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
+/**
+ * Opens the Create Image dialog from the page's own control.
+ *
+ * Nothing is waited for beyond the form itself: the form opens on the HTTP
+ * source, whose one field is a text input, and both of this dialog's pickers
+ * live on the other branch or inside the collapsed section. The cases that need
+ * a read wait for it where they need it.
+ */
+async function openCreateImageDialog(frame: Frame): Promise<void> {
+  await pageCreateControl(frame).click();
+  await frame.waitForSelector('[data-testid="swiftimage-create-form"]', { state: "visible", timeout: 60_000 });
+}
+
+/** Moves the open Create Image form to the OCI source, and waits for its Secret read to answer. */
+async function useImageOciSource(frame: Frame): Promise<void> {
+  await imageSourceRadio(frame, "oci").click();
+  await frame.waitForSelector(".Select:has(#image-create-credentials-secret)", {
+    state: "visible",
+    timeout: 60_000,
+  });
+}
+
+/** One source radio of the Create Image form, reached the way every host `Radio` is. */
+function imageSourceRadio(frame: Frame, source: "http" | "oci") {
+  return frame
+    .locator(`[data-testid="image-create-source"] .Radio:has([data-testid="image-create-source-${source}"])`)
+    .first();
+}
+
+/** One pin-by radio of the Create Image form's OCI branch. */
+function imagePinByRadio(frame: Frame, pinBy: "tag" | "digest") {
+  return frame
+    .locator(`[data-testid="image-create-pin-by"] .Radio:has([data-testid="image-create-pin-by-${pinBy}"])`)
+    .first();
+}
+
+/** Opens the Create Seed Profile dialog from the page's own control. */
+async function openCreateSeedProfileDialog(frame: Frame): Promise<void> {
+  await pageCreateControl(frame).click();
+  await frame.waitForSelector('[data-testid="swiftseedprofile-create-form"]', { state: "visible", timeout: 60_000 });
+}
+
+/** One origin radio of one document group of the Create Seed Profile form. */
+function seedOriginRadio(frame: Frame, document: string, origin: "inline" | "secret" | "config-map") {
+  return frame
+    .locator(
+      `[data-testid="seedprofile-create-${document}-origin"] .Radio:has([data-testid="seedprofile-create-${document}-origin-${origin}"])`,
+    )
+    .first();
+}
+
+/**
+ * Moves one document group to a reference origin, and waits for the read behind
+ * it to answer.
+ *
+ * The object control is a text input until the namespace's Secrets or
+ * ConfigMaps come back, so waiting for the select is waiting for the read rather
+ * than racing it.
+ */
+async function useSeedReference(frame: Frame, document: string, origin: "secret" | "config-map"): Promise<void> {
+  await seedOriginRadio(frame, document, origin).click();
+  await frame.waitForSelector(`.Select:has(#seedprofile-create-${document}-object)`, {
+    state: "visible",
+    timeout: 60_000,
+  });
+}
+
+/** The digest the image cases pin by: a well-formed sha256 that names nothing. */
+const e2eImageDigest = `sha256:${"1234567890abcdef".repeat(4)}`;
 
 /**
  * The name the Restore dialog will give the SwiftRestore it creates.
@@ -3902,6 +3987,430 @@ describe("KubeSwift views against the fixture cluster", () => {
       // (G7).
       expect(Object.keys(spec)).toEqual(["ociRef"]);
       expect(spec.ociRef).toEqual({ image: "ghcr.io/freelensapp/kubeswift-e2e/kernel:6.14" });
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "creates an OCI image pinned by digest, and reads back what the server stamped into it",
+    async () => {
+      // SPEC-0014 slice 2. The OCI source is the one upstream's own API
+      // reference omits entirely, and the only one with supply-chain features:
+      // this writes both of its Secret references and pins the artifact by
+      // digest, then asserts the exact key set - including the two values the
+      // form deliberately never sends and the CRD's own defaults put there.
+      await cluster.openKubeSwiftPage(frame, "swiftimages", "Images");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-created-image-oci");
+
+      await openCreateImageDialog(frame);
+      await frame.locator('[data-testid="image-create-name"]').fill(name);
+      await useImageOciSource(frame);
+      await frame.locator('[data-testid="image-create-repository"]').fill("ghcr.io/freelensapp/kubeswift-e2e/golden");
+      // The form opens pinned by digest, which is what upstream's own CRD
+      // comment recommends, so no radio has to move for this case.
+      await frame.locator('[data-testid="image-create-digest"]').fill(e2eImageDigest);
+      await pickCreateOption(frame, "image-create-credentials-secret", "e2e-kernel-registry");
+      await pickCreateOption(frame, "image-create-verify-key-secret", "e2e-cosign-key");
+      await pickCreateOption(frame, "image-create-format", "raw");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftImage kubeswift-e2e/${name}`);
+      expect(dialog).toContain(`ghcr.io/freelensapp/kubeswift-e2e/golden@${e2eImageDigest}`);
+      // The one supply-chain check anywhere in this kind, when a key is named.
+      expect(dialog).toContain("before its bytes are trusted");
+      // The privileged root import Job, which upstream documents nowhere.
+      expect(dialog).toContain("privileged and as root");
+      // The controller's own 10Gi, stated as not sent - the distinction from
+      // the format, which the API server really does require.
+      expect(dialog).toContain("which is not sent and never appears in the stored object");
+      expect(dialog).toContain("The walk is Pending, Importing, Validating, Preparing, Ready.");
+      // F13, and deliberately not SPEC-0013's self-heal sentence.
+      expect(dialog).toContain("Failed is terminal");
+      expect(dialog).toContain("delete-and-recreate");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftImage kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftimages.image.kubeswift.io", name, "{.spec}"));
+
+      // The exact key set. `osType` and `cloneStrategy` are in it and the form
+      // sent neither: the CRD carries `default: linux` and `default: copy`, so
+      // both are the API server's own stamp, asserted explicitly for the reason
+      // every other stamped default in this suite is (F17).
+      expect(Object.keys(spec).sort()).toEqual(["cloneStrategy", "format", "osType", "source"]);
+      expect(spec.osType).toBe("linux");
+      expect(spec.cloneStrategy).toBe("copy");
+      expect(spec.format).toBe("raw");
+      expect(spec.source).toEqual({
+        oci: {
+          repository: "ghcr.io/freelensapp/kubeswift-e2e/golden",
+          digest: e2eImageDigest,
+          credentialsSecretRef: { name: "e2e-kernel-registry" },
+          verifyKeySecretRef: { name: "e2e-cosign-key" },
+        },
+      });
+      // The XOR, in the object rather than in the form: no tag, and no
+      // `insecure: false` either, which the schema does not default.
+      expect(spec.source.oci.tag).toBeUndefined();
+      expect(spec.source.oci.insecure).toBeUndefined();
+      // 10Gi is a controller constant, so the stored object carries no rootDisk
+      // at all, and no cloneStorageClassName, which the controller reads
+      // nowhere (F15).
+      expect(spec.rootDisk).toBeUndefined();
+      expect(spec.cloneStorageClassName).toBeUndefined();
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses a snapshot strategy with no volume snapshot class",
+    async () => {
+      // F8. Upstream checks this only on reaching `Snapshotting`, having already
+      // downloaded, converted and measured the whole artifact, and the rule that
+      // would have caught it at admission lives in a webhook that ships
+      // disabled. The requirement is created INSIDE the collapsed section, by
+      // choosing the strategy that needs it, which is what makes the section
+      // legal under DESIGN.md section 12.
+      await cluster.openKubeSwiftPage(frame, "swiftimages", "Images");
+
+      const before = imageNames();
+
+      await openCreateImageDialog(frame);
+      await frame.locator('[data-testid="image-create-name"]').fill("e2e-image-refused-snapshot");
+      await frame
+        .locator('[data-testid="image-create-url"]')
+        .fill("https://images.example.invalid/noble-cloudimg-amd64.img");
+      await pickCreateOption(frame, "image-create-format", "raw");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // The section ships collapsed and hides nothing that is required before it
+      // is opened: the volume snapshot class field does not exist yet.
+      await frame.locator('[data-testid="image-create-storage-section"] > button').first().click();
+      expect(await frame.locator('[data-testid="image-create-volume-snapshot-class"]').count()).toBe(0);
+
+      await pickCreateOption(frame, "image-create-clone-strategy", "snapshot");
+
+      const refusal = await cluster.confirmDialogText(frame);
+
+      expect(refusal).toContain("downloaded, converted and measured");
+      expect(await frame.locator('[data-testid="image-create-submit-blocked"]').innerText()).toContain(
+        "Volume snapshot class",
+      );
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await frame.locator('[data-testid="image-create-volume-snapshot-class"]').fill("csi-hostpath-snapclass");
+
+      const named = await cluster.confirmDialogText(frame);
+
+      expect(await frame.locator('[data-testid="image-create-submit-blocked"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+      // Unverified for a reason of its own: the host exposes no
+      // VolumeSnapshotClass API, so there is no read to make from here.
+      expect(named).toContain("no VolumeSnapshotClass API is exported");
+      expect(named).toContain("Snapshotting");
+
+      await cluster.cancelDialog(frame);
+
+      expect(imageNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses an OCI source with neither a tag nor a digest",
+    async () => {
+      // F7, the gap NO layer closes: not the schema, not the webhook, not the
+      // controller. An OCI source with neither is admitted without a word and
+      // then hands the puller an empty reference. The pin-by radio makes
+      // "neither" unreachable, and this asserts it from both sides - including
+      // that switching the pin clears the other field, which is what makes the
+      // tag/digest exclusivity a property of the payload rather than a rule.
+      await cluster.openKubeSwiftPage(frame, "swiftimages", "Images");
+
+      const before = imageNames();
+
+      await openCreateImageDialog(frame);
+      await frame.locator('[data-testid="image-create-name"]').fill("e2e-image-refused-pin");
+      await pickCreateOption(frame, "image-create-format", "qcow2");
+      await useImageOciSource(frame);
+      await frame.locator('[data-testid="image-create-repository"]').fill("ghcr.io/freelensapp/kubeswift-e2e/golden");
+
+      const unpinned = await cluster.confirmDialogText(frame);
+
+      expect(unpinned).toContain("empty reference");
+      expect(await frame.locator('[data-testid="image-create-submit-blocked"]').innerText()).toContain("Digest");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // The other side of the same gap: a tag pin with no tag is refused just
+      // as hard, and there is no third state in which neither is asked for.
+      await imagePinByRadio(frame, "tag").click();
+      expect(await frame.locator('[data-testid="image-create-digest"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="image-create-submit-blocked"]').innerText()).toContain("Tag");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await frame.locator('[data-testid="image-create-tag"]').fill("24.04");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // And moving the pin back empties the tag, so the two can never both be
+      // in the payload - the exclusivity, made inexpressible (F6).
+      await imagePinByRadio(frame, "digest").click();
+      expect(await frame.locator('[data-testid="image-create-tag"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await imagePinByRadio(frame, "tag").click();
+      expect(await frame.locator('[data-testid="image-create-tag"]').inputValue()).toBe("");
+
+      await cluster.cancelDialog(frame);
+
+      expect(imageNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that a .qcow2 URL is declared raw, and submits anyway",
+    async () => {
+      // The sharpest fact on this kind, and the one warning upstream has nothing
+      // like. Nothing reads the bytes - not the schema, not the webhook, not the
+      // controller - so an image declared raw whose bytes are qcow2 reaches
+      // Ready and every guest built from it boots garbage. The client never sees
+      // the bytes either, so this is a guess about a filename and says so, and
+      // W12's warning-never-blocks rule means it submits all the same.
+      await cluster.openKubeSwiftPage(frame, "swiftimages", "Images");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-created-image-http");
+      const url = "https://images.example.invalid/noble-server-cloudimg-amd64.qcow2";
+
+      await openCreateImageDialog(frame);
+      await frame.locator('[data-testid="image-create-name"]').fill(name);
+      await frame.locator('[data-testid="image-create-url"]').fill(url);
+      await pickCreateOption(frame, "image-create-format", "raw");
+
+      const warned = await cluster.confirmDialogText(frame);
+
+      expect(warned).toContain("looks like qcow2 and the format says raw");
+      expect(warned).toContain("GUESS about a filename");
+      expect(warned).toContain("boots garbage");
+      // The HTTP path's own absence, stated at the field and in the summary.
+      expect(warned).toContain("no checksum field");
+      // A warning never blocks (W12).
+      expect(await frame.locator('[data-testid="image-create-submit-blocked"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftImage kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftimages.image.kubeswift.io", name, "{.spec}"));
+
+      expect(spec.format).toBe("raw");
+      expect(spec.source).toEqual({ http: { url } });
+      expect(spec.source.oci).toBeUndefined();
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "creates a seed profile whose user data is a Secret key, and reads back a selector with a name",
+    async () => {
+      // F14: the credential-safe path is authorable at all. Upstream offers
+      // three textareas and its own class comment calls YAML the escape hatch
+      // for references, so the path its API comments and GitOps docs prefer is
+      // the one path its GUI cannot express. The readback is what proves the
+      // key-in-object selector never emits the core API's `""` default (G7).
+      await cluster.openKubeSwiftPage(frame, "swiftseedprofiles", "Seed Profiles");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-created-seed-secret");
+
+      await openCreateSeedProfileDialog(frame);
+      await frame.locator('[data-testid="seedprofile-create-name"]').fill(name);
+
+      // The key control does not exist until an object is named: a key with no
+      // object is a selector with an empty name, and this form never offers one.
+      await seedOriginRadio(frame, "user-data", "secret").click();
+      expect(await frame.locator('[data-testid="seedprofile-create-user-data-key-blocked"]').count()).toBe(1);
+
+      await useSeedReference(frame, "user-data", "secret");
+      await pickCreateOption(frame, "seedprofile-create-user-data-object", "e2e-seed-user-data");
+      await pickCreateOption(frame, "seedprofile-create-user-data-key", "user-data");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftSeedProfile kubeswift-e2e/${name}`);
+      expect(dialog).toContain("the key user-data of the Secret e2e-seed-user-data");
+      expect(dialog).toContain("Creating a seed profile creates nothing else");
+      // The Secret a guest renders later, and the doc error about it.
+      expect(dialog).toContain("<guest name>-seed");
+      expect(dialog).toContain("still calls it a ConfigMap");
+      // The two effective values the form shows rather than fills in.
+      expect(dialog).toContain("discards the user data WHOLESALE");
+      expect(dialog).toContain("dual-match DHCP netplan");
+      // The cross-reference SPEC-0013 already acts on.
+      expect(dialog).toContain("created and never mounted");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSeedProfile kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "NoCloud");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftseedprofiles.seed.kubeswift.io", name, "{.spec}"));
+
+      // The exact key set: the datasource this form always sends explicitly
+      // (F16), and one reference. No inline document beside it, no empty
+      // `metaDataFrom`, no `networkDataFrom`.
+      expect(Object.keys(spec).sort()).toEqual(["datasource", "userDataFrom"]);
+      expect(spec.datasource).toBe("NoCloud");
+      expect(spec.userDataFrom).toEqual({ secretKeyRef: { name: "e2e-seed-user-data", key: "user-data" } });
+      expect(spec.userData).toBeUndefined();
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses empty user data in the CEL rule's own words",
+    async () => {
+      // The one rule on this kind the API server really enforces, and it is CEL
+      // rather than webhook on purpose: upstream's own reasoning is DESIGN.md
+      // W12's, that a rule holding only when the webhook is enabled is not a
+      // rule. The form refuses it in the rule's terms rather than as the API
+      // server's decoded CEL message.
+      await cluster.openKubeSwiftPage(frame, "swiftseedprofiles", "Seed Profiles");
+
+      const before = seedProfileNames();
+
+      await openCreateSeedProfileDialog(frame);
+      await frame.locator('[data-testid="seedprofile-create-name"]').fill("e2e-seed-refused");
+
+      const refusal = await cluster.confirmDialogText(frame);
+
+      expect(refusal).toContain("either an inline document that is not empty, or a reference");
+      expect(refusal).toContain("not a webhook rule");
+      expect(await frame.locator('[data-testid="seedprofile-create-submit-blocked"]').innerText()).toContain(
+        "User data",
+      );
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // A document of whitespace satisfies the API server's own `size() > 0` and
+      // means nothing, so the form is stricter than the rule it mirrors.
+      await frame.locator('[data-testid="seedprofile-create-user-data-inline"]').fill("   ");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await frame.locator('[data-testid="seedprofile-create-user-data-inline"]').fill("#cloud-config\npackages: []");
+      expect(await frame.locator('[data-testid="seedprofile-create-submit-blocked"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(seedProfileNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "cannot express an inline value beside a reference",
+    async () => {
+      // F20, the first of the four silent precedences: an inline document beside
+      // a `*From` resolves to the reference, nothing enforces it, both upstream
+      // documents forbid it, and upstream's own edit path actively produces it -
+      // opening a reference-backed profile and pressing Apply writes a stub
+      // inline value next to the reference. Here it is inexpressible: one origin
+      // control per document, and switching it empties what it left behind.
+      await cluster.openKubeSwiftPage(frame, "swiftseedprofiles", "Seed Profiles");
+
+      const before = seedProfileNames();
+
+      await openCreateSeedProfileDialog(frame);
+      await frame.locator('[data-testid="seedprofile-create-name"]').fill("e2e-seed-exclusive");
+      await frame.locator('[data-testid="seedprofile-create-user-data-inline"]').fill("#cloud-config\npackages: []");
+
+      await useSeedReference(frame, "user-data", "secret");
+
+      // The inline control is gone rather than ignored, which is what makes the
+      // pair inexpressible rather than merely invalid (W12 option dropping).
+      expect(await frame.locator('[data-testid="seedprofile-create-user-data-inline"]').count()).toBe(0);
+
+      await pickCreateOption(frame, "seedprofile-create-user-data-object", "e2e-seed-user-data");
+      await pickCreateOption(frame, "seedprofile-create-user-data-key", "network-config");
+
+      const referenced = await cluster.confirmDialogText(frame);
+
+      expect(referenced).toContain("the key network-config of the Secret e2e-seed-user-data");
+      expect(referenced).not.toContain("stored inline, in spec.userData");
+
+      // And back: the reference controls disappear and the document the user
+      // typed before is gone from the model as well as from the payload.
+      await seedOriginRadio(frame, "user-data", "inline").click();
+      expect(await frame.locator(".Select:has(#seedprofile-create-user-data-object)").count()).toBe(0);
+      expect(await frame.locator('[data-testid="seedprofile-create-user-data-inline"]').inputValue()).toBe("");
+
+      // The four shapes this form cannot produce, stated in its footer.
+      const footer = await frame.locator('[data-testid="seedprofile-create-footer"]').innerText();
+
+      expect(footer).toContain("inline document beside a reference");
+      expect(footer).toContain("Secret key beside a ConfigMap key");
+      expect(footer).toContain("empty reference block");
+      expect(footer).toContain("reference with an empty name");
+
+      await cluster.cancelDialog(frame);
+
+      expect(seedProfileNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "never sends optional, and says why",
+    async () => {
+      // F15. Neither resolver reads the flag, upstream documents that nowhere,
+      // and what it looks like it controls happens either way: a missing object
+      // or key returns the error raw, so the guest retries with backoff with no
+      // Resolved=False and no Failed phase. The field is not rendered and the
+      // consequence stands in its place - and the readback proves the selector
+      // carries exactly the two keys it was given.
+      await cluster.openKubeSwiftPage(frame, "swiftseedprofiles", "Seed Profiles");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-created-seed-configmap");
+
+      await openCreateSeedProfileDialog(frame);
+      await frame.locator('[data-testid="seedprofile-create-name"]').fill(name);
+      await useSeedReference(frame, "user-data", "config-map");
+      await pickCreateOption(frame, "seedprofile-create-user-data-object", "e2e-seed-config");
+      await pickCreateOption(frame, "seedprofile-create-user-data-key", "user-data");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("the key user-data of the ConfigMap e2e-seed-config");
+      expect(dialog).toContain("optional flag is not offered");
+      expect(dialog).toContain("neither resolver reads it");
+      expect(dialog).toContain("retries with backoff");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSeedProfile kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftseedprofiles.seed.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual(["datasource", "userDataFrom"]);
+      // The selector carries a name and a key and nothing else: no `optional`,
+      // which nothing reads, and no `secretKeyRef` beside it either.
+      expect(Object.keys(spec.userDataFrom.configMapKeyRef).sort()).toEqual(["key", "name"]);
+      expect(spec.userDataFrom.configMapKeyRef).toEqual({ name: "e2e-seed-config", key: "user-data" });
+      expect(spec.userDataFrom.secretKeyRef).toBeUndefined();
 
       await cluster.clearNotifications(frame);
     },

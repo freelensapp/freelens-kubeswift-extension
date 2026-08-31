@@ -21,6 +21,7 @@ declare const classNames: {
   readonly checkboxRow: "checkboxRow";
   readonly options: "options";
   readonly optionReason: "optionReason";
+  readonly document: "document";
   readonly readOnlyValue: "readOnlyValue";
   readonly section: "section";
   readonly sectionHeader: "sectionHeader";

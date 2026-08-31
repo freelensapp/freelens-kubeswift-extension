@@ -2,6 +2,8 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftImage, type SwiftImageApi } from "../api/kubeswift/swiftimage-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { createImageTitle } from "../components/image-create";
+import { openCreateImageDialog } from "../components/image-create-dialog";
 import styles from "./swiftimages-page.module.scss";
 import stylesInline from "./swiftimages-page.module.scss?inline";
 
@@ -57,6 +59,9 @@ export const SwiftImagesPage = observer((props: SwiftImagesPageProps) =>
           sortingCallbacks={sortingCallbacks}
           searchFilters={[(object: KubeObject) => object.getSearchFields()]}
           renderHeaderTitle={KubeObject.crd.title}
+          // The host's own floating "+", the same idiom the Guests, Guest
+          // Classes and Kernels pages carry (DESIGN.md pillar 1).
+          addRemoveButtons={{ onAdd: openCreateImageDialog, addTooltip: createImageTitle }}
           renderTableHeader={renderTableHeader}
           renderTableContents={(object: KubeObject) => [
             <WithTooltip>{object.getName()}</WithTooltip>,

@@ -200,6 +200,22 @@ $ink-secondary: rgba(0, 0, 0, 0.6);
   font-weight: 400;
 }
 
+// The multi-line document field of the Create Seed Profile form: a cloud-init
+// user-data, a metadata block, a netplan. Monospace because whitespace is the
+// syntax - a cloud-init document whose indentation cannot be read is a document
+// nobody can check before pressing OK - and tall enough to show a short one
+// whole, while the host's own `maxRows` grows it for a long one.
+.document {
+  :global(.Input) textarea {
+    min-height: 5.5em;
+    font-family: monospace;
+    // The host's textarea inherits the form's own `white-space` handling; a
+    // seed document has long lines (a key, a base64 blob) that must wrap rather
+    // than scroll sideways under a value nobody can see.
+    white-space: pre-wrap;
+  }
+}
+
 // A value the form shows and does not let the user change: the target of an
 // in-place restore, which is the snapshot's source guest by definition.
 .readOnlyValue {

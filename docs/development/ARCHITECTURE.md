@@ -50,9 +50,9 @@ src/
                              # KubeObjectStore, typed Spec/Status interfaces
                              # (full schema, not only rendered fields)
   renderer/pages/            # Cluster pages (list views); the Guests, Guest
-                             # Classes and Kernels pages also carry a create
-                             # entry point, through the host's own
-                             # addRemoveButtons
+                             # Classes, Kernels, Images and Seed Profiles pages
+                             # also carry a create entry point, through the
+                             # host's own addRemoveButtons
   renderer/details/          # Detail panels (kubeObjectDetailItems)
   renderer/menus/            # Write actions (kubeObjectMenuItems): one file
                              # per verb, rendered by the host in both the list
@@ -63,8 +63,9 @@ src/
                              # summaries (snapshot-create.ts,
                              # restore-create.ts, migration-create.ts,
                              # guest-create.ts, guestclass-create.ts,
-                             # kernel-create.ts), the storage vocabulary two
-                             # create forms share (kube-storage.ts: the
+                             # kernel-create.ts, image-create.ts,
+                             # seedprofile-create.ts), the storage vocabulary
+                             # two create forms share (kube-storage.ts: the
                              # access/volume mode pair, the CRDs' CEL rule and
                              # the live-migration derivation), reference
                              # loading; plus the form components the dialogs
@@ -73,11 +74,15 @@ src/
                              # migration-create-dialog.tsx,
                              # guest-create-dialog.tsx,
                              # guestclass-create-dialog.tsx,
-                             # kernel-create-dialog.tsx) and the form grammar
-                             # they share (create-dialog.tsx and its module:
-                             # the labelled field, the write summary, the
-                             # collapsible section, the quantity field and the
-                             # object picker with its T3 degradation)
+                             # kernel-create-dialog.tsx,
+                             # image-create-dialog.tsx,
+                             # seedprofile-create-dialog.tsx) and the form
+                             # grammar they share (create-dialog.tsx and its
+                             # module: the labelled field, the write summary,
+                             # the collapsible section, the quantity field, the
+                             # object picker with its T3 degradation, the
+                             # multi-line document field and the key-in-object
+                             # selector that can never emit an empty name)
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```

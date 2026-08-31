@@ -16,12 +16,14 @@
 // are. This file exists only so that the dialogs cannot drift into different
 // renderings of the same idea, and so that the stylesheet has one owner.
 //
-// SPEC-0014 adds the two controls its four forms kept needing in the same two
-// shapes: a quantity, and a reference to an object that lives somewhere else.
-// Both are renderings rather than rules - `quantityError` and the messages a
-// picker's value carries belong to the pure modules, and the one decision made
-// here is which of two controls a picker shows, which is a fact about the read
-// on open rather than about the object being written.
+// SPEC-0014 adds the four controls its four forms kept needing in the same
+// shapes: in slice 1 a quantity and a reference to an object that lives
+// somewhere else, and in slice 2 a multi-line document and a KEY INSIDE one of
+// those objects. All four are renderings rather than rules - `quantityError`
+// and the messages a picker's value carries belong to the pure modules - and
+// the two decisions made here are which of two controls each picker shows,
+// which is a fact about the read on open rather than about the object being
+// written.
 
 import { Renderer } from "@freelensapp/extensions";
 import styles from "./create-dialog.module.scss";
@@ -177,6 +179,184 @@ export function ObjectPickerField({
         onChange={(option: { value: string } | null) => onChange(option?.value ?? "")}
       />
     </Field>
+  );
+}
+
+export interface DocumentFieldProps extends FieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  testId: string;
+  placeholder?: string;
+}
+
+/**
+ * A multi-line document: a cloud-init user-data, a metadata block, a netplan
+ * (SPEC-0014 slice 2).
+ *
+ * A textarea rather than a text input, and for a sharper reason than length: a
+ * single-line `<input>` applies the browser's own value-sanitization algorithm,
+ * which STRIPS carriage returns and newlines from an assigned value rather than
+ * keeping them - so a pasted YAML document would arrive as one line with every
+ * key run together, silently. The same fact made the kernel command line a
+ * textarea in slice 1; here it is not an edge case but the whole content of the
+ * field.
+ *
+ * The value reaches the model exactly as it was typed. A cloud-init document is
+ * significant whitespace - `#cloud-config` has to be its first line - so nothing
+ * here trims, reflows or normalizes it; the pure module decides emptiness on a
+ * trimmed copy and sends the original.
+ */
+export function DocumentField({ value, onChange, testId, placeholder, ...fieldProps }: DocumentFieldProps) {
+  return (
+    <Field {...fieldProps}>
+      <div className={styles.document}>
+        <Input
+          multiLine
+          maxRows={12}
+          rows={4}
+          value={value}
+          placeholder={placeholder}
+          data-testid={testId}
+          onChange={onChange}
+        />
+      </div>
+    </Field>
+  );
+}
+
+/**
+ * Whether the key control of a key-in-object selector can be a picker.
+ *
+ * `keys` is `undefined` when they cannot be known at all - the read was
+ * refused, or the picked name is one it never returned - and `[]` when the
+ * object really carries none. Both send the control back to a text input, and
+ * the second one deserves a different sentence, which is why the caller supplies
+ * both hints.
+ */
+export function keyPickerIsUsable(keys: string[] | undefined, value: string): boolean {
+  if (!keys || keys.length === 0) {
+    return false;
+  }
+
+  return value === "" || keys.includes(value);
+}
+
+export interface KeyInObjectFieldProps {
+  /** `<idPrefix>-object` and `<idPrefix>-key` are the ids of the two selects. */
+  idPrefix: string;
+  objectLabel: string;
+  keyLabel: string;
+  objectHint?: string;
+  keyHint?: string;
+  objectError?: string;
+  keyError?: string;
+  objectWarning?: string;
+  keyWarning?: string;
+  objectPlaceholder?: string;
+  keyPlaceholder?: string;
+  objectName: string;
+  keyName: string;
+  onObjectChange: (value: string) => void;
+  onKeyChange: (value: string) => void;
+  /** The objects the read on open found, for the first picker and its T3 degradation. */
+  objectFacts: ObjectPickerFacts;
+  /** The keys of the picked object, or `undefined` when they cannot be known. */
+  keys: string[] | undefined;
+  /** Said at the object field when the list could not be read. */
+  unverifiedHint: string;
+  /** Said at the key field when the object is readable and carries no keys at all. */
+  emptyKeysHint: string;
+  /** Said in place of the key control while no object is named - the invariant, stated (W4). */
+  noObjectHint: string;
+}
+
+/**
+ * A key inside an object that lives somewhere else: one key of a Secret, one key
+ * of a ConfigMap (SPEC-0014, F14).
+ *
+ * The component upstream's UI does not have at all - its seed wizard offers
+ * three textareas and its own class comment calls YAML the escape hatch for
+ * references - and the one that **can never emit an empty name**. The guarantee
+ * is structural rather than validated: the key control is not rendered until an
+ * object is named, so there is no state in which a key exists beside an empty
+ * selector name, and the sentence that would have been an error stands in the
+ * control's place instead (W12 option dropping).
+ *
+ * The key control is a picker over the keys the picked object really carries
+ * whenever that is knowable, and a text input whenever it is not - the same T3
+ * degradation as the object picker above it, one level down.
+ */
+export function KeyInObjectField({
+  idPrefix,
+  objectLabel,
+  keyLabel,
+  objectHint,
+  keyHint,
+  objectError,
+  keyError,
+  objectWarning,
+  keyWarning,
+  objectPlaceholder,
+  keyPlaceholder,
+  objectName,
+  keyName,
+  onObjectChange,
+  onKeyChange,
+  objectFacts,
+  keys,
+  unverifiedHint,
+  emptyKeysHint,
+  noObjectHint,
+}: KeyInObjectFieldProps) {
+  const named = objectName.trim() !== "";
+  const hintWithEmptyKeys = keys && keys.length === 0 ? `${keyHint ?? ""} ${emptyKeysHint}`.trim() : keyHint;
+
+  return (
+    <>
+      <ObjectPickerField
+        id={`${idPrefix}-object`}
+        inputTestId={`${idPrefix}-object-input`}
+        label={objectLabel}
+        hint={objectHint}
+        error={objectError}
+        warning={objectWarning}
+        placeholder={objectPlaceholder}
+        unverifiedHint={unverifiedHint}
+        value={objectName}
+        facts={objectFacts}
+        onChange={onObjectChange}
+      />
+
+      {named ? (
+        <Field label={keyLabel} hint={hintWithEmptyKeys} error={keyError} warning={keyWarning}>
+          {keyPickerIsUsable(keys, keyName) ? (
+            <Select
+              id={`${idPrefix}-key`}
+              themeName="light"
+              menuClass={styles.selectMenu}
+              isClearable
+              placeholder={keyPlaceholder}
+              value={keyName || null}
+              options={(keys ?? []).map((key) => ({ value: key, label: key }))}
+              onChange={(option: { value: string } | null) => onKeyChange(option?.value ?? "")}
+            />
+          ) : (
+            <Input
+              value={keyName}
+              placeholder={keyPlaceholder}
+              data-testid={`${idPrefix}-key-input`}
+              onChange={onKeyChange}
+            />
+          )}
+        </Field>
+      ) : (
+        <Field label={keyLabel}>
+          <div className={styles.hint} data-testid={`${idPrefix}-key-blocked`}>
+            {noObjectHint}
+          </div>
+        </Field>
+      )}
+    </>
   );
 }
 

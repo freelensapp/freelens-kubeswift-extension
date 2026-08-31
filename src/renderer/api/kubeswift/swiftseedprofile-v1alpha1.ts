@@ -7,8 +7,18 @@ import type { KubeSwiftKubeObjectCRD } from "./types";
  *
  * A seed profile carries the cloud-init NoCloud configuration rendered into the
  * seed ISO of a guest. Each of its three data fields is either inline in the
- * spec or a reference to a Secret or ConfigMap key; the schema keeps the pair
- * mutually exclusive, and requires either `userData` or `userDataFrom`.
+ * spec or a reference to a Secret or ConfigMap key, and the schema requires
+ * either `userData` or `userDataFrom` - that half is a CEL rule on the spec and
+ * is enforced on every cluster.
+ *
+ * The pair is NOT kept mutually exclusive by any layer, which this comment used
+ * to claim (corrected in SPEC-0014 slice 2). Both documents forbid inline
+ * beside a reference and nothing enforces it: an inline value beside a `*From`
+ * resolves to the reference, a `secretKeyRef` beside a `configMapKeyRef`
+ * resolves to the Secret by statement order, an empty `*From: {}` satisfies the
+ * CEL rule and renders nothing, and a selector's `name` carries the core API's
+ * `""` default. The Create Seed Profile form makes all four unreachable by
+ * construction rather than validating them.
  *
  * The inline values may embed credentials. They are rendered read-only in the
  * detail panel and are never logged nor put in a table cell.

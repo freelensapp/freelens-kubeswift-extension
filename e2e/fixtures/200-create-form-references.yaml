@@ -10,6 +10,13 @@
 # the cases assert is that the picker offered the name and that the created
 # object carries it.
 #
+# Slice 2 adds three more: an opaque cosign-key Secret for the Create Image
+# form's verify-key picker, and a Secret and a ConfigMap carrying `user-data`
+# and `network-config` keys for the Create Seed Profile form's key-in-object
+# selectors. The keys are what that selector's second control is a picker over,
+# so their names are part of the fixture's contract; their contents are inert
+# cloud-init snippets that carry no credential of any kind.
+#
 # The single-node E2E cluster deliberately carries NO `kubeswift.io/kernel-node`
 # label, which the Create Kernel case asserts rather than works around: "no node
 # carries the label, and it creates anyway" is the state an operator meets on a
@@ -52,3 +59,60 @@ metadata:
 type: kubernetes.io/dockerconfigjson
 stringData:
   .dockerconfigjson: '{"auths":{}}'
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-cosign-key
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+# The shape upstream's import expects - an opaque Secret with a `cosign.pub`
+# key - with a placeholder where a public key would be. A cosign PUBLIC key is
+# not a credential, and this is not one either: nothing on this cluster verifies
+# anything, and the extension names this Secret without ever reading it.
+type: Opaque
+stringData:
+  cosign.pub: not-a-key-nothing-verifies-anything-here
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-seed-user-data
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+# The credential-safe seed path, which is the whole point of the Create Seed
+# Profile form (F14): the profile names this Secret and this key, and the
+# document itself never enters the profile's own spec. Both keys are here
+# because the form's key picker is a picker over exactly this list.
+type: Opaque
+stringData:
+  user-data: |
+    #cloud-config
+    package_update: false
+  network-config: |
+    version: 2
+    ethernets:
+      id0:
+        dhcp4: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: e2e-seed-config
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+# The same two documents behind a ConfigMap, so the ConfigMap-key origin has a
+# real object to offer as well - and so that the two origins can be told apart
+# in a readback by the selector the profile carries.
+data:
+  user-data: |
+    #cloud-config
+    package_update: false
+  network-config: |-
+    version: 2
+    ethernets:
+      id0:
+        dhcp4: true

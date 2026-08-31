@@ -700,6 +700,128 @@ the schema's own and nothing it refuses depends on a read. And
 unreachable from the class form, which always resolves, since there is no
 read above a class whose failure could leave the answer a guess.
 
+### Image and seed profile forms as implemented (2026-08-31)
+
+Slice 2 shipped as specified, with the deviations below. Everything the
+"Create Image" and "Create Seed Profile" sections describe is in place,
+including F1, F2, F4-F8, F11, F13-F18 and F20 as they apply to these two
+kinds, the create control and the 80px clearance on both pages, the
+key-in-object selector and the multi-line document field in
+`create-dialog.tsx`, and the correction of `swiftseedprofile-v1alpha1.ts`'s
+header comment.
+
+**1. The image form carries the webhook rules the spec names, and does not
+invent the rest.** The recon counted twelve validating rules living only in
+the webhook and the spec names three of them: exactly-one-source, the OCI
+tag/digest exclusivity, and the snapshot strategy's dependency on
+`volumeSnapshotClassName`. Those three are here - the first two made
+inexpressible by a radio group each, the third refused at the field - along
+with the URL's non-emptiness and the `verifyKeySecretRef`-with-`insecure`
+pair the CRD comment describes. The remaining rules are not mirrored,
+because the spec does not enumerate them and W11's second limit forbids
+inventing behaviour the recon could not confirm. Two rules upstream has
+nowhere are added in their place, both named as ours: the URL's scheme, and
+a repository that carries its own tag or digest (checked on the last path
+segment, so `localhost:5000/golden` is not mistaken for one).
+
+**2. `verifyKeySecretRef` beside `insecure` warns and does not block.** The
+spec words it as a note at the checkbox, and the note is what shipped: the
+pair is refused at admission upstream, that webhook ships disabled, and what
+really refuses it is the puller pod, because cosign cannot verify over a
+plaintext registry. It **fails closed** - no unverified disk is imported - so
+W12's warning-never-blocks rule applies exactly as it is meant to: the client
+is not the authority, and the failure is safe. The same reasoning makes a
+malformed digest a warning rather than a refusal, since only the registry
+knows which algorithms it accepts; the `sha256:<hex>` shape is stated and
+nothing is blocked on it.
+
+**3. The key-in-object selector makes its invariant structural rather than
+validated.** "Can never emit an empty name" is implemented by not rendering
+the key control at all until an object is named, with the sentence that would
+have been an error standing in the control's place (W12 option dropping,
+`data-testid="...-key-blocked"`). A key beside an empty selector name is
+therefore not a state the form has, rather than a state it refuses. The key
+control itself degrades the same way the object picker above it does: a
+picker over the keys the picked object really carries, a text input when
+those cannot be known, and a third sentence for an object that genuinely
+carries none - `[]` and `undefined` are different answers and get different
+hints.
+
+**4. Switching a document's origin drops the key, and keeps the object name
+only between the two reference origins.** A Secret and a ConfigMap of the
+same name are different objects, and a key that exists in one and not in the
+other is precisely the reference that makes a guest retry with backoff
+without saying so. Moving to or from `Inline` clears both. One consequence
+worth naming: this is what makes "an inline value beside a reference"
+unreachable in the **state** and not only in the payload, which matters
+because that shape is the one upstream's own edit path actively produces.
+
+**5. Inline documents are never trimmed on the way out, and emptiness is
+decided on a trimmed copy.** A cloud-init document is significant whitespace
+and `#cloud-config` has to be its first line, so nothing reflows it. The two
+halves together make the form **stricter than the CEL rule it mirrors**: the
+API server's `size(self.userData) > 0` accepts a document of three spaces,
+and this form does not, because such a document renders a seed cloud-init
+discards.
+
+**6. The four seed payload rules are unreachable by construction AND refused
+at the field.** The spec asks for the first; `seedDocumentPayload` returns at
+most one of `value` and `valueFrom`, builds a selector only from a non-empty
+name and key, and therefore cannot emit any of the four shapes, which is
+asserted as a property over every origin. The refusals are added on top
+because the alternative is a half-typed reference silently dropped from the
+payload, which is the control that lies (W4). A group left entirely alone is
+still dropped in silence, because that is the normal case and it has an
+effective value the summary states.
+
+**7. `imageCreateErrors` and `seedProfileCreateErrors` take only the form
+values.** No `inputs` parameter, exactly as `guestClassCreateErrors` in slice
+1: nothing either form **refuses** depends on a read. Everything a read
+contributes is a warning, which is where the reads belong.
+
+**8. Two enums are selects and two exclusivities are radios.** `osType` and
+`cloneStrategy` are `Select`s, like the class form's enums; `source` and
+`pin by` are `RadioGroup`s, because those two are the ones whose point is
+that the alternative is not merely unselected but gone - the fields of the
+branch not taken do not exist (W12 option dropping), which is what
+"inexpressible" means on screen. The seed's three origin controls are radios
+for the same reason.
+
+**9. `rootDisk` is omitted rather than emitted as `{}`,** the F17 habit one
+kind over, and `insecure: false` is never sent either: the CRD gives
+`insecure` no default, so a stored `false` would be a difference a GitOps
+diff has to explain later.
+
+**10. The filename guess is deliberately small.** Four suffixes, the last
+path segment only, one compression suffix stripped, the query string
+ignored. Anything cleverer would be a client pretending to know something
+about bytes it has never seen, which is the reason the spec rejected a
+magic-byte check in the first place; the warning says in its own text that it
+is a guess about a filename.
+
+**11. One namespace read serves both image Secret pickers,** and the seed
+form makes three reads on open (Secrets, ConfigMaps, its own names), each
+degrading on its own: a refused Secret list leaves the ConfigMap groups
+pickers, which is the T3 lesson applied per read rather than per form.
+
+**12. `optional` is stated once, in the footer.** Caught by screenshotting
+the seed dialog scrolled to the bottom, which is the slice-1 lesson doing its
+job: the sentence standing where the flag would have been was printed twice
+on one screen, once as the last summary note and once as the first footer
+line. The summary repeats **warnings**, because a warning is what a user must
+not scroll past; a note printed twice reads as a bug rather than as emphasis,
+and the spec's own summary bullet for this form does not list `optional`
+either.
+
+**13. Counts.** 179 unit cases for the image and 150 for the seed profile,
+against the spec's bar of 117 each, plus 6 for the key picker's own decision
+in `create-dialog.test.ts`; 1730 shipped tests before the slice and 2065
+after. Eight E2E cases, 66 before and 74 after, green on a fresh cluster in
+156s. One E2E title is shortened from the spec's - "creates an OCI image
+pinned by digest, and reads back what the server stamped into it" rather than
+"...reads back the keys it sent with `osType` and `cloneStrategy` stamped by
+the server" - and asserts exactly what the longer title describes.
+
 ### Upstream drift found by this recon (2026-08-31)
 
 The headline items, recorded in full in the local feedback draft. The
