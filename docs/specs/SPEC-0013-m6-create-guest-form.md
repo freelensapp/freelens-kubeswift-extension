@@ -1,6 +1,8 @@
 # SPEC-0013: Create SwiftGuest form (M6)
 
-- **Status:** Approved (Roberto, 2026-08-31, in chat)
+- **Status:** Implemented (PRs #87, #88 and #89, the three slices, merged
+  2026-08-31, main CI green; Verified pending the pre-review pass and the
+  feature review)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (the SwiftGuest CRD at
   upstream `main` `d66cff5` differs from the tag by two description
