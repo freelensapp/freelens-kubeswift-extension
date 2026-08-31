@@ -1,8 +1,12 @@
 # SPEC-0013: Create SwiftGuest form (M6)
 
-- **Status:** Implemented (PRs #87, #88 and #89, the three slices, merged
-  2026-08-31, main CI green; Verified pending the pre-review pass and the
-  feature review)
+- **Status:** Verified (2026-08-31: non-regression tests green in CI on
+  main after each of the three slices; pre-review pass PASS on all 16
+  views in both themes, with the Create Guest control and the write
+  actions reported and no FAIL; feature review by Roberto on each
+  slice's screenshot set, approved in chat on 2026-08-31, with the
+  remaining M6 rows delegated in the same conversation; the KVM-only
+  checks under Manual verification stay open)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (the SwiftGuest CRD at
   upstream `main` `d66cff5` differs from the tag by two description
