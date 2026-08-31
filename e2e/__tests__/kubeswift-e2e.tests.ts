@@ -185,6 +185,46 @@ function createdObjectName(prefix: string): string {
   return `${prefix}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
+/** The SwiftGuestPools the cluster holds, by name: the only way to see a create that did not happen. */
+function poolNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftguestpools.swift.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
+/**
+ * Opens the Create Guest Pool dialog from the page's own control, and waits for
+ * its reads to answer.
+ *
+ * The reads are the Create Guest form's own - the pool dialog embeds that form
+ * as its template - so the class picker turning into a select is what says they
+ * have answered, exactly as it does for the standalone form.
+ */
+async function openCreatePoolDialog(frame: Frame): Promise<void> {
+  await pageCreateControl(frame).click();
+  await frame.waitForSelector('[data-testid="swiftguestpool-create-form"]', { state: "visible", timeout: 60_000 });
+  await frame.waitForSelector(".Select:has(#guest-create-class)", { state: "visible", timeout: 60_000 });
+}
+
+/** One spread-policy radio of the Create Guest Pool form, reached the way every host `Radio` is. */
+function spreadRadio(frame: Frame, policy: "pack" | "spread") {
+  return frame
+    .locator(`[data-testid="pool-create-spread"] .Radio:has([data-testid="pool-create-spread-${policy}"])`)
+    .first();
+}
+
+/**
+ * The key set a template of a guest class, an image and a seed profile
+ * produces.
+ *
+ * Asserted from this one constant by the standalone Create Guest case and by
+ * the Create Guest Pool case, which is the composition property of SPEC-0015
+ * stated where it can be checked against the API server: the pool's
+ * spec.template.spec is what the Create Guest form would have sent for the same
+ * choices, key for key.
+ */
+const guestTemplateKeys = ["guestClassRef", "imageRef", "osType", "runPolicy", "seedProfileRef"];
+
 /** The SwiftGuestClasses the cluster holds, by name. Cluster-scoped, so no namespace. */
 function guestClassNames(): string[] {
   const { stdout } = cluster.kubectlE2E("get", "swiftguestclasses.swift.kubeswift.io", "--output", "name");
@@ -2858,16 +2898,10 @@ describe("KubeSwift views against the fixture cluster", () => {
       // own, and no schema default beyond the osType it sends itself.
       const spec = JSON.parse(cluster.kubectlField("swiftguests.swift.kubeswift.io", name, "{.spec}"));
 
-      expect(Object.keys(spec).sort()).toEqual([
-        "guestAgent",
-        "guestClassRef",
-        "imageRef",
-        "nodeName",
-        "osType",
-        "runPolicy",
-        "seedProfileRef",
-        "storage",
-      ]);
+      // The template key set, plus the three keys this case adds to it: the
+      // Create Guest Pool case asserts the same constant for the same choices
+      // (SPEC-0015's composition property, against the API server).
+      expect(Object.keys(spec).sort()).toEqual([...guestTemplateKeys, "guestAgent", "nodeName", "storage"].sort());
       expect(spec.guestClassRef).toEqual({ name: "e2e-small" });
       expect(spec.imageRef).toEqual({ name: "e2e-ubuntu-2404" });
       expect(spec.seedProfileRef).toEqual({ name: "e2e-seed-basic" });
@@ -4413,6 +4447,355 @@ describe("KubeSwift views against the fixture cluster", () => {
       expect(spec.userDataFrom.secretKeyRef).toBeUndefined();
 
       await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "creates a pool of three, and reads back a template key-exact with a standalone guest's",
+    async () => {
+      // SPEC-0015's headline: the pool's template is the Create Guest form's
+      // own payload, so the key set stored under spec.template.spec is the key
+      // set that form produces for the same choices - the composition property
+      // of the unit suite, proved here against the API server itself. Around it
+      // is the pool's own surface: the replica count, a ClusterIP Service in
+      // front of every replica, and a per-replica claim template, none of which
+      // upstream's own wizard can express at all.
+      await cluster.openKubeSwiftPage(frame, "swiftguestpools", "Guest Pools");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-pool");
+
+      await openCreatePoolDialog(frame);
+      await frame.locator('[data-testid="pool-create-name"]').fill(name);
+      await frame.locator('[data-testid="pool-create-replicas"]').fill("3");
+
+      await pickCreateOption(frame, "guest-create-class", "e2e-small");
+      await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+      await pickCreateOption(frame, "guest-create-seed", "e2e-seed-basic");
+      await pickCreateOption(frame, "guest-create-run-policy", "Always");
+
+      // The per-replica storage, which is the whole stateful-pool feature.
+      await openGuestSection(frame, "pool-create-storage-section");
+      await frame.locator('[data-testid="pool-create-add-claim"]').click();
+      await frame.locator('[data-testid="pool-create-claim-0-name"]').fill("state");
+      await frame.locator('[data-testid="pool-create-claim-0-size"]').fill("10Gi");
+      await frame.locator('[data-testid="pool-create-claim-0-storage-class"]').fill("e2e-pool-storage");
+
+      // The real PVC name order, which both of upstream's own documents have
+      // backwards.
+      expect(await frame.locator('[data-testid="pool-create-claim-0-pvc-name"]').innerText()).toContain(
+        `state-${name}-0`,
+      );
+
+      // One Service in front of every replica.
+      await openGuestSection(frame, "pool-create-service-section");
+      await frame.locator('[data-testid="pool-create-service-enabled"] .Checkbox').click();
+      await frame.locator('[data-testid="pool-create-add-service-port"]').click();
+      await frame.locator('[data-testid="pool-create-service-port-0-port"]').fill("80");
+      await frame.locator('[data-testid="pool-create-service-port-0-name"]').fill("http");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftGuestPool kubeswift-e2e/${name}`);
+      expect(dialog).toContain(`3 guests are created, named ${name}-0 to ${name}-2`);
+      // D4: the summary multiplies, and it names the real PVCs.
+      expect(dialog).toContain("3 launcher pods");
+      expect(dialog).toContain("3 root-disk clones of e2e-ubuntu-2404");
+      expect(dialog).toContain("3 seed Secrets");
+      expect(dialog).toContain(`state-${name}-0`);
+      expect(dialog).toContain("Deleting this pool deletes the per-replica PVCs it owns, and their data with them");
+      expect(dialog).toContain("ONE unbatched pass");
+      // The embedded form's own lines, read as N times themselves.
+      expect(dialog).toContain("Each of the 3 replicas is a full SwiftGuest");
+      expect(dialog).toContain("The guest class e2e-small sizes it");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuestPool kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftguestpools.swift.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "replicas",
+        "service",
+        "spreadPolicy",
+        "template",
+        "volumeClaimTemplates",
+      ]);
+      // Sent explicitly although the schema defaults it, for the reason the
+      // guest form sends runPolicy: required and defaulted at once.
+      expect(spec.replicas).toBe(3);
+      expect(spec.service.ports).toEqual([{ port: 80, name: "http", protocol: "TCP" }]);
+      expect(spec.volumeClaimTemplates).toHaveLength(1);
+      expect(spec.volumeClaimTemplates[0].metadata.name).toBe("state");
+      expect(spec.volumeClaimTemplates[0].spec.resources.requests.storage).toBe("10Gi");
+      expect(spec.volumeClaimTemplates[0].spec.storageClassName).toBe("e2e-pool-storage");
+      // What the API server stamped, which the form never sends: the Service
+      // type, the port protocol and the spread policy.
+      expect(spec.service.type).toBe("ClusterIP");
+      expect(spec.spreadPolicy).toBe("Pack");
+      // `updateStrategy` has no default of its own, so its absence is the proof
+      // that the form sent no rollout at all.
+      expect(spec.updateStrategy).toBeUndefined();
+
+      // The composition property, against the API server: the template is the
+      // Create Guest form's payload for these choices, key for key.
+      expect(Object.keys(spec.template.spec).sort()).toEqual([...guestTemplateKeys].sort());
+      expect(spec.template.spec.guestClassRef).toEqual({ name: "e2e-small" });
+      expect(spec.template.spec.imageRef).toEqual({ name: "e2e-ubuntu-2404" });
+      expect(spec.template.spec.seedProfileRef).toEqual({ name: "e2e-seed-basic" });
+      expect(spec.template.spec.osType).toBe("linux");
+      expect(spec.template.spec.runPolicy).toBe("Always");
+      // Nothing of the pool's own leaked into the template, and no metadata was
+      // sent with it: the pool hashes template.spec only.
+      expect(spec.template.metadata).toBeUndefined();
+      expect(spec.template.spec.topologySpreadConstraints).toBeUndefined();
+
+      // No controller runs here, so the pool fans out into nothing - which is
+      // what makes the readback a proof of what the form sent.
+      expect(cluster.kubectlField("swiftguestpools.swift.kubeswift.io", name, "{.status.replicas}")).toBe("");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses a template MAC on a pool of more than one, and offers it again at one replica",
+    async () => {
+      // D2. The pool copies interfaces[].mac verbatim into every replica, so N
+      // machines come up holding one address; nothing rejects it anywhere - the
+      // schema checks the format, the guest webhook's rule is per-object and
+      // ships disabled, and a pool has no webhook at all. It is a refusal
+      // rather than a warning because the form is reading its own two fields.
+      await cluster.openKubeSwiftPage(frame, "swiftguestpools", "Guest Pools");
+
+      const before = poolNames();
+
+      await openCreatePoolDialog(frame);
+      await frame.locator('[data-testid="pool-create-name"]').fill("e2e-pool-mac");
+      await frame.locator('[data-testid="pool-create-replicas"]').fill("2");
+      await pickCreateOption(frame, "guest-create-class", "e2e-small");
+      await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+
+      await openGuestSection(frame, "guest-create-network-section");
+      await frame.locator('[data-testid="guest-create-add-interface"]').click();
+      await frame.locator('[data-testid="guest-create-nic-0-name"]').fill("net1");
+      await frame.locator('[data-testid="guest-create-nic-0-mac"]').fill("52:54:00:12:34:56");
+
+      const refused = await cluster.confirmDialogText(frame);
+
+      expect(refused).toContain("Create Guest Pool is disabled - Interface 1 MAC address:");
+      expect(refused).toContain("the pool copies it into all 2 replicas unchanged");
+      expect(refused).toContain("a pool has no webhook at all");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // The count is a field the user changes, so the refusal has to release
+      // when it comes back down: at one replica a MAC is as legitimate here as
+      // it is on the Create Guest form.
+      await frame.locator('[data-testid="pool-create-replicas"]').fill("1");
+
+      const offered = await cluster.confirmDialogText(frame);
+
+      expect(offered).not.toContain("Create Guest Pool is disabled");
+      expect(await frame.locator('[data-testid="pool-create-submit-blocked"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(poolNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that a pinned pool puts every replica on one node, and submits anyway",
+    async () => {
+      // D1, the highest-value thing this extension adds here: nodeName is
+      // copied verbatim into every replica and never uniquified, so a pinned
+      // template collapses the whole fleet onto one node - and the spread
+      // policy cannot save it, because a pin bypasses the scheduler the
+      // constraints act on. A warning never blocks: a pinned pool is
+      // legitimate on a single-node cluster, or on the node with the devices.
+      await cluster.openKubeSwiftPage(frame, "swiftguestpools", "Guest Pools");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-pool-pinned");
+      const node = cluster.clusterNodeName();
+
+      await openCreatePoolDialog(frame);
+      await frame.locator('[data-testid="pool-create-name"]').fill(name);
+      await frame.locator('[data-testid="pool-create-replicas"]').fill("3");
+      await pickCreateOption(frame, "guest-create-class", "e2e-small");
+      await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+      await pickCreateOption(frame, "guest-create-node", node);
+
+      // Spread, so the summary can say the two halves contradict each other.
+      await openGuestSection(frame, "pool-create-spread-section");
+      await spreadRadio(frame, "spread").click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`All 3 replicas are pinned to ${node}`);
+      expect(dialog).toContain("there is no node-name logic in the controller");
+      expect(dialog).toContain("the Spread policy cannot save it");
+      // The constraints discard, stated on the control an operator looks at.
+      expect(dialog).toContain("discarded rather than merged");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuestPool kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftguestpools.swift.kubeswift.io", name, "{.spec}"));
+
+      // Warned about, and sent unchanged.
+      expect(spec.template.spec.nodeName).toBe(node);
+      expect(spec.spreadPolicy).toBe("Spread");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "drops the template's ports when the pool has a Service of its own",
+    async () => {
+      // D3. The controller replaces spec.network.ports wholly on every replica,
+      // with expose cleared, whenever spec.service is set - so offering the
+      // control would be collecting a value the form knows will be discarded,
+      // which is the same dishonesty as re-sending a schema default. The ports
+      // already typed go with it.
+      await cluster.openKubeSwiftPage(frame, "swiftguestpools", "Guest Pools");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-pool-ports");
+
+      await openCreatePoolDialog(frame);
+      await frame.locator('[data-testid="pool-create-name"]').fill(name);
+      await frame.locator('[data-testid="pool-create-replicas"]').fill("2");
+      await pickCreateOption(frame, "guest-create-class", "e2e-small");
+      await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+
+      // A per-replica port first, so the case proves the control is dropped
+      // rather than merely never offered.
+      await openGuestSection(frame, "guest-create-network-section");
+      await frame.locator('[data-testid="guest-create-add-port"]').click();
+      await frame.locator('[data-testid="guest-create-port-0-port"]').fill("9090");
+      expect(await frame.locator('[data-testid="guest-create-ports-dropped"]').count()).toBe(0);
+
+      await openGuestSection(frame, "pool-create-service-section");
+      await frame.locator('[data-testid="pool-create-service-enabled"] .Checkbox').click();
+      await frame.locator('[data-testid="pool-create-add-service-port"]').click();
+      await frame.locator('[data-testid="pool-create-service-port-0-port"]').fill("8080");
+
+      // The control is gone, and the fact stands in its place (W12).
+      expect(await frame.locator('[data-testid="guest-create-add-port"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="guest-create-port-0-port"]').count()).toBe(0);
+
+      const dropped = await frame.locator('[data-testid="guest-create-ports-dropped"]').innerText();
+
+      expect(dropped).toContain("replaces spec.network.ports wholly");
+      expect(dropped).toContain("expose cleared");
+      expect(dropped).toContain("8080/TCP");
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuestPool kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftguestpools.swift.kubeswift.io", name, "{.spec}"));
+
+      // What the readback proves: the pool's own ports are there, and the
+      // template carries no network block at all.
+      expect(spec.service.ports[0].port).toBe(8080);
+      expect(spec.template.spec.network).toBeUndefined();
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses a rollout that can never progress, and releases it when either pace moves",
+    async () => {
+      // P10. maxUnavailable: 0 with maxSurge: 0 is schema-legal, coupled by no
+      // rule and reported by no condition: the pool may take no replica down
+      // and may create no extra one, so a template change stalls forever with
+      // nothing saying why. This form makes the pair inexpressible.
+      await cluster.openKubeSwiftPage(frame, "swiftguestpools", "Guest Pools");
+
+      const before = poolNames();
+
+      await openCreatePoolDialog(frame);
+      await frame.locator('[data-testid="pool-create-name"]').fill("e2e-pool-deadlock");
+      await frame.locator('[data-testid="pool-create-replicas"]').fill("3");
+      await pickCreateOption(frame, "guest-create-class", "e2e-small");
+      await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+
+      await openGuestSection(frame, "pool-create-rollout-section");
+      await frame.locator('[data-testid="pool-create-max-unavailable"]').fill("0");
+
+      const refused = await cluster.confirmDialogText(frame);
+
+      expect(refused).toContain("Create Guest Pool is disabled - Max unavailable:");
+      expect(refused).toContain("can never progress");
+      expect(refused).toContain("reported by no condition");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // Released by the surge, and refused again when it goes back to zero.
+      await frame.locator('[data-testid="pool-create-max-surge"]').fill("1");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await frame.locator('[data-testid="pool-create-max-surge"]').fill("0");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // And released by the other one, which is the half a coupled rule would
+      // have got wrong.
+      await frame.locator('[data-testid="pool-create-max-unavailable"]').fill("1");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(poolNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that a guest already holds one of the replica names, and does not block",
+    async () => {
+      // P14. An existing guest is not adopted - ownership is by owner reference
+      // only - so the pool's create fails with AlreadyExists and, the first
+      // error aborting the reconcile, the pool never fans out at all. A warning
+      // rather than a block: the read behind it can be stale, and a refused
+      // read must never accuse.
+      await cluster.openKubeSwiftPage(frame, "swiftguestpools", "Guest Pools");
+
+      const before = poolNames();
+
+      await openCreatePoolDialog(frame);
+      await frame.locator('[data-testid="pool-create-name"]').fill("e2e-pool-taken");
+      await frame.locator('[data-testid="pool-create-replicas"]').fill("3");
+      await pickCreateOption(frame, "guest-create-class", "e2e-small");
+      await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+
+      const warned = await cluster.confirmDialogText(frame);
+
+      // The fixture guest holds index 1, so the warning has to name that index
+      // rather than the first one.
+      expect(warned).toContain("e2e-pool-taken-1");
+      expect(warned).toContain("not adopted");
+      expect(warned).toContain("aborts the reconcile");
+      expect(warned).not.toContain("Create Guest Pool is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // A smaller pool never reaches that index, so the warning goes away.
+      await frame.locator('[data-testid="pool-create-replicas"]').fill("1");
+      expect(await cluster.confirmDialogText(frame)).not.toContain("e2e-pool-taken-1");
+
+      await cluster.cancelDialog(frame);
+
+      expect(poolNames()).toEqual(before);
     },
     TIMEOUT,
   );

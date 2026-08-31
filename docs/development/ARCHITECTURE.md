@@ -50,9 +50,9 @@ src/
                              # KubeObjectStore, typed Spec/Status interfaces
                              # (full schema, not only rendered fields)
   renderer/pages/            # Cluster pages (list views); the Guests, Guest
-                             # Classes, Kernels, Images and Seed Profiles pages
-                             # also carry a create entry point, through the
-                             # host's own addRemoveButtons
+                             # Pools, Guest Classes, Kernels, Images and Seed
+                             # Profiles pages also carry a create entry point,
+                             # through the host's own addRemoveButtons
   renderer/details/          # Detail panels (kubeObjectDetailItems)
   renderer/menus/            # Write actions (kubeObjectMenuItems): one file
                              # per verb, rendered by the host in both the list
@@ -64,7 +64,8 @@ src/
                              # restore-create.ts, migration-create.ts,
                              # guest-create.ts, guestclass-create.ts,
                              # kernel-create.ts, image-create.ts,
-                             # seedprofile-create.ts), the storage vocabulary
+                             # seedprofile-create.ts, pool-create.ts), the
+                             # storage vocabulary
                              # two create forms share (kube-storage.ts: the
                              # access/volume mode pair, the CRDs' CEL rule and
                              # the live-migration derivation), reference
@@ -76,7 +77,8 @@ src/
                              # guestclass-create-dialog.tsx,
                              # kernel-create-dialog.tsx,
                              # image-create-dialog.tsx,
-                             # seedprofile-create-dialog.tsx) and the form
+                             # seedprofile-create-dialog.tsx,
+                             # pool-create-dialog.tsx) and the form
                              # grammar they share (create-dialog.tsx and its
                              # module: the labelled field, the write summary,
                              # the collapsible section, the quantity field, the
@@ -86,6 +88,22 @@ src/
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```
+
+One create form embeds another. The Create Guest Pool dialog (SPEC-0015)
+renders the section components of `guest-create-dialog.tsx` as its
+template rather than a second copy of them, and its pure model holds a
+`GuestFormValues` inside its own values and calls the shipped
+`guest-create.ts` functions against it. What made that possible is one
+extraction: every section takes a **values owner** - the values, the
+picker facts, the collapsed sections' open state and one
+`onValuesChanged` hook - instead of the Create Guest dialog's own model,
+which extends that owner by adding its OK button. An embedding form also
+passes an optional `embedding` callback, which is how the pool's
+divergences (a warning at the node pin, a refusal on an interface MAC, a
+ports control replaced by a fact, a derived clone target node) reach
+those sections without any of them knowing what a pool is. The rule this
+serves is that there is exactly ONE implementation of each SwiftGuest
+section: a second copy would drift at the next field added to the CRD.
 
 Pattern rules (KubeObject statics, no instance methods, host-provided
 globals, SCSS modules) are in [AGENTS.md](../../AGENTS.md).

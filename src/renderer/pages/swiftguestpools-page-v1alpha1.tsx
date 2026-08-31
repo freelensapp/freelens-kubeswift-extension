@@ -2,6 +2,8 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftGuestPool, type SwiftGuestPoolApi } from "../api/kubeswift/swiftguestpool-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { createGuestPoolTitle } from "../components/pool-create";
+import { openCreateGuestPoolDialog } from "../components/pool-create-dialog";
 import styles from "./swiftguestpools-page.module.scss";
 import stylesInline from "./swiftguestpools-page.module.scss?inline";
 
@@ -57,6 +59,10 @@ export const SwiftGuestPoolsPage = observer((props: SwiftGuestPoolsPageProps) =>
           sortingCallbacks={sortingCallbacks}
           searchFilters={[(object: KubeObject) => object.getSearchFields()]}
           renderHeaderTitle={KubeObject.crd.title}
+          // The host's own floating create affordance, the idiom the Guests
+          // page already uses and core's Namespaces page established: never a
+          // custom control where a native one exists (DESIGN.md pillar 1).
+          addRemoveButtons={{ onAdd: openCreateGuestPoolDialog, addTooltip: createGuestPoolTitle }}
           renderTableHeader={renderTableHeader}
           renderTableContents={(object: KubeObject) => [
             <WithTooltip>{object.getName()}</WithTooltip>,

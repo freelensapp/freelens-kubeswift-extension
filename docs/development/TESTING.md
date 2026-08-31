@@ -75,7 +75,7 @@ VMs), driven through a real Freelens by Playwright's Electron API.
   one detail panel per CRD.
 
 **Since M6 the suite also writes** (SPEC-0010, SPEC-0011, SPEC-0012,
-SPEC-0013, SPEC-0014): a handful of cases patch `spec.runPolicy`, delete a
+SPEC-0013, SPEC-0014, SPEC-0015): a handful of cases patch `spec.runPolicy`, delete a
 launcher pod, delete a guest, create a SwiftSnapshot, create a SwiftRestore,
 create a SwiftMigration and create SwiftGuests, SwiftGuestClasses,
 SwiftKernels, SwiftImages and SwiftSeedProfiles from those pages' own create
@@ -167,6 +167,29 @@ what the key-in-object selector's second control is a picker over, so their
 names are part of the fixture's contract. The slice-1 `dockerconfigjson` Secret
 is reused as the image's registry credentials, because that is exactly the type
 that field wants. No status patches are needed here either.
+
+The SPEC-0015 cases add the form that embeds another one. One writes a pool of
+three - an image-boot template with a class, a seed profile and a run policy,
+one per-replica claim template and a ClusterIP Service - and reads it back
+key-exact, asserting the pool's own fields, the `spreadPolicy: Pack`,
+`service.type: ClusterIP` and `ports[].protocol: TCP` the API server stamps, the
+absent `updateStrategy` that proves the form sent no rollout, and above all that
+`spec.template.spec`'s key set is **the same constant** the standalone Create
+Guest case asserts for the same choices: the composition property of the unit
+suite, proved against the API server itself. Two assert the traps the pool
+controller's verbatim copying creates and the count that makes them traps: a
+template MAC is refused above one replica, named with the row and the count, and
+offered again the moment the count comes back to one; and a node pin only warns,
+in the summary and at the field, with `nodeName` unchanged in the readback,
+because a pinned pool is legitimate and a warning never blocks. The other three
+assert what the form drops, refuses and cannot know: the template's ports
+control replaced by the fact that the pool's Service ports become every
+replica's, with no `network` block at all in the readback; the `0`/`0` rollout
+refused with its reason and released when either pace field moves; and a guest
+that already holds the replica name `e2e-pool-taken-1` warned about with its
+index and not blocked. Their fixture is `205-swiftguestpool-create.yaml`: that
+one guest, and a storage class behind a provisioner that does not exist, so
+nothing is ever provisioned and nothing has to be cleaned up.
 
 The pre-review pass (layer 4) stays read-only by construction and by assert,
 because it runs against the demo cluster a human reviewer is about to walk

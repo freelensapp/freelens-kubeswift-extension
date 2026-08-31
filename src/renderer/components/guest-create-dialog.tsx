@@ -210,13 +210,56 @@ function loadingPicker<T>(items: T[] = []): PickerFacts<T> {
 }
 
 /**
- * The form's state, for one opening of the dialog.
+ * What an embedding form does to the template's own sections (SPEC-0015).
  *
- * Deliberately not React state: a 409 reopens the dialog, which remounts the
- * message element, and anything held in a hook would be gone exactly when the
- * user needs it most.
+ * Every field here is optional and produced by the embedding form's own pure
+ * module, and the Create Guest dialog supplies none of them - which is what
+ * makes the embedding additive rather than a fork: a section that finds nothing
+ * renders exactly what it rendered before. Each is consumed in exactly one
+ * place, named beside it.
  */
-export interface GuestCreateDialogModel {
+export interface GuestTemplateEmbedding {
+  /** Under the node pin: what pinning every replica to one node does (D1). */
+  nodePinWarning?: string;
+  /** On one interface row's MAC address: why it is refused above one replica (D2). */
+  macRefusal?: (index: number) => string | undefined;
+  /** In place of the ports control: what replaces those ports, and where (D3). */
+  portsDropped?: string;
+  /**
+   * In place of the network section's own header line, which says a Service is
+   * created when a port asks to be exposed - true of a guest, false of a
+   * replica, whose Service is the pool's.
+   */
+  networkHint?: string;
+  /** In place of the clone's target node: the node the controller supplies per replica (D3). */
+  cloneTargetNode?: string;
+  /** Under the DRA claim name: one claim shared by every replica. */
+  gpuClaimWarning?: string;
+  /** Under the seed profile: one profile shared by every replica. */
+  seedProfileNote?: string;
+  /** On one data-disk row's PVC: one existing claim shared by every replica. */
+  sharedPvcWarning?: (index: number) => string | undefined;
+}
+
+/**
+ * Whatever owns a `GuestFormValues` and the facts the sections render it
+ * against.
+ *
+ * Every section component of this file takes one of these rather than the
+ * dialog model it was written for, which is what lets a second form embed the
+ * Create Guest form as its own template (SPEC-0015, "the dialog needs one
+ * extraction"): the pool dialog owns a values owner of its own, hands these
+ * components the same contract, and there is still exactly ONE implementation
+ * of each section - a second copy would drift at the next SwiftGuest field
+ * addition, which is the mistake upstream makes and pays for on every edit.
+ *
+ * Four things are what a section reaches for, and they are all here: the
+ * values, the facts the reads on open returned, the open state of the collapsed
+ * sections, and the one hook that runs after the values changed. Nothing else
+ * of the dialog model is visible to a section, in particular not the OK button,
+ * whose verdict is the owner's own business.
+ */
+export interface GuestValuesOwner {
   values: GuestFormValues;
   guestClasses: PickerFacts<GuestClassFacts>;
   images: PickerFacts<GuestImageFacts>;
@@ -237,6 +280,33 @@ export interface GuestCreateDialogModel {
   dataDisksOpen: boolean;
   networkOpen: boolean;
   gpuOpen: boolean;
+  /**
+   * Run inside the action that changed the values, so the owner's own submit
+   * verdict can never drift out of step with the form.
+   *
+   * On the Create Guest dialog it syncs that dialog's `okButtonProps`; on the
+   * Create Guest Pool dialog it syncs the pool's, whose verdict is about the
+   * pool's own fields as well as about the template's.
+   */
+  onValuesChanged: () => void;
+  /**
+   * What the form embedding this one adds to its sections, recomputed on every
+   * render so it can depend on the embedding form's own fields.
+   *
+   * Absent on the Create Guest dialog, which is what makes every section below
+   * behave exactly as it did before it was extracted.
+   */
+  embedding?: () => GuestTemplateEmbedding;
+}
+
+/**
+ * The form's state, for one opening of the dialog.
+ *
+ * Deliberately not React state: a 409 reopens the dialog, which remounts the
+ * message element, and anything held in a hook would be gone exactly when the
+ * user needs it most.
+ */
+export interface GuestCreateDialogModel extends GuestValuesOwner {
   /** Read by the host's own render, so it must be observable to have any effect at all. */
   okButtonProps: { disabled: boolean; primary: boolean; accent: boolean };
 }
@@ -247,7 +317,7 @@ export interface GuestCreateDialogModel {
  * One shape for every decision, rebuilt on each render of an `observer`, so a
  * function can never see a mix of two different moments of the reads on open.
  */
-export function guestCreateInputs(model: GuestCreateDialogModel): GuestCreateInputs {
+export function guestCreateInputs(model: GuestValuesOwner): GuestCreateInputs {
   return {
     guestClasses: model.guestClasses.items,
     guestClassesUnverified: model.guestClasses.state === "unavailable",
@@ -274,6 +344,70 @@ function syncOkButton(model: GuestCreateDialogModel): void {
   model.okButtonProps.disabled = Boolean(guestCreateSubmitBlockReason(guestCreateInputs(model), model.values));
 }
 
+/** What the stores already held at click time, for the pickers of one opening. */
+export interface GuestFormSeed {
+  guestClasses?: GuestClassFacts[];
+  images?: GuestImageFacts[];
+  kernels?: GuestKernelFacts[];
+  snapshots?: GuestSnapshotFacts[];
+  seedProfiles?: GuestSeedProfileFacts[];
+  pvcs?: GuestPvcFacts[];
+  gpuProfiles?: GuestGpuProfileFacts[];
+  existingNames?: string[];
+}
+
+/**
+ * A fresh values owner: the form, the pickers, and the sections' open state.
+ *
+ * The half of the dialog model the section components read, and the half a
+ * second form can own one of (SPEC-0015). `onValuesChanged` starts as a no-op
+ * and is set by whoever built the owner, because what it does - syncing an OK
+ * button whose verdict is about more than these values - cannot be known here.
+ */
+export function createGuestValuesOwner(namespace: string, seed: GuestFormSeed = {}): GuestValuesOwner {
+  return Mobx.observable(guestOwnerFields(namespace, seed), guestOwnerAnnotations);
+}
+
+/** The owner's fields as a plain object, so a model can be built around them. */
+function guestOwnerFields(namespace: string, seed: GuestFormSeed): GuestValuesOwner {
+  return {
+    values: defaultGuestForm(namespace),
+    guestClasses: loadingPicker(seed.guestClasses ?? []),
+    images: loadingPicker(seed.images ?? []),
+    kernels: loadingPicker(seed.kernels ?? []),
+    snapshots: loadingPicker(seed.snapshots ?? []),
+    seedProfiles: loadingPicker(seed.seedProfiles ?? []),
+    pvcs: loadingPicker(seed.pvcs ?? []),
+    gpuProfiles: loadingPicker(seed.gpuProfiles ?? []),
+    nodes: loadingPicker<NodeFacts>(),
+    existingNames: seed.existingNames ?? [],
+    existingNamesUnverified: false,
+    // Collapsed, per the section's own rule (DESIGN.md section 12): every
+    // field inside is optional, every value it holds has a default the object
+    // would get anyway, and what each one changes is a consequence stated on
+    // the header line, which is visible whether the section is open or shut.
+    storageOpen: false,
+    dataDisksOpen: false,
+    networkOpen: false,
+    gpuOpen: false,
+    onValuesChanged: (): void => undefined,
+    embedding: undefined,
+  };
+}
+
+/**
+ * How the two non-plain fields of an owner are annotated.
+ *
+ * `existingNames` is a reference, and `onValuesChanged` is a plain field rather
+ * than an observable one or an action of its own: it is assigned once, before
+ * the dialog is opened, and it is called from inside the actions below.
+ */
+const guestOwnerAnnotations = {
+  existingNames: Mobx.observable.ref,
+  onValuesChanged: false,
+  embedding: false,
+} as const;
+
 /**
  * A fresh model for one opening of the dialog.
  *
@@ -281,47 +415,16 @@ function syncOkButton(model: GuestCreateDialogModel): void {
  * right when the user is looking at the page these objects are listed on - and
  * the reads on open refine them.
  */
-export function createGuestDialogModel(
-  namespace: string,
-  seed: {
-    guestClasses?: GuestClassFacts[];
-    images?: GuestImageFacts[];
-    kernels?: GuestKernelFacts[];
-    snapshots?: GuestSnapshotFacts[];
-    seedProfiles?: GuestSeedProfileFacts[];
-    pvcs?: GuestPvcFacts[];
-    gpuProfiles?: GuestGpuProfileFacts[];
-    existingNames?: string[];
-  } = {},
-): GuestCreateDialogModel {
+export function createGuestDialogModel(namespace: string, seed: GuestFormSeed = {}): GuestCreateDialogModel {
   const model = Mobx.observable(
     {
-      values: defaultGuestForm(namespace),
-      guestClasses: loadingPicker(seed.guestClasses ?? []),
-      images: loadingPicker(seed.images ?? []),
-      kernels: loadingPicker(seed.kernels ?? []),
-      snapshots: loadingPicker(seed.snapshots ?? []),
-      seedProfiles: loadingPicker(seed.seedProfiles ?? []),
-      pvcs: loadingPicker(seed.pvcs ?? []),
-      gpuProfiles: loadingPicker(seed.gpuProfiles ?? []),
-      nodes: loadingPicker<NodeFacts>(),
-      existingNames: seed.existingNames ?? [],
-      existingNamesUnverified: false,
-      // Collapsed, per the section's own rule (DESIGN.md section 12): every
-      // field inside is optional, every value it holds has a default the object
-      // would get anyway, and what each one changes is a consequence stated on
-      // the header line, which is visible whether the section is open or shut.
-      storageOpen: false,
-      dataDisksOpen: false,
-      networkOpen: false,
-      gpuOpen: false,
+      ...guestOwnerFields(namespace, seed),
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
-    {
-      existingNames: Mobx.observable.ref,
-    },
+    guestOwnerAnnotations,
   );
 
+  model.onValuesChanged = () => syncOkButton(model);
   Mobx.runInAction(() => syncOkButton(model));
 
   return model;
@@ -331,9 +434,9 @@ export function createGuestDialogModel(
  * The one way the form changes, so the OK button can never drift out of step
  * with the values it is a verdict on.
  */
-export const updateGuestForm = Mobx.action((model: GuestCreateDialogModel, patch: Partial<GuestFormValues>) => {
+export const updateGuestForm = Mobx.action((model: GuestValuesOwner, patch: Partial<GuestFormValues>) => {
   Object.assign(model.values, patch);
-  syncOkButton(model);
+  model.onValuesChanged();
 });
 
 /**
@@ -345,25 +448,25 @@ export const updateGuestForm = Mobx.action((model: GuestCreateDialogModel, patch
  * form and absent from the object, which is the one place this form must never
  * be.
  */
-export const changeBootSource = Mobx.action((model: GuestCreateDialogModel, source: GuestBootSource) => {
+export const changeBootSource = Mobx.action((model: GuestValuesOwner, source: GuestBootSource) => {
   model.values = switchBootSource(model.values, source);
-  syncOkButton(model);
+  model.onValuesChanged();
 });
 
 /** A collapsed section's toggle, in the model so a 409 reopen does not shut it. */
-export const toggleStorageSection = Mobx.action((model: GuestCreateDialogModel) => {
+export const toggleStorageSection = Mobx.action((model: GuestValuesOwner) => {
   model.storageOpen = !model.storageOpen;
 });
 
-export const toggleDataDisksSection = Mobx.action((model: GuestCreateDialogModel) => {
+export const toggleDataDisksSection = Mobx.action((model: GuestValuesOwner) => {
   model.dataDisksOpen = !model.dataDisksOpen;
 });
 
-export const toggleNetworkSection = Mobx.action((model: GuestCreateDialogModel) => {
+export const toggleNetworkSection = Mobx.action((model: GuestValuesOwner) => {
   model.networkOpen = !model.networkOpen;
 });
 
-export const toggleGpuSection = Mobx.action((model: GuestCreateDialogModel) => {
+export const toggleGpuSection = Mobx.action((model: GuestValuesOwner) => {
   model.gpuOpen = !model.gpuOpen;
 });
 
@@ -376,9 +479,9 @@ export const toggleGpuSection = Mobx.action((model: GuestCreateDialogModel) => {
  * action that lands one, so the OK button can no more drift out of step with a
  * removed row than it can with a changed field.
  */
-export const applyGuestForm = Mobx.action((model: GuestCreateDialogModel, next: GuestFormValues) => {
+export const applyGuestForm = Mobx.action((model: GuestValuesOwner, next: GuestFormValues) => {
   model.values = next;
-  syncOkButton(model);
+  model.onValuesChanged();
 });
 
 /**
@@ -389,7 +492,7 @@ export const applyGuestForm = Mobx.action((model: GuestCreateDialogModel, next: 
  * object that does not exist in this one - which is the stale-selection bug
  * upstream's own wizard carries across cluster switches.
  */
-export const changeNamespace = Mobx.action((model: GuestCreateDialogModel, namespace: string) => {
+export const changeNamespace = Mobx.action((model: GuestValuesOwner, namespace: string) => {
   model.values.namespace = namespace;
   model.values.image = "";
   model.values.kernel = "";
@@ -409,7 +512,7 @@ export const changeNamespace = Mobx.action((model: GuestCreateDialogModel, names
   model.gpuProfiles = loadingPicker();
   model.existingNames = [];
   model.existingNamesUnverified = false;
-  syncOkButton(model);
+  model.onValuesChanged();
 
   void loadNamespacedObjects(model);
 });
@@ -421,18 +524,18 @@ export const changeNamespace = Mobx.action((model: GuestCreateDialogModel, names
  * open: the class is the one field the CRD requires, and a picker that cannot
  * offer it is a form nobody can submit.
  */
-export async function loadGuestClasses(model: GuestCreateDialogModel): Promise<void> {
+export async function loadGuestClasses(model: GuestValuesOwner): Promise<void> {
   try {
     const guestClasses = await SwiftGuestClass.getStore<SwiftGuestClass>().api.list();
 
     Mobx.runInAction(() => {
       model.guestClasses = { state: "ready", items: (guestClasses ?? []).map(guestClassFacts) };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   } catch {
     Mobx.runInAction(() => {
       model.guestClasses = { state: "unavailable", items: model.guestClasses.items };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   }
 }
@@ -445,7 +548,7 @@ export async function loadGuestClasses(model: GuestCreateDialogModel): Promise<v
  * the caller and none of them can throw: what they answer sharpens the form,
  * what they refuse degrades one sentence.
  */
-export async function loadNamespacedObjects(model: GuestCreateDialogModel): Promise<void> {
+export async function loadNamespacedObjects(model: GuestValuesOwner): Promise<void> {
   const namespace = model.values.namespace.trim();
 
   if (!namespace) {
@@ -471,7 +574,7 @@ export async function loadNamespacedObjects(model: GuestCreateDialogModel): Prom
  * picker, and a picker that starts as a text input and turns into a select
  * under their cursor is worse than one read that nobody uses.
  */
-async function loadKernels(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+async function loadKernels(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
     const kernels = await SwiftKernel.getStore<SwiftKernel>().api.list({ namespace });
 
@@ -481,7 +584,7 @@ async function loadKernels(model: GuestCreateDialogModel, namespace: string): Pr
       }
 
       model.kernels = { state: "ready", items: (kernels ?? []).map(kernelFacts) };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   } catch {
     Mobx.runInAction(() => {
@@ -490,13 +593,13 @@ async function loadKernels(model: GuestCreateDialogModel, namespace: string): Pr
       }
 
       model.kernels = { state: "unavailable", items: [] };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   }
 }
 
 /** The chosen namespace's snapshots, for clone boot, under the same rule. */
-async function loadSnapshots(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+async function loadSnapshots(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
     const snapshots = await SwiftSnapshot.getStore<SwiftSnapshot>().api.list({ namespace });
 
@@ -506,7 +609,7 @@ async function loadSnapshots(model: GuestCreateDialogModel, namespace: string): 
       }
 
       model.snapshots = { state: "ready", items: (snapshots ?? []).map(snapshotFacts) };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   } catch {
     Mobx.runInAction(() => {
@@ -515,12 +618,12 @@ async function loadSnapshots(model: GuestCreateDialogModel, namespace: string): 
       }
 
       model.snapshots = { state: "unavailable", items: [] };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   }
 }
 
-async function loadImages(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+async function loadImages(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
     const images = await SwiftImage.getStore<SwiftImage>().api.list({ namespace });
 
@@ -530,7 +633,7 @@ async function loadImages(model: GuestCreateDialogModel, namespace: string): Pro
       }
 
       model.images = { state: "ready", items: (images ?? []).map(imageFacts) };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   } catch {
     Mobx.runInAction(() => {
@@ -539,7 +642,7 @@ async function loadImages(model: GuestCreateDialogModel, namespace: string): Pro
       }
 
       model.images = { state: "unavailable", items: [] };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   }
 }
@@ -555,7 +658,7 @@ async function loadImages(model: GuestCreateDialogModel, namespace: string): Pro
  * rule that reads the claim's volume mode degrades from a refusal to a warning,
  * because a read nobody could make is not evidence of anything (W12).
  */
-async function loadPvcs(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+async function loadPvcs(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
     const pvcs = await pvcApi.list({ namespace });
 
@@ -573,7 +676,7 @@ async function loadPvcs(model: GuestCreateDialogModel, namespace: string): Promi
           storageClassName: pvc.spec?.storageClassName,
         })),
       };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   } catch {
     Mobx.runInAction(() => {
@@ -582,13 +685,13 @@ async function loadPvcs(model: GuestCreateDialogModel, namespace: string): Promi
       }
 
       model.pvcs = { state: "unavailable", items: [] };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   }
 }
 
 /** The chosen namespace's GPU profiles, for the native GPU backend. */
-async function loadGpuProfiles(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+async function loadGpuProfiles(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
     const profiles = await SwiftGPUProfile.getStore<SwiftGPUProfile>().api.list({ namespace });
 
@@ -598,7 +701,7 @@ async function loadGpuProfiles(model: GuestCreateDialogModel, namespace: string)
       }
 
       model.gpuProfiles = { state: "ready", items: (profiles ?? []).map(gpuProfileFacts) };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   } catch {
     Mobx.runInAction(() => {
@@ -607,12 +710,12 @@ async function loadGpuProfiles(model: GuestCreateDialogModel, namespace: string)
       }
 
       model.gpuProfiles = { state: "unavailable", items: [] };
-      syncOkButton(model);
+      model.onValuesChanged();
     });
   }
 }
 
-async function loadSeedProfiles(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+async function loadSeedProfiles(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
     const profiles = await SwiftSeedProfile.getStore<SwiftSeedProfile>().api.list({ namespace });
 
@@ -640,7 +743,7 @@ async function loadSeedProfiles(model: GuestCreateDialogModel, namespace: string
   }
 }
 
-async function loadGuestNames(model: GuestCreateDialogModel, namespace: string): Promise<void> {
+async function loadGuestNames(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
     const guests = await SwiftGuest.getStore<SwiftGuest>().api.list({ namespace });
 
@@ -675,7 +778,7 @@ async function loadGuestNames(model: GuestCreateDialogModel, namespace: string):
  * The one read here whose field is optional, which is why a failure costs a
  * sentence rather than a control: the pin degrades to a typed, unverified name.
  */
-export async function loadNodes(model: GuestCreateDialogModel): Promise<void> {
+export async function loadNodes(model: GuestValuesOwner): Promise<void> {
   try {
     const nodes = await nodesApi.list();
 
@@ -780,7 +883,7 @@ export function snapshotFacts(snapshot: SwiftSnapshot): GuestSnapshotFacts {
 }
 
 interface TextFieldProps extends FieldProps {
-  model: GuestCreateDialogModel;
+  model: GuestValuesOwner;
   field: keyof GuestFormValues;
   testId: string;
   placeholder?: string;
@@ -816,7 +919,7 @@ function isPicker<T extends { name: string }>(picker: PickerFacts<T>, value: str
 }
 
 /** The namespace: the host's own control, in the light theme the white box requires. */
-const NamespaceField = observer(({ model }: { model: GuestCreateDialogModel }) => {
+const NamespaceField = observer(({ model }: { model: GuestValuesOwner }) => {
   const errors = guestCreateErrors(guestCreateInputs(model), model.values);
 
   return (
@@ -840,7 +943,7 @@ const NamespaceField = observer(({ model }: { model: GuestCreateDialogModel }) =
  * The guest class: the one field the CRD requires, never auto-selected, with
  * the sizing it commits the guest to rendered next to it (G3).
  */
-const GuestClassField = observer(({ model }: { model: GuestCreateDialogModel }) => {
+export const GuestClassField = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = guestCreateErrors(inputs, model.values);
   const warnings = guestCreateWarnings(inputs, model.values);
@@ -932,7 +1035,7 @@ const GuestClassField = observer(({ model }: { model: GuestCreateDialogModel }) 
  * is born Failed. Rendering the value as a fact is what makes the mismatch
  * impossible rather than merely validated.
  */
-const OsTypeFact = observer(({ model }: { model: GuestCreateDialogModel }) => {
+const OsTypeFact = observer(({ model }: { model: GuestValuesOwner }) => {
   const osType = guestOsType(guestCreateInputs(model), model.values);
 
   return (
@@ -962,7 +1065,7 @@ const OsTypeFact = observer(({ model }: { model: GuestCreateDialogModel }) => {
  * Switching clears the fields of the source being left (`switchBootSource`), so
  * the form and the payload can never disagree about what this guest boots from.
  */
-const BootSourceField = observer(({ model }: { model: GuestCreateDialogModel }) => (
+const BootSourceField = observer(({ model }: { model: GuestValuesOwner }) => (
   <div className={styles.field} data-testid="guest-create-boot-source">
     <div className={styles.label}>Boot source</div>
     <RadioGroup
@@ -990,7 +1093,7 @@ const BootSourceField = observer(({ model }: { model: GuestCreateDialogModel }) 
 ));
 
 /** The image this guest's root disk is cloned from (image boot). */
-const ImageField = observer(({ model }: { model: GuestCreateDialogModel }) => {
+const ImageField = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = guestCreateErrors(inputs, model.values);
   const warnings = guestCreateWarnings(inputs, model.values);
@@ -1057,7 +1160,7 @@ const ImageField = observer(({ model }: { model: GuestCreateDialogModel }) => {
  * waits differently: kernels are not watched, so the recovery is the
  * controller's periodic resync rather than the instant the artifact lands.
  */
-const KernelFields = observer(({ model }: { model: GuestCreateDialogModel }) => {
+const KernelFields = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = guestCreateErrors(inputs, model.values);
   const warnings = guestCreateWarnings(inputs, model.values);
@@ -1136,7 +1239,7 @@ const KernelFields = observer(({ model }: { model: GuestCreateDialogModel }) => 
  * sized to (the captured guest spec), and whether the guest it came from is
  * still there.
  */
-const CloneFields = observer(({ model }: { model: GuestCreateDialogModel }) => {
+const CloneFields = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = guestCreateErrors(inputs, model.values);
   const warnings = guestCreateWarnings(inputs, model.values);
@@ -1231,12 +1334,26 @@ const CloneFields = observer(({ model }: { model: GuestCreateDialogModel }) => {
  * stated rather than asked, because it is a fact of the capture (W12's option
  * dropping, with what the field would have controlled said out loud).
  */
-const CloneTargetNodeField = observer(({ model }: { model: GuestCreateDialogModel }) => {
+const CloneTargetNodeField = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = guestCreateErrors(inputs, model.values);
   const warnings = guestCreateWarnings(inputs, model.values);
   const snapshot = pickedSnapshot(inputs, model.values);
   const choices = guestNodeChoices(inputs);
+  // The mirror image of this form's own rule (SPEC-0015, D3): a pool controller
+  // supplies the target node per replica, so the control becomes a preview of
+  // what it will supply, and the block G10 puts on it is lifted with it.
+  const derived = model.embedding?.().cloneTargetNode;
+
+  if (derived) {
+    return (
+      <Field label="Target node">
+        <div className={styles.hint} data-testid="guest-create-clone-node-derived">
+          {derived}
+        </div>
+      </Field>
+    );
+  }
 
   if (!snapshot) {
     return null;
@@ -1295,7 +1412,7 @@ const CloneTargetNodeField = observer(({ model }: { model: GuestCreateDialogMode
 });
 
 /** The boot source's own fields, whichever source that is. */
-const BootSourceFields = observer(({ model }: { model: GuestCreateDialogModel }) => (
+export const BootSourceFields = observer(({ model }: { model: GuestValuesOwner }) => (
   <>
     <BootSourceField model={model} />
     {model.values.bootSource === "image" ? <ImageField model={model} /> : null}
@@ -1314,10 +1431,13 @@ const BootSourceFields = observer(({ model }: { model: GuestCreateDialogModel })
  * stated in its place, because a field that vanishes without a word is its own
  * kind of mystery.
  */
-const SeedProfileField = observer(({ model }: { model: GuestCreateDialogModel }) => {
+export const SeedProfileField = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const warnings = guestCreateWarnings(inputs, model.values);
   const dropped = seedProfileDroppedReason(model.values.bootSource);
+  // What an embedding form adds: one profile is one document, and a pool sends
+  // it to every replica (SPEC-0015).
+  const shared = model.embedding?.().seedProfileNote;
 
   if (!seedProfileApplies(model.values.bootSource)) {
     return (
@@ -1329,8 +1449,7 @@ const SeedProfileField = observer(({ model }: { model: GuestCreateDialogModel })
     );
   }
 
-  const hint =
-    "Optional. The profile is rendered into a Secret of this guest and attached as its cloud-init NoCloud seed, which is what configures the guest on its first boot.";
+  const hint = `Optional. The profile is rendered into a Secret of this guest and attached as its cloud-init NoCloud seed, which is what configures the guest on its first boot.${shared ? ` ${shared}` : ""}`;
 
   if (!isPicker(model.seedProfiles, model.values.seedProfile)) {
     return (
@@ -1376,7 +1495,7 @@ const SeedProfileField = observer(({ model }: { model: GuestCreateDialogModel })
  * disabled, so sending the value explicitly is what makes the stored object read
  * the same on every install (G8).
  */
-const RunPolicyField = observer(({ model }: { model: GuestCreateDialogModel }) => (
+export const RunPolicyField = observer(({ model }: { model: GuestValuesOwner }) => (
   <Field label="Run policy" hint={runPolicyNote(model.values.runPolicy)}>
     <Select
       id="guest-create-run-policy"
@@ -1400,11 +1519,19 @@ const RunPolicyField = observer(({ model }: { model: GuestCreateDialogModel }) =
  * guest are offered disabled with the reason, which is the SPEC-0012 rule
  * applied to the other end of the same problem.
  */
-const NodeField = observer(({ model }: { model: GuestCreateDialogModel }) => {
+export const NodeField = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
-  const warnings = guestCreateWarnings(inputs, model.values);
+  const guestWarning = guestCreateWarnings(inputs, model.values).nodeName;
   const choices = guestNodeChoices(inputs, model.values.bootSource);
   const hint = `Optional. ${nodePinFact}`;
+  // An embedding form's own warning about the pin is ADDED to the guest form's,
+  // never substituted for it: they are different facts about the same field -
+  // whether the node can take this guest, and what pinning every replica of a
+  // pool to it does (SPEC-0015, D1).
+  const embedded = model.embedding?.().nodePinWarning;
+  const warnings = {
+    nodeName: [guestWarning, embedded].filter(Boolean).join(" ") || undefined,
+  };
 
   if (!nodePinApplies(model.values.bootSource)) {
     return (
@@ -1492,7 +1619,7 @@ const NodeField = observer(({ model }: { model: GuestCreateDialogModel }) => {
  * It opens by itself when it holds an error, because a submit blocked on a
  * field nobody can see is the dead control W4 forbids.
  */
-const StorageSection = observer(({ model }: { model: GuestCreateDialogModel }) => {
+export const StorageSection = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = guestCreateErrors(inputs, model.values);
   const storage = resolvedStorage(inputs, model.values);
@@ -1581,7 +1708,7 @@ const StorageSection = observer(({ model }: { model: GuestCreateDialogModel }) =
  * case, every field inside is optional, and what the section changes is stated
  * on its header line whether it is open or shut.
  */
-const DataDisksSection = observer(({ model }: { model: GuestCreateDialogModel }) => {
+export const DataDisksSection = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const hasError = dataDisksSectionHasError(inputs, model.values);
   const guard = addDataDiskGuard(model.values);
@@ -1611,7 +1738,7 @@ const DataDisksSection = observer(({ model }: { model: GuestCreateDialogModel })
 
 /** One data disk: its name, what it is made of, and the fields that follow from that. */
 const DataDiskFields = observer(
-  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestDataDiskRow; index: number }) => {
+  ({ model, row, index }: { model: GuestValuesOwner; row: GuestDataDiskRow; index: number }) => {
     const inputs = guestCreateInputs(model);
     const errors = dataDiskErrors(inputs, model.values)[index] ?? {};
     const warnings = dataDiskWarnings(inputs, model.values)[index] ?? {};
@@ -1767,7 +1894,7 @@ const dataDiskSourceChoices: { source: GuestDataDiskSource; label: string; descr
 
 /** The image a data disk is cloned from, with the readiness upstream needs. */
 const DataDiskImageField = observer(
-  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestDataDiskRow; index: number }) => {
+  ({ model, row, index }: { model: GuestValuesOwner; row: GuestDataDiskRow; index: number }) => {
     const inputs = guestCreateInputs(model);
     const errors = dataDiskErrors(inputs, model.values)[index] ?? {};
     const warnings = dataDiskWarnings(inputs, model.values)[index] ?? {};
@@ -1823,13 +1950,20 @@ const DataDiskImageField = observer(
 
 /** The claim a data disk attaches, and what its volume mode allows. */
 const DataDiskPvcFields = observer(
-  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestDataDiskRow; index: number }) => {
+  ({ model, row, index }: { model: GuestValuesOwner; row: GuestDataDiskRow; index: number }) => {
     const inputs = guestCreateInputs(model);
     const errors = dataDiskErrors(inputs, model.values)[index] ?? {};
-    const warnings = dataDiskWarnings(inputs, model.values)[index] ?? {};
+    const rowWarnings = dataDiskWarnings(inputs, model.values)[index] ?? {};
     const prefix = `guest-create-disk-${index}`;
     const hint =
       "The claim has to exist already: the controller attaches it, it does not create it, and it is not deleted with the guest.";
+    // One existing claim attached by every replica of a pool is one claim, and
+    // a ReadWriteOnce one lets exactly one of them schedule (SPEC-0015).
+    const shared = model.embedding?.().sharedPvcWarning?.(index);
+    const warnings = {
+      ...rowWarnings,
+      pvc: [rowWarnings.pvc, shared].filter(Boolean).join(" ") || undefined,
+    };
 
     if (!isPicker(model.pvcs, row.pvc)) {
       return (
@@ -1895,13 +2029,19 @@ function pvcOptionLabel(pvc: GuestPvcFacts): string {
  * the wrong type, and an `expose` under a bridge binding mints none at all and
  * reports nothing.
  */
-const NetworkSection = observer(({ model }: { model: GuestCreateDialogModel }) => {
+export const NetworkSection = observer(({ model }: { model: GuestValuesOwner }) => {
   const hasError = networkSectionHasError(model.values);
+  // W12's option dropping, asked of the embedding form (SPEC-0015, D3): with a
+  // pool Service configured the controller REPLACES these ports on every
+  // replica, so the control is not rendered and what replaces them is stated in
+  // its place.
+  const embedding = model.embedding?.() ?? {};
+  const portsDropped = embedding.portsDropped;
 
   return (
     <CollapsibleSection
       title="Network and ports"
-      hint={networkSectionHint(model.values)}
+      hint={embedding.networkHint ?? networkSectionHint(model.values)}
       open={model.networkOpen || hasError}
       onToggle={() => toggleNetworkSection(model)}
       testId="guest-create-network-section"
@@ -1931,15 +2071,25 @@ const NetworkSection = observer(({ model }: { model: GuestCreateDialogModel }) =
         <div className={styles.hint}>{primaryInterfaceFact}</div>
       </div>
 
-      {model.values.ports.map((row, index) => (
-        <PortFields key={row.id} model={model} row={row} index={index} />
-      ))}
+      {portsDropped ? (
+        <Field label="Ports">
+          <div className={styles.hint} data-testid="guest-create-ports-dropped">
+            {portsDropped}
+          </div>
+        </Field>
+      ) : (
+        <>
+          {model.values.ports.map((row, index) => (
+            <PortFields key={row.id} model={model} row={row} index={index} />
+          ))}
 
-      <AddRowButton
-        label="Add a port"
-        onAdd={() => applyGuestForm(model, addPort(model.values))}
-        testId="guest-create-add-port"
-      />
+          <AddRowButton
+            label="Add a port"
+            onAdd={() => applyGuestForm(model, addPort(model.values))}
+            testId="guest-create-add-port"
+          />
+        </>
+      )}
 
       {model.values.interfaces.map((row, index) => (
         <InterfaceFields key={row.id} model={model} row={row} index={index} />
@@ -1959,104 +2109,106 @@ const NetworkSection = observer(({ model }: { model: GuestCreateDialogModel }) =
 });
 
 /** One declared port, and whether it asks for a Service. */
-const PortFields = observer(
-  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestPortRow; index: number }) => {
-    const errors = portErrors(model.values)[index] ?? {};
-    const warnings = portWarnings(model.values)[index] ?? {};
-    const prefix = `guest-create-port-${index}`;
-    const update = (patch: Partial<GuestPortRow>) => applyGuestForm(model, updatePort(model.values, row.id, patch));
+const PortFields = observer(({ model, row, index }: { model: GuestValuesOwner; row: GuestPortRow; index: number }) => {
+  const errors = portErrors(model.values)[index] ?? {};
+  const warnings = portWarnings(model.values)[index] ?? {};
+  const prefix = `guest-create-port-${index}`;
+  const update = (patch: Partial<GuestPortRow>) => applyGuestForm(model, updatePort(model.values, row.id, patch));
 
-    return (
-      <FormRow
-        title={`Port ${index + 1}`}
-        removeLabel="Remove"
-        onRemove={() => applyGuestForm(model, removePort(model.values, row.id))}
-        testId={prefix}
-        removeTestId={`${prefix}-remove`}
+  return (
+    <FormRow
+      title={`Port ${index + 1}`}
+      removeLabel="Remove"
+      onRemove={() => applyGuestForm(model, removePort(model.values, row.id))}
+      testId={prefix}
+      removeTestId={`${prefix}-remove`}
+    >
+      <Field
+        label="Port"
+        hint="What the port is reachable as on the pod IP, and on the Service when there is one."
+        error={errors.port}
       >
-        <Field
-          label="Port"
-          hint="What the port is reachable as on the pod IP, and on the Service when there is one."
-          error={errors.port}
-        >
-          <Input
-            value={row.port}
-            placeholder="8080"
-            data-testid={`${prefix}-port`}
-            onChange={(value: string) => update({ port: value })}
-          />
-        </Field>
+        <Input
+          value={row.port}
+          placeholder="8080"
+          data-testid={`${prefix}-port`}
+          onChange={(value: string) => update({ port: value })}
+        />
+      </Field>
 
-        <Field
-          label="Name"
-          hint={
-            model.values.ports.length > 1
-              ? "Required above one port: it becomes this port's name on the guest's own Service."
-              : "Optional on a single port, and required as soon as there is a second one."
-          }
-          error={errors.name}
-          warning={warnings.name}
-        >
-          <Input
-            value={row.name}
-            placeholder="http"
-            data-testid={`${prefix}-name`}
-            onChange={(value: string) => update({ name: value })}
-          />
-        </Field>
+      <Field
+        label="Name"
+        hint={
+          model.values.ports.length > 1
+            ? "Required above one port: it becomes this port's name on the guest's own Service."
+            : "Optional on a single port, and required as soon as there is a second one."
+        }
+        error={errors.name}
+        warning={warnings.name}
+      >
+        <Input
+          value={row.name}
+          placeholder="http"
+          data-testid={`${prefix}-name`}
+          onChange={(value: string) => update({ name: value })}
+        />
+      </Field>
 
-        <Field
-          label="Target port"
-          hint="What the guest itself listens on. Empty means the same number as the port above."
-          error={errors.targetPort}
-        >
-          <Input
-            value={row.targetPort}
-            placeholder="the same as the port"
-            data-testid={`${prefix}-target-port`}
-            onChange={(value: string) => update({ targetPort: value })}
-          />
-        </Field>
+      <Field
+        label="Target port"
+        hint="What the guest itself listens on. Empty means the same number as the port above."
+        error={errors.targetPort}
+      >
+        <Input
+          value={row.targetPort}
+          placeholder="the same as the port"
+          data-testid={`${prefix}-target-port`}
+          onChange={(value: string) => update({ targetPort: value })}
+        />
+      </Field>
 
-        <Field label="Protocol" hint={`Empty is ${defaultPortProtocol}, which the API server stamps.`}>
-          <Select
-            id={`${prefix}-protocol`}
-            themeName="light"
-            menuClass={styles.selectMenu}
-            value={row.protocol}
-            options={guestPortProtocols.map((protocol) => ({ value: protocol, label: protocol }))}
-            onChange={(option: { value: SwiftGuestProtocol } | null) => option && update({ protocol: option.value })}
-          />
-        </Field>
+      <Field label="Protocol" hint={`Empty is ${defaultPortProtocol}, which the API server stamps.`}>
+        <Select
+          id={`${prefix}-protocol`}
+          themeName="light"
+          menuClass={styles.selectMenu}
+          value={row.protocol}
+          options={guestPortProtocols.map((protocol) => ({ value: protocol, label: protocol }))}
+          onChange={(option: { value: SwiftGuestProtocol } | null) => option && update({ protocol: option.value })}
+        />
+      </Field>
 
-        <Field
-          label="Expose"
-          hint="Empty means no Service at all: the port is still reachable pod-to-guest through the in-pod DNAT. All exposed ports of a guest share ONE Service, so they all have to ask for the same type."
-          error={errors.expose}
-          warning={warnings.expose}
-        >
-          <Select
-            id={`${prefix}-expose`}
-            themeName="light"
-            menuClass={styles.selectMenu}
-            placeholder="No Service"
-            isClearable
-            value={row.expose || null}
-            options={guestPortExposures.map((exposure) => ({ value: exposure, label: exposure }))}
-            onChange={(option: { value: string } | null) => update({ expose: option?.value ?? "" })}
-          />
-        </Field>
-      </FormRow>
-    );
-  },
-);
+      <Field
+        label="Expose"
+        hint="Empty means no Service at all: the port is still reachable pod-to-guest through the in-pod DNAT. All exposed ports of a guest share ONE Service, so they all have to ask for the same type."
+        error={errors.expose}
+        warning={warnings.expose}
+      >
+        <Select
+          id={`${prefix}-expose`}
+          themeName="light"
+          menuClass={styles.selectMenu}
+          placeholder="No Service"
+          isClearable
+          value={row.expose || null}
+          options={guestPortExposures.map((exposure) => ({ value: exposure, label: exposure }))}
+          onChange={(option: { value: string } | null) => update({ expose: option?.value ?? "" })}
+        />
+      </Field>
+    </FormRow>
+  );
+});
 
 /** One additional interface: a bridge NIC, optionally on a network and optionally primary. */
 const InterfaceFields = observer(
-  ({ model, row, index }: { model: GuestCreateDialogModel; row: GuestInterfaceRow; index: number }) => {
+  ({ model, row, index }: { model: GuestValuesOwner; row: GuestInterfaceRow; index: number }) => {
     const errors = interfaceErrors(model.values)[index] ?? {};
     const warnings = interfaceWarnings(model.values)[index] ?? {};
     const prefix = `guest-create-nic-${index}`;
+    // The one refusal an embedding form adds to this row (SPEC-0015, D2): a MAC
+    // copied into every replica of a pool is a collision, and nothing but this
+    // form rejects it.
+    const macRefusal = model.embedding?.().macRefusal?.(index);
     const update = (patch: Partial<GuestInterfaceRow>) =>
       applyGuestForm(model, updateInterface(model.values, row.id, patch));
 
@@ -2102,7 +2254,7 @@ const InterfaceFields = observer(
         <Field
           label="MAC address"
           hint="Empty is the deterministic address upstream generates. The pattern is a security boundary: the value is written into a file the privileged launcher sources."
-          error={errors.mac}
+          error={errors.mac ?? macRefusal}
         >
           <Input
             value={row.mac}
@@ -2138,7 +2290,7 @@ const InterfaceFields = observer(
  * replaced by the reason rather than rendered and ignored, which is W12's
  * option dropping applied to a whole section.
  */
-const GpuSection = observer(({ model }: { model: GuestCreateDialogModel }) => {
+export const GpuSection = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const guard = guestGpuGuard(inputs, model.values);
 
@@ -2196,7 +2348,7 @@ const GpuSection = observer(({ model }: { model: GuestCreateDialogModel }) => {
 });
 
 /** The native backend's profile, with the request it carries on every option. */
-const GpuProfileField = observer(({ model }: { model: GuestCreateDialogModel }) => {
+const GpuProfileField = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = gpuErrors(inputs, model.values);
   const warnings = gpuWarnings(inputs, model.values);
@@ -2253,10 +2405,13 @@ const GpuProfileField = observer(({ model }: { model: GuestCreateDialogModel }) 
 });
 
 /** The DRA backend: a shared claim or a template, and never both. */
-const GpuClaimFields = observer(({ model }: { model: GuestCreateDialogModel }) => {
+const GpuClaimFields = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = gpuErrors(inputs, model.values);
   const update = (patch: Partial<GuestFormValues>) => applyGuestForm(model, { ...model.values, ...patch });
+  // A shared ResourceClaim is one allocation; the template beside it is the
+  // per-replica answer, and an embedding form is what knows there are replicas.
+  const shared = model.embedding?.().gpuClaimWarning;
 
   return (
     <>
@@ -2264,6 +2419,7 @@ const GpuClaimFields = observer(({ model }: { model: GuestCreateDialogModel }) =
         label="Resource claim"
         hint="A ResourceClaim that already exists and is shared. Exactly one of this and the template below."
         error={errors.claimName}
+        warning={shared}
       >
         <Input
           value={model.values.gpuClaimName}
@@ -2329,8 +2485,30 @@ const GpuClaimFields = observer(({ model }: { model: GuestCreateDialogModel }) =
   );
 });
 
+/**
+ * The guest agent's vsock device, the last field of the form before its summary.
+ *
+ * A component of its own since SPEC-0015, for the reason every other section is
+ * one: the pool form embeds it too, and one checkbox with two implementations
+ * is one sentence that can drift.
+ */
+export const GuestAgentField = observer(({ model }: { model: GuestValuesOwner }) => (
+  <div className={styles.checkboxRow} data-testid="guest-create-guest-agent">
+    <Checkbox
+      label="Attach the guest agent device"
+      value={model.values.guestAgentEnabled}
+      onChange={(value: boolean) => updateGuestForm(model, { guestAgentEnabled: value })}
+    />
+    <div className={styles.hint}>
+      The vsock device the in-guest identity agent talks over. It is what lets a clone taken from a snapshot of this
+      guest regenerate its machine id, its SSH host keys, its hostname and its MAC without a reboot - and it has to be
+      on the source when the snapshot is taken, not added to the clone afterwards.
+    </div>
+  </div>
+));
+
 /** The live write summary: the one create line, then the facts that are true of it (W1). */
-const GuestWriteSummary = observer(({ model }: { model: GuestCreateDialogModel }) => (
+const GuestWriteSummary = observer(({ model }: { model: GuestValuesOwner }) => (
   <WriteSummary facts={guestCreateSummary(guestCreateInputs(model), model.values)} />
 ));
 
@@ -2340,7 +2518,7 @@ const GuestWriteSummary = observer(({ model }: { model: GuestCreateDialogModel }
  * An `observer` over a model that outlives it, which is what makes the host's
  * own re-renders, and the reopen after a 409, harmless.
  */
-export const GuestCreateForm = observer(({ model }: { model: GuestCreateDialogModel }) => {
+export const GuestCreateForm = observer(({ model }: { model: GuestValuesOwner }) => {
   const inputs = guestCreateInputs(model);
   const errors = guestCreateErrors(inputs, model.values);
   const warnings = guestCreateWarnings(inputs, model.values);
@@ -2385,18 +2563,7 @@ export const GuestCreateForm = observer(({ model }: { model: GuestCreateDialogMo
 
       <GpuSection model={model} />
 
-      <div className={styles.checkboxRow} data-testid="guest-create-guest-agent">
-        <Checkbox
-          label="Attach the guest agent device"
-          value={model.values.guestAgentEnabled}
-          onChange={(value: boolean) => updateGuestForm(model, { guestAgentEnabled: value })}
-        />
-        <div className={styles.hint}>
-          The vsock device the in-guest identity agent talks over. It is what lets a clone taken from a snapshot of this
-          guest regenerate its machine id, its SSH host keys, its hostname and its MAC without a reboot - and it has to
-          be on the source when the snapshot is taken, not added to the clone afterwards.
-        </div>
-      </div>
+      <GuestAgentField model={model} />
 
       <GuestWriteSummary model={model} />
 
@@ -2500,7 +2667,25 @@ export function openGuestCreateDialog(model: GuestCreateDialogModel): void {
  */
 export function openCreateGuestDialog(): void {
   const namespace = defaultNamespace(namespaceStore.contextNamespaces);
-  const model = createGuestDialogModel(namespace, {
+  const model = createGuestDialogModel(namespace, guestFormSeed(namespace));
+
+  void loadGuestClasses(model);
+  void loadNamespacedObjects(model);
+  void loadNodes(model);
+
+  openGuestCreateDialog(model);
+}
+
+/**
+ * Everything the stores already hold for one namespace, as the pickers of a
+ * fresh form want it.
+ *
+ * Free, and usually right when the user is looking at a page these objects are
+ * listed on; the reads on open refine it. Shared with the Create Guest Pool
+ * dialog, whose template is the same form.
+ */
+export function guestFormSeed(namespace: string): GuestFormSeed {
+  return {
     guestClasses: storedGuestClasses(),
     images: storedImages(namespace),
     kernels: storedKernels(namespace),
@@ -2509,13 +2694,7 @@ export function openCreateGuestDialog(): void {
     pvcs: storedPvcs(namespace),
     gpuProfiles: storedGpuProfiles(namespace),
     existingNames: storedGuestNames(namespace),
-  });
-
-  void loadGuestClasses(model);
-  void loadNamespacedObjects(model);
-  void loadNodes(model);
-
-  openGuestCreateDialog(model);
+  };
 }
 
 /** The cluster's guest classes as the store already holds them: free, and usually right. */

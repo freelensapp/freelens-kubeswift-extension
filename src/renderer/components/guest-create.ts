@@ -2985,6 +2985,18 @@ export interface GuestCreateBlockingIssue {
 }
 
 /**
+ * What a form that EMBEDS this one owns itself (SPEC-0015).
+ *
+ * The Create Guest Pool form asks for the namespace and the name in its own
+ * head - a template has neither - and supplies the clone's target node from the
+ * pool controller's round-robin, so it produces those three messages itself and
+ * this list must not produce them a second time.
+ */
+export interface GuestCreateIssueOptions {
+  skipFields?: readonly GuestCreateField[];
+}
+
+/**
  * Every reason the form cannot be submitted, in the reading order of the form.
  *
  * The flat fields first, then the three repeatable sections row by row, then
@@ -2996,6 +3008,7 @@ export interface GuestCreateBlockingIssue {
 export function guestCreateBlockingIssues(
   inputs: GuestCreateInputs,
   values: GuestFormValues,
+  options: GuestCreateIssueOptions = {},
 ): GuestCreateBlockingIssue[] {
   const issues: GuestCreateBlockingIssue[] = [];
   const errors = guestCreateErrors(inputs, values);
@@ -3003,7 +3016,7 @@ export function guestCreateBlockingIssues(
   for (const field of fieldOrder) {
     const message = errors[field];
 
-    if (message) {
+    if (message && !options.skipFields?.includes(field)) {
       issues.push({ label: guestCreateFieldLabels[field], message });
     }
   }

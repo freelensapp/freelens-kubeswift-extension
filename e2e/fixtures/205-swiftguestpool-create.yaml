@@ -1,0 +1,47 @@
+# Subjects of the M6 Create Guest Pool cases (SPEC-0015). Two objects, both of
+# them there to be found rather than to be used: the form reads the namespace's
+# SwiftGuests to warn about a replica name that is already taken, and it names a
+# storage class on the per-replica claim templates it writes.
+#
+# `e2e/scripts/cluster-up.sh` is idempotent and re-applies both, and the pools
+# the cases create are named after the wall clock, so a second run against a
+# kept cluster does not collide with what the first one wrote.
+#
+# The guest that holds a replica name. A pool named `e2e-pool-taken` would want
+# `e2e-pool-taken-1` for its second replica, and this is it: an existing guest
+# is NOT adopted - ownership is by owner reference only - so the pool's create
+# would fail with AlreadyExists and, the first error aborting the reconcile, the
+# pool would never fan out at all. Index 1 rather than 0, so the case can assert
+# that the warning names the index it really found rather than the first one.
+# It carries no status, which is what every guest on this cluster looks like:
+# no controller runs here.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-pool-taken-1
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Stopped
+---
+# The storage class the claim-template cases name. A class of its own rather
+# than the SPEC-0014 ones, with a provisioner that does not exist and
+# `WaitForFirstConsumer` binding, so that nothing on this cluster ever tries to
+# provision the per-replica PVCs a pool would ask for - and nothing has to be
+# cleaned up after a case that wrote one. No controller runs here either, so no
+# PVC is created at all; this is the belt to that pair of braces.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: e2e-pool-storage
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+provisioner: e2e.freelensapp.github.io/no-such-driver
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete

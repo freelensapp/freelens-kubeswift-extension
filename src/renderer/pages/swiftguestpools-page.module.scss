@@ -1,4 +1,19 @@
+// The same 80px the Guests page measured for the host's floating create button
+// (`AddRemoveButtons`, the "+" this page now passes `addRemoveButtons` to):
+// without it the button lands exactly where the kebab of the last row does once
+// the list scrolls, and wins the click - it is a later sibling of the table with
+// `z-index: 99`. The list is virtualized, so nothing can be spaced by a margin
+// on the last row; what can be spaced is the scroll container, whose block-end
+// padding is part of its scrollable overflow. Repeated rather than shared: the
+// value is measured against the host's own button, and one `@use`-able partial
+// for two declarations would be indirection without a second reader.
+$create-button-clearance: 80px;
+
 .page {
+  :global(.VirtualList .list) {
+    padding-bottom: $create-button-clearance;
+  }
+
   :global(.TableCell) {
     &.desired {
       flex-grow: 0.3;

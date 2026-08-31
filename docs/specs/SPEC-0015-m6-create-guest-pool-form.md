@@ -454,6 +454,148 @@ its three conditions met each time.
 
 Filled during implementation when reality diverges from the plan.
 
+### Create Guest Pool as implemented (2026-08-31)
+
+One slice, as planned, on the SPEC-0011/0013 machinery unchanged for the
+sixth time: the W12 create pattern, the MobX model outside React, the
+observable `okButtonProps`, the catch-never-rethrow submit with the 409
+reopen, `store.create`, the host's own `addRemoveButtons`, and the shared
+`create-dialog` primitives - which needed **no addition and no change**,
+the first create form since SPEC-0011 that did not touch them.
+
+**The typed models needed nothing at all**, for the fourth time:
+`swiftguestpool-v1alpha1.ts` already declared `replicas`, `service` with
+its ports and `headless`, `spreadPolicy`, `updateStrategy` with its
+`rollingUpdate` pair, `volumeClaimTemplates` with their metadata and
+spec, and a `template` whose `spec` is `SwiftGuestSpec` itself. The
+"extend the types from the schema where needed" item of this spec found
+nothing under-typed.
+
+These are the places the implementation is more specific than, or
+different from, the text above:
+
+- **The values-owner extraction landed on this branch as its own
+  commit**, not as a separate PR. It is 492 lines in one file, changes no
+  behaviour, and is proved by the 2065 unit tests passing unchanged; the
+  spec allowed either, and a PR carrying only a type rename would have
+  been ceremony. The shape is `GuestValuesOwner`: the values, the picker
+  facts, the four collapsed sections' open state and an `onValuesChanged`
+  hook, with `GuestCreateDialogModel` extending it by adding the OK
+  button - so the button's verdict, which is the one thing the two forms
+  cannot share, is the one thing the owner does not carry.
+- **The divergences reach the shipped sections through one optional
+  callback**, `embedding`, and not by parameterising each section. The
+  Create Guest dialog supplies none, so every section renders exactly
+  what it rendered before; the pool supplies seven facts, each consumed
+  in exactly one place - D1's pin warning, D2's per-row MAC refusal, D3's
+  ports fact and clone-node preview, and the three shared-referent
+  sentences. This is what keeps "one implementation of each section"
+  true rather than aspirational.
+- **The name budget's transitions are at 10/11 and 100/101, not at the
+  9/10 and 99/100 the tests section names.** The formula is the spec's
+  own - `63 - 1 - digits(replicas - 1)` - and a pool of 10 replicas has 9
+  as its highest index, which is still one digit. The unit suite covers
+  9, 10, 11, 99, 100 and 101, so both readings are pinned.
+- **A pool Service is a checkbox, not the side effect of a port row.**
+  `spec.service` being set is what makes the template's ports control
+  disappear, so it had to be a decision the operator makes rather than
+  something that happens while they are typing a port number. An enabled
+  Service with no port is refused with the schema's own `minItems: 1`.
+- **A claim template requires a SIZE as well as a name.** P8 argues the
+  name; the same argument covers the size, and it is sharper - a PVC with
+  no `resources.requests.storage` is refused by the API server itself, so
+  a pool carrying one retries a rejected create on every reconcile with
+  nothing on the pool explaining it. Both are required by this form and
+  by nothing else.
+- **`updateStrategy` is omitted entirely when the pace is the schema's
+  own.** The block has no default of its own: what is defaulted is `type`
+  and the two pace fields INSIDE the blocks that exist, so sending
+  nothing is the honest way to say "the standard rolling update" rather
+  than a re-sent default. When the pace is changed both fields are sent
+  together, because the schema requires the pair as soon as
+  `rollingUpdate` exists. Under `Recreate` the pace fields are dropped
+  altogether (W12), the CRD scoping them to a rolling update.
+- **`headless` is made inexpressible rather than validated**, and moving
+  the Service to NodePort or LoadBalancer CLEARS the flag rather than
+  leaving it in the form for the controller to override.
+- **The clone preview walks a narrower node set than the form's own
+  picker.** `guestNodeChoices` keeps the control plane, because a
+  standalone guest may legitimately be pinned to it; the pool
+  controller's round-robin skips it, so `schedulableWorkers` is a second,
+  narrower derivation rather than a reuse. The preview names the first
+  three assignments, says the ordering, and says that zero workers aborts
+  the whole reconcile.
+- **The replica-name collision has a real unverified branch**, where
+  SPEC-0013's own name warning has none: a refused read simply produces
+  no guest-name warning there, and here it produces a sentence saying the
+  check could not be made and what it would have caught. It names no
+  guest, so it still cannot accuse.
+- **The empty `network` block is dropped** when the pool's Service takes
+  the ports and the binding was the stamped `nat`: an empty block is not
+  the same thing as no block, since the API server would stamp the
+  binding into it.
+- **The 80px create-button clearance is repeated in the Guest Pools
+  page's stylesheet** rather than moved to a shared partial. It is
+  measured against the host's own button, and one `@use`-able partial for
+  two declarations is indirection without a second reader; the comment on
+  each says where the other is.
+- **A pool name that is already taken is not warned about, only the
+  replica names are.** The check the spec asks for is against the
+  namespace's guests; a pool-name clash arrives as the `AlreadyExists`
+  the 409 reopen path already carries, which is what P2 is about.
+- **`guestCreateBlockingIssues` gained an options argument** so the
+  embedding form can own the namespace, the name and the clone's target
+  node without those three messages being produced twice. The standalone
+  form passes nothing and behaves as before.
+- **The template's network header line is replaced under a pool
+  Service.** The shipped one ends "No Service is created until a port
+  asks to be exposed", which is true of a guest and false of a replica -
+  the pool's Service is the one that exists, and a replica's `expose` is
+  cleared by the controller. It is the eighth embedding fact, and it was
+  found in the screenshot pass rather than by reading.
+- **The four pool sections carry SHORT header lines**, and the long form
+  of each lives in the summary, which is the grammar the Create Guest
+  form already uses (`networkSectionHint` beside `serviceSummaryNote`).
+  The first screenshot pass showed the same paragraph twice within one
+  screen - the storage section's own header, the claim row's fact and the
+  summary line all saying who owns the per-replica PVCs - which is the
+  duplication SPEC-0013 slice 1 removed from its live-migration line. The
+  claim row now states the PVC NAMES, the header states the ownership,
+  and the summary states what the claims are and what deleting the pool
+  does to them.
+
+### Open items settled by this implementation
+
+1. **Legibility (open item 1).** The mitigation shipped as planned - a
+   three-field head, the template under a heading of its own, and four
+   more collapsed sections - and the screenshot pass (36 shots, both
+   themes, `e2e-artifacts/spec-0015/`) is what judged it. Two things came
+   out of that pass rather than out of the plan: the four new header
+   lines are short, with the long form in the summary, and the claim
+   row's fact no longer repeats what its section header and the summary
+   already say. What a reviewer sees at the top of the dialog is
+   namespace, name, replicas and then "Every replica is a SwiftGuest of
+   this template"; every refusal names its row immediately above the
+   button; and the summary's multiplication is one line, not a list.
+2. **Spread plus a pin does NOT escalate to a refusal (open item 2a).**
+   The warning names the contradiction instead ("the Spread policy cannot
+   save it"), because D1's argument is untouched by the policy: a pinned
+   pool is still legitimate on a single-node cluster or on the node that
+   holds the devices, and `spreadPolicy` is a shorthand for constraints
+   the pin bypasses rather than a second, conflicting placement. Refusing
+   the pair would make a legal combination inexpressible on the strength
+   of a heuristic, which is what W12 reserves for no-ops.
+3. **`replicas` gets no soft upper threshold (open item 2b).** The
+   summary's multiplication is the answer, as the spec proposed: any
+   number would be invented, and the counts it prints - N launcher pods,
+   N root-disk clones, N seed Secrets, N of each PVC - are the warning.
+4. **The data-disk `pvcRef` sharing rule stays derived (open item 3)**,
+   and warns rather than refusing, with the derivation recorded next to
+   it in the code. The manual pass on a real KVM cluster is what confirms
+   it.
+5. **Open item 4 is untouched**: the two upstream findings that need a
+   live confirmation are for the upstream report, not for this branch.
+
 ### Upstream drift found by this recon (2026-08-31)
 
 Three documents, 1465 lines, a dozen contradictions - the richest drift
