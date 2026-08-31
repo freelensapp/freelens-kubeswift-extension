@@ -1,0 +1,54 @@
+# Core objects the SPEC-0014 create forms point at, so that every picker they
+# offer has something real to offer and every readback names an object that
+# exists. The same idea as 125-sandbox-references.yaml and
+# 145-fleet-references.yaml, one milestone later.
+#
+# Slice 1 needs three of them: two StorageClasses for the Create Guest Class
+# form's storage-class picker, and one image-pull Secret for the Create Kernel
+# form's pull-secret picker. Nothing binds and nothing is pulled - no controller
+# and no CSI driver runs on the E2E cluster - and nothing needs to, because what
+# the cases assert is that the picker offered the name and that the created
+# object carries it.
+#
+# The single-node E2E cluster deliberately carries NO `kubeswift.io/kernel-node`
+# label, which the Create Kernel case asserts rather than works around: "no node
+# carries the label, and it creates anyway" is the state an operator meets on a
+# cluster that has not been prepared yet.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: e2e-fast
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+# A provisioner that does not exist, on purpose: nothing must ever try to bind a
+# volume on this cluster. `WaitForFirstConsumer` keeps even a stray PVC from
+# being provisioned rather than merely failing.
+provisioner: e2e.freelensapp.github.io/no-such-driver
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: e2e-migratable
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+provisioner: e2e.freelensapp.github.io/no-such-driver
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-kernel-registry
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+# The type the field really wants - `spec.ociRef.pullSecret` is wired to the
+# pod's image-pull secrets - with an auth map that is empty rather than fake.
+# The extension names this Secret and never reads it, and a repository shipping
+# an MIT extension has no business carrying a credential-shaped payload in its
+# test data (the 145-fleet-references.yaml rule).
+type: kubernetes.io/dockerconfigjson
+stringData:
+  .dockerconfigjson: '{"auths":{}}'

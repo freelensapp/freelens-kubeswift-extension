@@ -72,13 +72,16 @@
 
 import { notFoundStatusCode, writeFailurePrefix } from "./guest-actions";
 import {
-  conflictStatusCode,
-  isKernelNode,
-  kernelNodeLabel,
-  kernelNodeLabelValue,
   liveAccessMode,
+  liveMigrationFact,
   liveVolumeMode,
-} from "./migration-create";
+  resolveStorage,
+  storageCelRule,
+  storageClassNameError,
+  systemDefaultAccessMode,
+  systemDefaultVolumeMode,
+} from "./kube-storage";
+import { conflictStatusCode, isKernelNode, kernelNodeLabel, kernelNodeLabelValue } from "./migration-create";
 import {
   macAddressItem,
   machineIdentityItems,
@@ -109,6 +112,7 @@ import type {
 } from "../api/kubeswift/swiftguest-v1alpha1";
 import type { SwiftSnapshotBackendType } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import type { ActionGuard, ApiFailureFacts } from "./guest-actions";
+import type { ResolvedStorage, StorageBootSource } from "./kube-storage";
 import type { NodeFacts } from "./migration-create";
 
 /** The verb, on the page's create control, on the OK button and in the failure sentences. */
@@ -122,7 +126,7 @@ export const createGuestTitle = "Create Guest";
  * inexpressible - which is stronger than validating it, and is the whole reason
  * the form branches on this type rather than on which field happens to be set.
  */
-export type GuestBootSource = "image" | "kernel" | "clone";
+export type GuestBootSource = StorageBootSource;
 
 /** The boot sources the form builds. All three since slice 2. */
 export const implementedBootSources: GuestBootSource[] = ["image", "kernel", "clone"];
@@ -196,14 +200,6 @@ export const guestAccessModes: SwiftGuestAccessMode[] = ["ReadWriteOnce", "ReadW
 
 /** The volume modes the storage override offers, under the same empty-means-inherit rule. */
 export const guestVolumeModes: SwiftGuestVolumeMode[] = ["Filesystem", "Block"];
-
-/**
- * What the API server falls back to when neither the guest nor its class says
- * anything about storage. Stated rather than assumed: it is the difference
- * between a guest that can be live-migrated and one that cannot.
- */
-export const systemDefaultAccessMode: SwiftGuestAccessMode = "ReadWriteOnce";
-export const systemDefaultVolumeMode: SwiftGuestVolumeMode = "Filesystem";
 
 /** A DNS-1123 label, which is the longest a guest's name may be. */
 export const maxGuestNameLength = 63;
@@ -858,17 +854,6 @@ function classStorageText(guestClass: GuestClassFacts): string {
   return storageClassName ? `${mode} on ${storageClassName}` : mode;
 }
 
-/** The storage this guest will really get, and whether that answer is a fact. */
-export interface ResolvedGuestStorage {
-  accessMode?: string;
-  volumeMode?: string;
-  storageClassName?: string;
-  /** True when a class was read, so the fields below are the merge rather than a guess. */
-  resolved: boolean;
-  /** Storage both nodes can hold at once, which is what a live migration needs. */
-  liveMigratable: boolean;
-}
-
 /**
  * The storage of the root disk the controller will create, as the per-field
  * merge the guest controller performs: the guest's own value wins per field,
@@ -879,112 +864,16 @@ export interface ResolvedGuestStorage {
  * refusal: a read that fails must not block a write the user is allowed to make
  * (W4), so the summary marks the live-migratability unverified instead.
  */
-export function resolvedStorage(inputs: GuestCreateInputs, values: GuestFormValues): ResolvedGuestStorage {
+export function resolvedStorage(inputs: GuestCreateInputs, values: GuestFormValues): ResolvedStorage {
   const guestClass = pickedGuestClass(inputs, values);
-  const accessMode = values.storageAccessMode.trim() || guestClass?.storage?.accessMode;
-  const volumeMode = values.storageVolumeMode.trim() || guestClass?.storage?.volumeMode;
-  const storageClassName = values.storageClassName.trim() || guestClass?.storage?.storageClassName;
-  const resolved = Boolean(guestClass) || Boolean(values.storageAccessMode.trim() && values.storageVolumeMode.trim());
 
-  return {
-    accessMode,
-    volumeMode,
-    storageClassName,
-    resolved,
-    liveMigratable:
-      (accessMode ?? systemDefaultAccessMode) === liveAccessMode &&
-      (volumeMode ?? systemDefaultVolumeMode) === liveVolumeMode,
-  };
+  return resolveStorage({
+    accessMode: values.storageAccessMode.trim() || guestClass?.storage?.accessMode,
+    volumeMode: values.storageVolumeMode.trim() || guestClass?.storage?.volumeMode,
+    storageClassName: values.storageClassName.trim() || guestClass?.storage?.storageClassName,
+    resolved: Boolean(guestClass) || Boolean(values.storageAccessMode.trim() && values.storageVolumeMode.trim()),
+  });
 }
-
-/** The merged storage in one short phrase, for the sentences that name it. */
-export function resolvedStorageText(storage: ResolvedGuestStorage): string {
-  return `${storage.accessMode ?? systemDefaultAccessMode}/${storage.volumeMode ?? systemDefaultVolumeMode}`;
-}
-
-/**
- * What this guest's storage means for a future migration of it, stated both
- * ways.
- *
- * Not a warning and not an error: it is the one consequence of the storage
- * choice an operator will meet months later, when a node has to be drained and
- * the guest can only move by being stopped.
- *
- * The two ways of not being live-migratable have different reasons, and one
- * sentence for both would be false: a ReadWriteOnce disk is held by a single
- * node at a time, while a ReadWriteMany disk on a Filesystem volume is shared
- * by as many nodes as need it and is still not live-migratable, because the
- * migration needs a Block volume.
- */
-export function liveMigrationFact(storage: ResolvedGuestStorage, source: GuestBootSource = "image"): string {
-  if (source === "kernel") {
-    return kernelLiveMigrationFact;
-  }
-
-  if (!storage.resolved) {
-    return (
-      "The guest class could not be read from here, so whether this guest's root disk can be held by two nodes at " +
-      `once is unverified. Live migration needs ${liveAccessMode} and ${liveVolumeMode}; anything else moves only ` +
-      "by being stopped first."
-    );
-  }
-
-  if (storage.liveMigratable) {
-    return (
-      `The root disk is ${resolvedStorageText(storage)}, which two launcher pods can hold at once: this guest can be ` +
-      "live-migrated to another node without being stopped."
-    );
-  }
-
-  if ((storage.accessMode ?? systemDefaultAccessMode) === liveAccessMode) {
-    return (
-      `The root disk is ${resolvedStorageText(storage)}, which more than one node can hold at once, but a live ` +
-      `migration needs a ${liveVolumeMode} volume: this guest can be migrated offline only.`
-    );
-  }
-
-  return (
-    `The root disk is ${resolvedStorageText(storage)}, which only one node can hold at a time: this guest can be ` +
-    `migrated offline only. Live migration needs ${liveAccessMode} on a ${liveVolumeMode} volume.`
-  );
-}
-
-/**
- * The same answer as `liveMigrationFact`, short enough for the sizing block next
- * to the class picker (G3).
- *
- * Two renderings of one derivation rather than two derivations: the block states
- * the verdict where the class is chosen, and the sentence states what it means
- * where the storage can be changed and in the write summary.
- */
-export function liveMigrationLabel(storage: ResolvedGuestStorage, source: GuestBootSource = "image"): string {
-  if (source === "kernel") {
-    return "not restricted by storage (kernel boot)";
-  }
-
-  if (!storage.resolved) {
-    return "unverified (the guest class could not be read)";
-  }
-
-  return storage.liveMigratable
-    ? `possible (${resolvedStorageText(storage)})`
-    : `offline only (${resolvedStorageText(storage)})`;
-}
-
-/**
- * What a kernel-boot guest's storage means for a future migration of it, which
- * is nothing.
- *
- * The one place this form states an exemption rather than a constraint: upstream
- * requires shared Block storage before it will live-migrate a guest, and it
- * skips that check entirely for a kernel-boot guest, because there is no cloned
- * root disk for two launcher pods to contend for. The sentence is the same fact
- * the Migrate dialog computes from the other side (SPEC-0012).
- */
-export const kernelLiveMigrationFact =
-  `A kernel-boot guest clones no root disk, so the ${liveAccessMode} and ${liveVolumeMode} storage a live migration ` +
-  "normally needs does not apply to it: upstream exempts it from that rule. What decides a live migration for this " +
-  "guest is its devices and its node, not its storage.";
 
 /** One option of the image picker, with the readiness upstream's own UI discards (G2). */
 export interface GuestImageChoice {
@@ -2874,15 +2763,6 @@ const fieldOrder: GuestCreateField[] = [
 /** The fields of the storage section, so the dialog can open it when it holds an error. */
 export const storageFields: GuestCreateField[] = ["storageAccessMode", "storageVolumeMode", "storageClassName"];
 
-/** The one CEL rule in the whole SwiftGuest CRD, stated as the message it refuses with. */
-export const storageCelRule =
-  `${liveAccessMode} requires volumeMode ${liveVolumeMode}: the CRD refuses the combination outright, because a ` +
-  "shared Filesystem volume is not live-migration-capable. The rule is evaluated on this guest's own storage block, " +
-  `so inheriting ${liveVolumeMode} from the guest class does not satisfy it - set it here as well.`;
-
-/** The storage-class name rule: it is an object name, and the API server would refuse anything else. */
-const storageClassNamePattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
-
 /**
  * Everything that would make this create fail, keyed by field.
  *
@@ -2952,11 +2832,10 @@ export function guestCreateErrors(inputs: GuestCreateInputs, values: GuestFormVa
     errors.storageAccessMode = storageCelRule;
   }
 
-  const storageClassName = values.storageClassName.trim();
+  const storageClassNameMessage = storageClassNameError(values.storageClassName.trim());
 
-  if (storageClassName && !storageClassNamePattern.test(storageClassName)) {
-    errors.storageClassName =
-      "A StorageClass name is lowercase letters, digits, '-' and '.', starting and ending with a letter or a digit.";
+  if (storageClassNameMessage) {
+    errors.storageClassName = storageClassNameMessage;
   }
 
   return errors;

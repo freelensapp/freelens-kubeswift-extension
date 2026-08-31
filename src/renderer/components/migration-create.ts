@@ -47,9 +47,9 @@
 
 import { notFoundStatusCode, writeFailurePrefix } from "./guest-actions";
 import { guestRunningPhase } from "./guest-status";
+import { liveAccessMode, liveVolumeMode } from "./kube-storage";
 import { objectNameError, sriovInterfaceType } from "./snapshot-create";
 
-import type { SwiftGuestAccessMode, SwiftGuestVolumeMode } from "../api/kubeswift/swiftguest-v1alpha1";
 import type {
   SwiftMigrationMode,
   SwiftMigrationPhase,
@@ -81,10 +81,6 @@ export const kernelNodeLabelValue = "true";
 export function isKernelNode(node: Pick<NodeFacts, "labels">): boolean {
   return node.labels?.[kernelNodeLabel] === kernelNodeLabelValue;
 }
-
-/** The storage the live path needs: both nodes must be able to hold the disk at once. */
-export const liveAccessMode: SwiftGuestAccessMode = "ReadWriteMany";
-export const liveVolumeMode: SwiftGuestVolumeMode = "Block";
 
 /** The phases before the cutover, from which a delete rolls an offline migration back. */
 export const preCutoverPhases: SwiftMigrationPhase[] = ["Pending", "Validating", "Preparing"];

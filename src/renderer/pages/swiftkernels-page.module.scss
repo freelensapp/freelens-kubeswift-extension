@@ -1,4 +1,22 @@
+// The clearance the host's floating create button needs, measured on the Guests
+// page in SPEC-0013 slice 3 and copied here unchanged: the "+" is absolutely
+// positioned over the bottom-right corner of the list at `z-index: 99`, which is
+// exactly where the kebab of the last row lands once the list scrolls, and the
+// button wins the click. The collision belongs to the host's list layout rather
+// than to the kind, so any page that gains the "+" gains it as soon as its list
+// is long enough. The list is virtualized, so the fix is block-end padding on
+// the scroll container itself; 45.6px of button plus its 16px margin is 61.6px,
+// and 80px leaves about 20px of air under the last row.
+//
+// At the E2E fixture counts this list does not scroll, so the assertion that
+// proves the fix stays on the Guests page (SPEC-0014).
+$create-button-clearance: 80px;
+
 .page {
+  :global(.VirtualList .list) {
+    padding-bottom: $create-button-clearance;
+  }
+
   :global(.TableCell) {
     &.artifact {
       flex-grow: 1.5;

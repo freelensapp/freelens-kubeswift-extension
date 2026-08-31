@@ -2,6 +2,8 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftKernel, type SwiftKernelApi } from "../api/kubeswift/swiftkernel-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { createKernelTitle } from "../components/kernel-create";
+import { openCreateKernelDialog } from "../components/kernel-create-dialog";
 import styles from "./swiftkernels-page.module.scss";
 import stylesInline from "./swiftkernels-page.module.scss?inline";
 
@@ -53,6 +55,9 @@ export const SwiftKernelsPage = observer((props: SwiftKernelsPageProps) =>
           sortingCallbacks={sortingCallbacks}
           searchFilters={[(object: KubeObject) => object.getSearchFields()]}
           renderHeaderTitle={KubeObject.crd.title}
+          // The host's own floating "+", the same idiom the Guests and Guest
+          // Classes pages carry (DESIGN.md pillar 1).
+          addRemoveButtons={{ onAdd: openCreateKernelDialog, addTooltip: createKernelTitle }}
           renderTableHeader={renderTableHeader}
           renderTableContents={(object: KubeObject) => {
             const nodes = KubeObject.getReadyNodeCount(object);

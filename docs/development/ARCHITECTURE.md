@@ -49,9 +49,10 @@ src/
   renderer/api/kubeswift/    # One file per CRD: KubeObject + KubeApi +
                              # KubeObjectStore, typed Spec/Status interfaces
                              # (full schema, not only rendered fields)
-  renderer/pages/            # Cluster pages (list views); the Guests page
-                             # also carries the create entry point, through
-                             # the host's own addRemoveButtons
+  renderer/pages/            # Cluster pages (list views); the Guests, Guest
+                             # Classes and Kernels pages also carry a create
+                             # entry point, through the host's own
+                             # addRemoveButtons
   renderer/details/          # Detail panels (kubeObjectDetailItems)
   renderer/menus/            # Write actions (kubeObjectMenuItems): one file
                              # per verb, rendered by the host in both the list
@@ -61,15 +62,22 @@ src/
                              # gating, validation, payloads and write
                              # summaries (snapshot-create.ts,
                              # restore-create.ts, migration-create.ts,
-                             # guest-create.ts), reference loading; plus the
-                             # form components the dialogs render
-                             # (snapshot-create-dialog.tsx,
+                             # guest-create.ts, guestclass-create.ts,
+                             # kernel-create.ts), the storage vocabulary two
+                             # create forms share (kube-storage.ts: the
+                             # access/volume mode pair, the CRDs' CEL rule and
+                             # the live-migration derivation), reference
+                             # loading; plus the form components the dialogs
+                             # render (snapshot-create-dialog.tsx,
                              # restore-create-dialog.tsx,
                              # migration-create-dialog.tsx,
-                             # guest-create-dialog.tsx) and the form grammar
+                             # guest-create-dialog.tsx,
+                             # guestclass-create-dialog.tsx,
+                             # kernel-create-dialog.tsx) and the form grammar
                              # they share (create-dialog.tsx and its module:
                              # the labelled field, the write summary, the
-                             # collapsible section)
+                             # collapsible section, the quantity field and the
+                             # object picker with its T3 degradation)
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```

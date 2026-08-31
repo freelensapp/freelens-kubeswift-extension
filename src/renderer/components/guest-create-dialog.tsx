@@ -125,8 +125,6 @@ import {
   kernelNodeRuleFact,
   kernelStorageDroppedFact,
   kernelWillWaitFact,
-  liveMigrationFact,
-  liveMigrationLabel,
   networkBindingDescription,
   networkSectionHasError,
   networkSectionHint,
@@ -159,6 +157,7 @@ import {
   windowsCloneWarning,
   windowsConstraintFact,
 } from "./guest-create";
+import { liveMigrationFact, liveMigrationLabel } from "./kube-storage";
 import { conflictStatusCode } from "./migration-create";
 import { backendWithArticle } from "./snapshot-create";
 

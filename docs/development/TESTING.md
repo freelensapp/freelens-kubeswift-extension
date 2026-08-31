@@ -75,13 +75,14 @@ VMs), driven through a real Freelens by Playwright's Electron API.
   one detail panel per CRD.
 
 **Since M6 the suite also writes** (SPEC-0010, SPEC-0011, SPEC-0012,
-SPEC-0013): a handful of cases patch `spec.runPolicy`, delete a launcher pod,
-delete a guest, create a SwiftSnapshot, create a SwiftRestore, create a
-SwiftMigration and create SwiftGuests from the Guests page's own create button,
-for real, against dedicated fixtures nothing else reads
-(`160-swiftguest-actions.yaml`, `170-swiftrestore-actions.yaml`,
-`180-swiftmigration-actions.yaml`, `190-swiftguest-create.yaml`,
-`195-swiftguest-create-volumes.yaml`). They
+SPEC-0013, SPEC-0014): a handful of cases patch `spec.runPolicy`, delete a
+launcher pod, delete a guest, create a SwiftSnapshot, create a SwiftRestore,
+create a SwiftMigration and create SwiftGuests, SwiftGuestClasses and
+SwiftKernels from those pages' own create buttons, for real, against dedicated
+fixtures nothing else reads (`160-swiftguest-actions.yaml`,
+`170-swiftrestore-actions.yaml`, `180-swiftmigration-actions.yaml`,
+`190-swiftguest-create.yaml`, `195-swiftguest-create-volumes.yaml`,
+`200-create-form-references.yaml`). They
 assert the UI **and** read the result back with `kubectl`, because the point of
 a write case is that the cluster changed. What they must never assert is what a
 controller would do next: no reconciler runs here, so a stopped guest never
@@ -125,6 +126,23 @@ create button, and that it opens from a plain click. Their fixtures are
 not custom resources, because `attachAsDisk` is the one rule that reads an
 object KubeSwift did not create - with the M3 GPU profiles and the M1
 `e2e-ubuntu-2404` image reused as they are.
+
+The SPEC-0014 slice-1 cases add the two smallest create forms. Two write and
+read back key-exact: a **cluster-scoped** guest class, which is the first object
+this suite creates with no namespace at all, asserting the storage trio it sent
+and the `coreScheduling: off` the API server stamps from the CRD's own default
+(the form never sends it); and a kernel, whose four leaves are exactly what was
+typed because nothing is stamped on that kind. Two assert refusals with their
+reasons: the class's CEL rule in both of its shapes, including the one upstream
+misses where the volume mode is not set at all, and the kernel's padded image
+reference and newline command line. One asserts an absence and the sentence
+standing in its place - the cluster-scoped kind offers no namespace control -
+and the last asserts that a warning does not block: no node of the E2E cluster
+carries `kubeswift.io/kernel-node`, the summary says so before the write, and
+the write happens anyway. Their fixture is `200-create-form-references.yaml`:
+two StorageClasses behind a provisioner that does not exist, and an image-pull
+Secret whose auth map is empty rather than fake. No status patches are needed,
+because nothing has to bind for a picker and a readback.
 
 The pre-review pass (layer 4) stays read-only by construction and by assert,
 because it runs against the demo cluster a human reviewer is about to walk

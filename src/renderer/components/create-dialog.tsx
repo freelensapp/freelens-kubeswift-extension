@@ -11,12 +11,24 @@
 // Nothing here decides anything. `Field` renders whatever messages it is handed
 // and `WriteSummary` renders whatever facts it is handed, and both sets of facts
 // are computed by the pure module of the verb - `snapshot-create.ts`,
-// `restore-create.ts`, `migration-create.ts` or `guest-create.ts` - which is
-// where the unit tests are. This file exists only so that the dialogs cannot
-// drift into different renderings of the same idea, and so that the stylesheet
-// has one owner.
+// `restore-create.ts`, `migration-create.ts`, `guest-create.ts`,
+// `guestclass-create.ts` or `kernel-create.ts` - which is where the unit tests
+// are. This file exists only so that the dialogs cannot drift into different
+// renderings of the same idea, and so that the stylesheet has one owner.
+//
+// SPEC-0014 adds the two controls its four forms kept needing in the same two
+// shapes: a quantity, and a reference to an object that lives somewhere else.
+// Both are renderings rather than rules - `quantityError` and the messages a
+// picker's value carries belong to the pure modules, and the one decision made
+// here is which of two controls a picker shows, which is a fact about the read
+// on open rather than about the object being written.
 
+import { Renderer } from "@freelensapp/extensions";
 import styles from "./create-dialog.module.scss";
+
+const {
+  Component: { Input, Select },
+} = Renderer;
 
 /** The live write summary of a create, as its pure module computes it (W1). */
 export interface WriteSummaryFacts {
@@ -53,6 +65,118 @@ export function Field({ label, hint, error, warning, children }: FieldProps) {
       {error ? <div className={styles.error}>{error}</div> : null}
       {warning ? <div className={styles.warning}>{warning}</div> : null}
     </div>
+  );
+}
+
+export interface QuantityFieldProps extends FieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  testId: string;
+  placeholder?: string;
+}
+
+/**
+ * A Kubernetes quantity: cpu, memory, a disk size (SPEC-0014).
+ *
+ * A text input rather than a number one, because a quantity is `2`, `500m` and
+ * `4Gi` and a `number` input refuses two of those. What makes it a field of its
+ * own is what surrounds it: the grammar in the hint and the refusals the pure
+ * module attaches, since the schemas behind these forms accept `0` and negative
+ * values that no controller can honour - a class with `cpu: "0"` is stored
+ * happily and produces guests nothing can start.
+ */
+export function QuantityField({ value, onChange, testId, placeholder, ...fieldProps }: QuantityFieldProps) {
+  return (
+    <Field {...fieldProps}>
+      <Input value={value} placeholder={placeholder} data-testid={testId} onChange={onChange} />
+    </Field>
+  );
+}
+
+/** What one read on open found, as the picker below needs to know it (spike T3). */
+export interface ObjectPickerFacts {
+  /** `unavailable` is any failure: the field degrades to a text input, and nothing is blocked. */
+  state: "loading" | "ready" | "unavailable";
+  names: string[];
+}
+
+/**
+ * Whether the picker can be a picker at all.
+ *
+ * Three cases send it back to a text input, and the third is the one that would
+ * otherwise lose a value silently: a read that has not answered or was refused,
+ * an empty list, and a value the list does not contain - where a select would
+ * show nothing while the model still submitted the typed name.
+ */
+export function objectPickerIsUsable(facts: ObjectPickerFacts, value: string): boolean {
+  if (facts.state !== "ready" || facts.names.length === 0) {
+    return false;
+  }
+
+  return value === "" || facts.names.includes(value);
+}
+
+export interface ObjectPickerFieldProps extends FieldProps {
+  /**
+   * The id of the select, which is what makes its portalled menu addressable as
+   * `<id>-options`: the host spends the `id` on react-select's `inputId` rather
+   * than on the container.
+   */
+  id: string;
+  /** The test id of the text input the field degrades to. */
+  inputTestId: string;
+  value: string;
+  onChange: (value: string) => void;
+  facts: ObjectPickerFacts;
+  placeholder?: string;
+  /** Said at the field when the list could not be read, so the name is marked unverified. */
+  unverifiedHint: string;
+}
+
+/**
+ * A reference to an object this form does not create: a StorageClass, a Secret
+ * (SPEC-0014, F11).
+ *
+ * A picker over what the one-shot read on open found, and a plain text input
+ * whenever that read cannot support one. Degrading rather than blocking is the
+ * point: `storageClassApi` is a cluster read and `secretsApi` a namespace one,
+ * and a role that carries neither must still be able to write the object it is
+ * allowed to write (W4). What the degradation costs is one sentence, which the
+ * caller supplies because only the caller knows what the name is for.
+ */
+export function ObjectPickerField({
+  id,
+  inputTestId,
+  value,
+  onChange,
+  facts,
+  placeholder,
+  unverifiedHint,
+  ...fieldProps
+}: ObjectPickerFieldProps) {
+  if (!objectPickerIsUsable(facts, value)) {
+    const hint = facts.state === "unavailable" ? `${fieldProps.hint ?? ""} ${unverifiedHint}`.trim() : fieldProps.hint;
+
+    return (
+      <Field {...fieldProps} hint={hint}>
+        <Input value={value} placeholder={placeholder} data-testid={inputTestId} onChange={onChange} />
+      </Field>
+    );
+  }
+
+  return (
+    <Field {...fieldProps}>
+      <Select
+        id={id}
+        themeName="light"
+        menuClass={styles.selectMenu}
+        isClearable
+        placeholder={placeholder}
+        value={value || null}
+        options={facts.names.map((name) => ({ value: name, label: name }))}
+        onChange={(option: { value: string } | null) => onChange(option?.value ?? "")}
+      />
+    </Field>
   );
 }
 

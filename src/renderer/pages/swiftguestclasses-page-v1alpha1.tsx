@@ -2,6 +2,8 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftGuestClass, type SwiftGuestClassApi } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { createGuestClassTitle } from "../components/guestclass-create";
+import { openCreateGuestClassDialog } from "../components/guestclass-create-dialog";
 import styles from "./swiftguestclasses-page.module.scss";
 import stylesInline from "./swiftguestclasses-page.module.scss?inline";
 
@@ -50,6 +52,13 @@ export const SwiftGuestClassesPage = observer((props: SwiftGuestClassesPageProps
           sortingCallbacks={sortingCallbacks}
           searchFilters={[(object: KubeObject) => object.getSearchFields()]}
           renderHeaderTitle={KubeObject.crd.title}
+          // The host's own floating "+", the idiom core's Namespaces page uses
+          // for "Add Namespace" and the one the Guests page already carries
+          // (DESIGN.md pillar 1: never a custom control where a native one
+          // exists). The dialog it opens has no namespace control at all, which
+          // is what this kind's cluster scope makes of the four forms' shared
+          // shape.
+          addRemoveButtons={{ onAdd: openCreateGuestClassDialog, addTooltip: createGuestClassTitle }}
           renderTableHeader={renderTableHeader}
           renderTableContents={(object: KubeObject) => [
             <WithTooltip>{object.getName()}</WithTooltip>,

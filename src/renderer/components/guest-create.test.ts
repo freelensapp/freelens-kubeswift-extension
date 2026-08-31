@@ -80,12 +80,9 @@ import {
   interfaceTypesFact,
   interfaceWarnings,
   kernelCmdlineFact,
-  kernelLiveMigrationFact,
   kernelNodeRuleFact,
   kernelStorageDroppedFact,
   kernelWillWaitFact,
-  liveMigrationFact,
-  liveMigrationLabel,
   maxDataDiskNameLength,
   maxDataDisks,
   maxGuestNameLength,
@@ -114,7 +111,6 @@ import {
   removeDataDisk,
   removePort,
   resolvedStorage,
-  resolvedStorageText,
   runPolicyNote,
   runPolicyStarts,
   seedProfileApplies,
@@ -122,17 +118,23 @@ import {
   setDataDiskSource,
   setGpuBackend,
   snapshotIsResumable,
-  storageCelRule,
   storageFields,
   storageOverridesApply,
   switchBootSource,
-  systemDefaultAccessMode,
-  systemDefaultVolumeMode,
   updateDataDisk,
   usesNativeGpuProfile,
   windowsCloneWarning,
   windowsConstraintFact,
 } from "./guest-create";
+import {
+  kernelLiveMigrationFact,
+  liveMigrationFact,
+  liveMigrationLabel,
+  resolvedStorageText,
+  storageCelRule,
+  systemDefaultAccessMode,
+  systemDefaultVolumeMode,
+} from "./kube-storage";
 
 import type { SwiftGuestRunPolicy } from "../api/kubeswift/swiftguest-v1alpha1";
 import type { SwiftSnapshotBackendType } from "../api/kubeswift/swiftsnapshot-v1alpha1";

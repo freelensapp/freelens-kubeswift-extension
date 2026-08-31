@@ -587,6 +587,119 @@ the clone strategy out and collapse the import storage class alone.
 
 Filled during implementation when reality diverges from the plan.
 
+### Guest class and kernel forms as implemented (2026-08-31)
+
+Slice 1 shipped as specified, with the deviations below. Everything the
+"Create Guest Class" and "Create Kernel" sections describe is in place,
+including F1-F5, F9-F13 and F17-F21 as they apply to these two kinds, the
+create control and the 80px clearance on both pages, and the extraction of
+the live-migration derivation.
+
+**1. The extraction is a split rather than a move.** `kube-storage.ts`
+owns everything below the merge - `resolveStorage`,
+`resolvedStorageText`, `liveMigrationFact`, `liveMigrationLabel`,
+`kernelLiveMigrationFact`, the two live-migration constants (moved out of
+`migration-create.ts`), the two API-server defaults, and the StorageClass
+name rule (moved out of `guest-create.ts`, where it was private).
+`guest-create.ts` keeps `resolvedStorage(inputs, values)`, which is the
+guest-specific per-field merge with the class, and delegates the verdict.
+Two smaller consequences: `liveMigrationFact` gained a third parameter,
+the **subject** of the sentence, defaulted to the guest form's own words
+so every shipped string is byte-identical, because a class is a template
+and "this guest" would be false on it; and `GuestBootSource` is now an
+alias of `kube-storage.ts`'s `StorageBootSource`, so the three-member
+union has one declaration rather than two. No behaviour changed and the
+1492 shipped unit tests pass unmodified apart from their import lines.
+
+**2. `storageCelRule` is shared as a rule, not as a sentence.** The spec
+says the class reuses it verbatim. Its shipped text ends with "the rule
+is evaluated on this guest's own storage block, so inheriting `Block`
+from the guest class does not satisfy it", which is a fact about a merge
+a class does not have. So what is shared is the **predicate**
+(`violatesStorageCelRule`, one implementation, used by both forms) and
+the **headline** sentence; the guest's message is reconstructed from that
+headline plus its own tail and is byte-identical to what shipped, and the
+class gets `guestClassStorageCelRule`, whose tail is the shape the spec
+asks to be said out loud - `ReadWriteMany` with the volume mode left
+empty is refused exactly as `Filesystem` is. Alternative rejected:
+rewording the guest's message, which would have changed a shipped string
+and two of its unit tests for no user-visible gain.
+
+**3. The quantity primitive splits across two files.** The **component**
+(`QuantityField`) is in `create-dialog.tsx` as the spec says; the
+**rule** (`quantityError`, with the three refusals and the schema's own
+pattern) is in `guestclass-create.ts`. It cannot be in `create-dialog.tsx`:
+that file imports a stylesheet and, since this slice, the host's
+components, and a pure form module importing it would invert the layering
+the SPEC-0010/0011 split exists to keep. It lives in the module of the
+form that needed it first, which is exactly where `objectNameError` lives
+relative to the three dialogs that import it from `snapshot-create.ts`.
+Slice 2's image form imports it from `guestclass-create.ts`. The
+`ObjectPickerField` has no such problem - its one decision
+(`objectPickerIsUsable`) is about the read on open rather than about the
+object being written - and it stays whole in `create-dialog.tsx`, with
+its cases in a new `create-dialog.test.ts`.
+
+**4. `create-dialog.tsx` now reaches the host, so the unit-test stub
+grew.** The object picker renders the host's `Select` and `Input`, which
+are destructured at module scope; `test/freelens-extensions.ts` gained a
+`Component` entry with those two names, which is what its own header
+comment invites.
+
+**5. `coreScheduling` is NOT absent from the created object.** The spec's
+slice-1 E2E case is titled "reads back the leaves it sent with
+`coreScheduling` absent". It is not absent: the CRD carries
+`default: "off"`, so the API server stamps it - verified on the E2E
+cluster with a `kubectl apply` that omitted it. What is true, and what
+the form guarantees, is that the payload never carries it. The case
+asserts the stamped value explicitly, which is this spec's own rule for
+every other stamped default ("read back key-exact with the stamped
+defaults asserted explicitly"), and its title says "reads back the leaves
+it sent" without the second clause.
+
+**6. The kernel command line is a `multiLine` input.** A single-line
+`<input>` applies the browser's own value-sanitization algorithm, which
+**strips** CR and LF from an assigned value rather than keeping them. A
+pasted two-line command line would therefore arrive as
+`console=ttyS0quiet` - two arguments silently joined into one nonsense
+token - and the fifth webhook-only rule could never fire from the
+control at all. A textarea makes the paste visible and lets the refusal
+say what is wrong with it, which is also what makes the spec's E2E case
+("refuses ... a command line with a newline") expressible.
+
+**7. Two warnings the spec does not name, both W11-shaped and neither
+blocking.** A unitless `memory` or root disk size is a plain **byte**
+count in the Kubernetes quantity grammar, so `memory: 4` is four bytes
+and reads as `4Gi` to anyone scanning the list; the field says so and
+submits anyway. And a StorageClass name the cluster read did not return
+is warned about at the field, with the consequence named - nothing
+refuses the class, the PVC of the first guest built from it never binds -
+while a **refused** read produces "unverified" instead, never "missing".
+
+**8. The class form's storage trio is flat, not collapsed.** DESIGN.md
+section 12 allows a collapsed section only when what it hides is a
+consequence rather than a decision. This block decides whether every
+guest of the class can ever be live-migrated, which is a decision. The
+spec's "at most one collapsed section" is satisfied by having none here;
+the image form in slice 2 is where the collapsed-section rule is
+exercised.
+
+**9. The slice-1 fixture is the slice-1 subset.**
+`200-create-form-references.yaml` carries the two StorageClasses (behind
+a provisioner that does not exist, `WaitForFirstConsumer`, so nothing can
+even try to bind) and the `kubernetes.io/dockerconfigjson` pull Secret.
+Its auth map is `{"auths":{}}` - the type the field really wants, with no
+credential-shaped payload, which is `145-fleet-references.yaml`'s rule.
+The cosign-key Secret and the user-data Secret and ConfigMap the spec
+lists are slice 2's and are added when slice 2's cases read them.
+
+**10. Two smaller shapes.** `guestClassCreateErrors` takes only the form
+values, with no `inputs` parameter, because every rule on this kind is
+the schema's own and nothing it refuses depends on a read. And
+`liveMigrationFact`'s unresolved branch still says "this guest": it is
+unreachable from the class form, which always resolves, since there is no
+read above a class whose failure could leave the answer a guess.
+
 ### Upstream drift found by this recon (2026-08-31)
 
 The headline items, recorded in full in the local feedback draft. The

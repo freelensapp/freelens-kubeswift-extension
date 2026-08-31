@@ -40,6 +40,15 @@ export const Renderer = {
     KubeApi: class KubeApi {},
     KubeObjectStore: class KubeObjectStore {},
   },
+  // The shared form primitives (`create-dialog.tsx`) destructure the host's
+  // components at module scope, so importing that module in a unit test needs
+  // the names to exist. Nothing here is rendered by the unit tests - they cover
+  // the pure decisions of that file, not its JSX - so the stubs only have to be
+  // valid component references.
+  Component: {
+    Input: () => null,
+    Select: () => null,
+  },
 };
 
 export const Common = {
