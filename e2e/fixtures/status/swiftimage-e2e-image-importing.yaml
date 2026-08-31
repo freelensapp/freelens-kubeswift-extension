@@ -1,0 +1,15 @@
+# Merge patch applied to the status subresource of swiftimage/e2e-image-importing.
+# An image mid-import: no prepared artifact yet, and Ready=False with the reason
+# the controller would give. A guest created against it is born Failed with
+# Resolved=False and heals when this turns Ready - which, with no controller
+# here, it never does. That is what makes the will-wait line cheap to assert.
+status:
+  phase: Importing
+  sourceFormat: qcow2
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: Importing
+      message: The source is being downloaded.
+      lastTransitionTime: "2026-08-31T07:10:00Z"
+      observedGeneration: 1

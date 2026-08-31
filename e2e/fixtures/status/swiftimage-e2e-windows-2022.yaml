@@ -1,0 +1,20 @@
+# Merge patch applied to the status subresource of swiftimage/e2e-windows-2022.
+# A prepared Windows image: Ready, so the form offers it plainly and the guest
+# it creates carries osType windows because the image says so.
+status:
+  phase: Ready
+  sourceFormat: qcow2
+  preparedFormat: raw
+  preparedArtifact:
+    format: raw
+    size: 40Gi
+    pvcRef:
+      name: e2e-windows-2022-prepared
+      namespace: kubeswift-e2e
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ArtifactPrepared
+      message: The prepared artifact is available.
+      lastTransitionTime: "2026-08-31T07:12:00Z"
+      observedGeneration: 1

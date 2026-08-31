@@ -22,5 +22,14 @@ declare const classNames: {
   readonly options: "options";
   readonly optionReason: "optionReason";
   readonly readOnlyValue: "readOnlyValue";
+  readonly section: "section";
+  readonly sectionHeader: "sectionHeader";
+  readonly sectionCaret: "sectionCaret";
+  readonly sectionBody: "sectionBody";
+  readonly facts: "facts";
+  readonly factLabel: "factLabel";
+  readonly factValue: "factValue";
+  readonly dimOption: "dimOption";
+  readonly footer: "footer";
 };
 export = classNames;

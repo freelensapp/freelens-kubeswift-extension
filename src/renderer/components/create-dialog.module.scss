@@ -156,6 +156,16 @@ $ink-secondary: rgba(0, 0, 0, 0.6);
   margin: 0;
 }
 
+// The host's global rule for `code` is `color: #b4b5b4`, a light grey picked for
+// a dark surface. On this box - white in both themes - it makes the ONE line W1
+// requires the user to read the palest thing in the dialog, at roughly 1.8:1
+// against the summary's own background. It is the fourth finding of its family,
+// after the select's single value, the input's label and the checked radio, and
+// like them it is corrected here once, for all four create dialogs.
+.summary code {
+  color: $ink;
+}
+
 .note {
   margin: 0;
   font-size: 0.95em;
@@ -193,4 +203,79 @@ $ink-secondary: rgba(0, 0, 0, 0.6);
 // in-place restore, which is the snapshot's source guest by definition.
 .readOnlyValue {
   font-family: monospace;
+}
+
+// A section that ships collapsed (SPEC-0013). The header is a real button so it
+// is reachable by keyboard and reads as interactive; it carries none of the
+// host's button chrome, because inside this form it is a disclosure and not an
+// action.
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin * 0.5;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  padding-top: vars.$margin * 0.5;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: vars.$margin * 0.5;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+// A caret drawn from the two characters that read the same in every font the
+// host may fall back to, rather than an icon whose colour would follow the
+// theme onto a box that does not.
+.sectionCaret {
+  display: inline-block;
+  width: 1em;
+  color: $ink-secondary;
+  font-family: monospace;
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin;
+  padding-top: vars.$margin * 0.5;
+}
+
+// The sizing of the chosen guest class, next to the picker: a definition list
+// in two columns, so the numbers line up and the labels stay scannable.
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: vars.$margin * 0.25 vars.$margin;
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.factLabel {
+  color: $ink-secondary;
+}
+
+.factValue {
+  margin: 0;
+  font-family: monospace;
+}
+
+// An option of a picker that is offered and is not ready: dimmed, never
+// disabled. A not-Ready image is a legitimate choice whose consequence is a
+// wait, and the wait is stated under the control (SPEC-0013, G2).
+.dimOption {
+  color: $ink-secondary;
+}
+
+// The last line of the form: the fields it does not offer, and where they live
+// instead.
+.footer {
+  color: $ink-secondary;
+  font-size: 0.9em;
 }

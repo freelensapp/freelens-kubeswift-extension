@@ -84,8 +84,8 @@ create pattern, reused wholesale. No new host machinery and **no
 feasibility gates**: stateful forms in `ConfirmDialog.open`,
 `store.create`, cheap picker reads and degraded cold-store reads are
 all proven and shipped three times. Two host surfaces are new to this
-repository but not to the host - the list layout's `customizeHeader`
-prop and the `NamespaceSelect` component - and both were read off the
+repository but not to the host - the list layout's create affordance
+and the `NamespaceSelect` component - and both were read off the
 1.10.3 typings before this spec was written (Registration and section
 1 below). The one open UX question a form
 this size adds - legibility of a long sectioned form inside the
@@ -207,18 +207,24 @@ The recon facts the form is built on:
 ### The form
 
 **Registration.** The host renders extension pages, not toolbar
-buttons, so the entry point is a **Create Guest** button in the
-extension's own Guests page header, injected through the
-`customizeHeader` prop that `KubeObjectListLayout` inherits from
-`ItemListLayout` (verified in the 1.10.3 typings: a `HeaderCustomizer`
-receives and returns the `title` / `info` / `filters` / `searchProps`
-placeholders). The header renders whether or not the list has rows, so
-the same button is the entry point on an empty page; the host's own
-empty-list rendering (`renderNoItems`) is a class method with no prop
-behind it, so it is left alone rather than fought.
-Test id `swiftguest-create-action`. This is the first M6 surface not
-registered through `kubeObjectMenuItems` - there is no object yet to
-attach a menu to - and the dialog machinery is unchanged.
+buttons, and it already has a create affordance for a list page: the
+floating "+" of `AddRemoveButtons`, which every `KubeObjectListLayout`
+renders from the `addRemoveButtons` prop and which core's own Namespaces
+page uses for "Add Namespace". The Guests page passes
+`{ onAdd, addTooltip: "Create Guest" }` and the host draws the button in
+the same corner of the window as on every other list page in the app -
+native-first (DESIGN.md pillar 1), where the header button this spec
+first planned would have been a second idiom for something Freelens
+already does. It renders whether or not the list has rows, so it is the
+entry point on an empty page too; the host's own empty-list rendering
+(`renderNoItems`) is a class method with no prop behind it, so it is left
+alone rather than fought. The control carries no test id of ours - the
+host spreads none of the props it is given onto the button - so the E2E
+suite locates it through the host's own markup
+(`.AddRemoveButtons .add-button`), which is the point rather than a
+limitation. This is the first M6 surface not registered through
+`kubeObjectMenuItems` - there is no object yet to attach a menu to - and
+the dialog machinery is unchanged.
 
 **Sections and fields.** One dialog, the W12 pattern, sections in
 reading order. Defaults never fight the schema: what the API server
@@ -253,9 +259,11 @@ re-sent (except `runPolicy`, argued above).
      with the SPEC-0011 honest granularity (machine-identity trio +
      MAC, MAC locked on), the inert-class note, the gone-source
      warning from the store, GPU excluded with the VFIO reason.
-4. **Seed profile**: picker over the namespace's profiles (optional),
-   with the empty-`datasource` warning; a clone-boot seed pick is
-   refused with the upstream fact that the clone path ignores it.
+4. **Seed profile**: picker over the namespace's profiles (optional);
+   a clone-boot seed pick is refused with the upstream fact that the
+   clone path ignores it. (The empty-`datasource` warning this section
+   planned is G9, dropped in slice 1: the schema makes the field
+   required.)
 5. **Run policy**: select, default `Running`, each option one
    sentence (the SPEC-0010 vocabulary).
 6. **Placement**: optional node pin (the SPEC-0012 node picker,
@@ -331,7 +339,7 @@ Adopted:
 | G6 | The documented-but-unenforced `gpuProfileRef`+`kernelRef` exclusion enforced, citing upstream's own docs | Section 10 |
 | G7 | No empty-name references, ever - the schema quirk and the resolver/webhook nil-ness disagreement both closed by construction | Payload |
 | G8 | `runPolicy` sent explicitly (the `swiftctl guest import` precedent), so the stored object is identical with and without the mutating webhook | Section 5 |
-| G9 | The seed empty-`datasource` silent-no-op warned at pick time | Section 4 |
+| G9 | ~~The seed empty-`datasource` silent-no-op warned at pick time~~ **Dropped during slice 1**: the SwiftSeedProfile schema makes `spec.datasource` required, with a single-member enum (`NoCloud`), so a stored profile cannot have an empty datasource and the warning could never fire on any cluster | - |
 | G10 | Clone boot with the target-node requirement computed from the snapshot's backend instead of asked of the user, the inert class explained, and the SPEC-0011 identity granularity | Section 3 |
 | G11 | Park-versus-fail expectations in the summary: what waits and self-heals, what fails and why, what parks in Pending | Write summary |
 | G12 | DNS-1123 name validation and the store collision warning (warn, never block) | Section 1 |
@@ -437,6 +445,151 @@ never hiding a required field).
 ## Notes and deviations
 
 Filled during implementation when reality diverges from the plan.
+
+### Create Guest slice 1 as implemented (2026-08-31)
+
+Slice 1 ships sections 1-7 and 11-12 with image boot only
+(`components/guest-create.ts`, `components/guest-create-dialog.tsx`, the
+Guests page's create control, and the collapsible section added to
+`components/create-dialog.tsx`), on the SPEC-0011/0012 machinery
+unchanged: the W12 create pattern, the MobX model outside React, the
+observable `okButtonProps`, the catch-never-rethrow with the 409 reopen,
+`apiFailureFacts`, `store.create`, and the shared `create-dialog`
+primitives and stylesheet - which needed one addition and no change. The
+typed models needed nothing at all: `nodeName`, `guestAgent`, `storage`,
+`osType` and the `runPolicy` enum were already declared on
+`SwiftGuestSpec` from the CRD schema, and `SwiftImage`, `SwiftGuestClass`
+and `SwiftSeedProfile` already exposed every field the pickers read.
+These are the places the implementation is more specific than, or
+different from, the text above:
+
+- **The entry point is the host's own floating create button, not a
+  header button** (the Registration paragraph above is rewritten to
+  match). `KubeObjectListLayout` accepts `addRemoveButtons`, the prop
+  core's Namespaces page uses for "Add Namespace", and it renders the
+  same "+" in the same corner on an extension page, which was verified
+  live on the Guests page before any of this form was written. DESIGN.md's first pillar
+  settles it: never a custom control where a native one exists. The
+  consequence for the tests is that the control carries no test id of
+  ours (the host spreads none of the props it is handed onto the
+  button), so the E2E suite locates it as `.AddRemoveButtons
+  .add-button`. The `customizeHeader` fallback was not needed and is not
+  implemented.
+- **There is no boot-source control, because there is one boot source.**
+  The spec's section 3 describes a segmented image/kernel/clone control;
+  with two of the three segments unimplemented, a segmented control with
+  one enabled option is a decoration, and a disabled segment labelled
+  with a future release is a promise the product would be making on the
+  roadmap's behalf. The field is therefore labelled **Boot image** and
+  says what this form creates - "This form creates a disk-boot guest:
+  the controller clones the image below into the guest's own root
+  disk" - a sentence that stays true when slices 2 and 3 add the
+  segmented control next to it. No "coming soon" string exists in the
+  product. The pure model already carries the three-member
+  `GuestBootSource` type and the payload builder already branches on it,
+  so the later slices add fields rather than reshape these.
+- **G9 is retired.** The SwiftSeedProfile schema declares
+  `spec.datasource` as **required**, with a single-member enum
+  (`NoCloud`), so a stored profile cannot have an empty datasource and
+  the warning the improvement promised could never fire on any cluster,
+  webhook or not. The row is struck through in the table above with the
+  reason. The `datasource` field is still carried in the picker's fact
+  shape, because it is what the option would show if upstream ever
+  widened the enum.
+- **The guest name is validated as a DNS-1123 LABEL**, not as the
+  RFC-1123 subdomain the other three dialogs accept for their own
+  objects: a guest's name is the stem of its launcher pod, its cloned
+  root-disk PVC and its per-guest Service, each of which is a label, so
+  dots are refused and the cap is 63 rather than 253. The message says
+  which objects the name becomes, so the rule reads as a consequence
+  rather than as a preference. `objectNameError` is deliberately not
+  reused for it.
+- **The namespace defaults from the page's filter only when that filter
+  names exactly one namespace.** Anything else - all namespaces, a
+  multi-selection, none - leaves the field empty and required, because a
+  guest created in a guessed namespace is a guest in the wrong place.
+- **The class sizing block carries a sixth row, `Live migration`**, and
+  the long sentence lives under the storage section and in the write
+  summary. The spec asks for the derived live-migratability next to the
+  class (section 2) and the consequence stated both ways next to the
+  storage overrides (section 7); rendering the same paragraph in both
+  places, plus the summary, was three copies of one sentence in one
+  scroll area. The short form (`offline only (ReadWriteOnce/Filesystem)`)
+  is computed from the same function as the long one, and a unit test
+  asserts the two never disagree. The long sentence has two offline
+  forms, because the two ways of missing live migration are different
+  facts: a `ReadWriteOnce` disk is held by one node at a time, while a
+  `ReadWriteMany` disk on a `Filesystem` volume is held by as many nodes
+  as need it and still needs a `Block` volume to move without stopping.
+  The short form names the mode rather than the reason, so it stays one
+  sentence.
+- **The storage CEL rule is enforced on the guest's own storage block,
+  which is stricter than the merge and is what the CRD does.** The rule
+  is `!(accessMode == 'ReadWriteMany' && (!has(volumeMode) || volumeMode
+  == 'Filesystem'))` on `spec.storage` itself, so a guest that overrides
+  the access mode to `ReadWriteMany` and inherits `Block` from its class
+  is refused by the API server. The inline message says exactly that -
+  "the rule is evaluated on this guest's own storage block, so
+  inheriting Block from the guest class does not satisfy it" - which is
+  the kind of rejection an operator otherwise meets as a decoded CEL
+  error.
+- **The collapsed section opens by itself when it holds an error**, and
+  its open state lives in the MobX model rather than in the DOM. A
+  submit blocked on a field nobody can see is the dead control W4
+  forbids, and a `<details>` element would collapse on the remount the
+  409 reopen performs.
+- **The image picker's not-Ready options are dimmed, and the dimming is
+  the only signal that they are different.** They are never `isDisabled`
+  - a not-Ready image is a legitimate choice whose consequence is a wait
+  - and the wait is stated under the control and again in the summary,
+  in the warning style. The phase rides on every option's label, so the
+  distinction survives a user who cannot see the dimming.
+- **The osType degradation has its own sentence.** When an image is
+  named but could not be read (the T3 text-input path), the fact reads
+  "linux, assumed" and says that a Windows image would make the guest
+  born Failed on the mismatch, with the YAML editor as the fix. The
+  spec's G4 covers the read case only.
+- **The form shows its required-field errors on open**, as the Migrate
+  dialog does: the submit is disabled from the first frame, and W12
+  requires a disabled submit to name the field and the reason at the
+  field and next to the button. Three red lines on an untouched form is
+  the cost of that rule, and it is the shipped behaviour of the third
+  dialog too.
+- **The write summary repeats the name collision and every unverified
+  value**, for the reason the two SPEC-0011 dialogs repeat their sharpest
+  sentence: this form is taller than any of them, and the summary sits
+  below the fold of the dialog's own scroll area.
+- **The success notification names the object although the row lands on
+  the very page the dialog was opened from** (the spec's G13). The row
+  arrives at its sorted position in a list of sixteen, which is not where
+  the user is looking; a create that says nothing is a create nobody is
+  sure happened.
+- **The E2E case asserts the created spec's key set is exactly
+  `guestAgent`, `guestClassRef`, `imageRef`, `nodeName`, `osType`,
+  `runPolicy`, `seedProfileRef` and `storage`** - all eight sent by the
+  dialog, with no schema default riding along: `osType` is the only
+  defaulted field at the top level of the spec and this form sends it
+  itself, and neither `storage` nor `guestAgent` declares a default
+  inside, confirmed against the `v0.13.12` CRD. The windows case asserts
+  the four-key minimum (`guestClassRef`, `imageRef`, `osType`,
+  `runPolicy`) with `osType: windows`.
+- **One host finding, in both themes, caught by the screenshots and fixed in
+  the shared stylesheet**: core's global rule for `code` is
+  `color: #b4b5b4`, a light grey chosen for a dark surface, and the write
+  summary renders its one W1 line inside a `<code>` - so on the hardcoded
+  white `ConfirmDialog` box the single line the user is required to read
+  measured about 1.8:1 against the summary's own background, paler than
+  every sentence around it. It is the fourth of its family, after the
+  select's single value, the input's label and the checked radio's label
+  recorded in SPEC-0011 and SPEC-0012, and the fix in
+  `create-dialog.module.scss` applies to **all four** create dialogs -
+  Take Snapshot, Restore and Migrate included. It goes on the
+  upstream-Freelens feedback list with the rest.
+- **The created guests are named after the wall clock**
+  (`e2e-created-<hhmmss>`), like the Migrate dialog's migrations: these
+  cases write for real and `pnpm e2e:cluster:up` is idempotent rather
+  than destructive, so a fixed name would make the second run against a
+  kept cluster fail on an AlreadyExists that says nothing about the code.
 
 ### Upstream drift found by this recon (2026-08-30)
 

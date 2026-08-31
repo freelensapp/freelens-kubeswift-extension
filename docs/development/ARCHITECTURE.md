@@ -49,7 +49,9 @@ src/
   renderer/api/kubeswift/    # One file per CRD: KubeObject + KubeApi +
                              # KubeObjectStore, typed Spec/Status interfaces
                              # (full schema, not only rendered fields)
-  renderer/pages/            # Cluster pages (list views)
+  renderer/pages/            # Cluster pages (list views); the Guests page
+                             # also carries the create entry point, through
+                             # the host's own addRemoveButtons
   renderer/details/          # Detail panels (kubeObjectDetailItems)
   renderer/menus/            # Write actions (kubeObjectMenuItems): one file
                              # per verb, rendered by the host in both the list
@@ -58,14 +60,16 @@ src/
                              # action guards and payloads, the create dialogs'
                              # gating, validation, payloads and write
                              # summaries (snapshot-create.ts,
-                             # restore-create.ts, migration-create.ts),
-                             # reference loading; plus the thin form
-                             # components the dialogs render
+                             # restore-create.ts, migration-create.ts,
+                             # guest-create.ts), reference loading; plus the
+                             # form components the dialogs render
                              # (snapshot-create-dialog.tsx,
                              # restore-create-dialog.tsx,
-                             # migration-create-dialog.tsx) and the form
-                             # grammar they share (create-dialog.tsx and its
-                             # module)
+                             # migration-create-dialog.tsx,
+                             # guest-create-dialog.tsx) and the form grammar
+                             # they share (create-dialog.tsx and its module:
+                             # the labelled field, the write summary, the
+                             # collapsible section)
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```

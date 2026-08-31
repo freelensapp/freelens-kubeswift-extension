@@ -2,6 +2,8 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftGuest, type SwiftGuestApi } from "../api/kubeswift/swiftguest-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { createGuestTitle } from "../components/guest-create";
+import { openCreateGuestDialog } from "../components/guest-create-dialog";
 import { classifyGuest, guestMessage } from "../components/guest-status";
 import styles from "./swiftguests-page.module.scss";
 import stylesInline from "./swiftguests-page.module.scss?inline";
@@ -65,6 +67,15 @@ export const SwiftGuestsPage = observer((props: SwiftGuestsPageProps) =>
           sortingCallbacks={sortingCallbacks}
           searchFilters={[(object: KubeObject) => object.getSearchFields()]}
           renderHeaderTitle={KubeObject.crd.title}
+          // The extension's first create that is not about an object the user
+          // already selected, so it is not a `kubeObjectMenuItems` registration
+          // but the host's own create affordance: `addRemoveButtons` renders the
+          // floating "+" that core's Namespaces page uses for "Add Namespace",
+          // in the same corner of every list page in the app (DESIGN.md pillar
+          // 1: never a custom control where a native one exists). The header
+          // button the spec first planned would have been a second idiom for the
+          // idiom Freelens already has.
+          addRemoveButtons={{ onAdd: openCreateGuestDialog, addTooltip: createGuestTitle }}
           renderTableHeader={renderTableHeader}
           renderTableContents={(object: KubeObject) => {
             const condition = classifyGuest(object.spec, object.status);

@@ -1,0 +1,76 @@
+# Subjects of the M6 Create Guest cases (SPEC-0013, slice 1). Dedicated
+# objects, not the M1 image or the SPEC-0010/0011/0012 action subjects: the
+# create dialog reads every SwiftImage of the namespace at click time and shows
+# the phase of each one, so an image some other case mutates would change what
+# this form offers depending on the order the suite happened to run in.
+#
+# `e2e/scripts/cluster-up.sh` is idempotent and re-applies everything, so a
+# second run starts from these values again. The guests the cases create are
+# named after the wall clock, for the same reason the Migrate cases name their
+# migrations that way: a re-run against a kept cluster must not collide with
+# what the previous one wrote.
+#
+# The image that is not Ready. Creating a guest against it is safe and is the
+# point: the guest is born Failed with Resolved=False and heals by itself the
+# moment the image turns Ready, because images are watched. Its status is
+# injected by cluster-up.sh as Importing, which no controller here will ever
+# move on.
+apiVersion: image.kubeswift.io/v1alpha1
+kind: SwiftImage
+metadata:
+  name: e2e-image-importing
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  format: qcow2
+  osType: linux
+  source:
+    http:
+      # Fictional: nothing is downloaded, the status is injected.
+      url: https://images.invalid/kubeswift-e2e/ubuntu-2604.qcow2
+  rootDisk:
+    size: 10Gi
+---
+# The Windows image, Ready. It is what makes the osType sync visible: the CRD
+# defaults spec.osType to linux, so a guest created from this image with the
+# field untouched would be born Failed on the mismatch - and the form sends
+# windows because the image says so.
+apiVersion: image.kubeswift.io/v1alpha1
+kind: SwiftImage
+metadata:
+  name: e2e-windows-2022
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  format: qcow2
+  osType: windows
+  source:
+    oci:
+      repository: ghcr.io/freelensapp/kubeswift-e2e/windows
+      # Quoted: unquoted 2022 is a YAML integer.
+      tag: "2022"
+  rootDisk:
+    size: 40Gi
+---
+# The name the collision warning is measured against. A guest of its own rather
+# than one of the other cases' subjects: the warning is read from the namespace's
+# SwiftGuests, and a case that deleted its subject would take this fact with it.
+# It carries no status, which is also what a guest looks like between its
+# creation and the first reconciliation - the state every guest this form
+# creates stays in on this cluster, since no controller runs here.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-create-taken
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Stopped

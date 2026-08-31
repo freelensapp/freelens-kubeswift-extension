@@ -83,6 +83,59 @@ function modeRadio(frame: Frame, mode: "in-place" | "clone") {
   return frame.locator(`[data-testid="restore-mode"] .Radio:has([data-testid="restore-mode-${mode}"])`).first();
 }
 
+/** The SwiftGuests the cluster holds, by name: the only way to see a create that did not happen. */
+function guestNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftguests.swift.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
+/**
+ * The host's own create control on the Guests page.
+ *
+ * Not a test id: the button is the host's floating "+" (`AddRemoveButtons`,
+ * the idiom core's Namespaces page uses for "Add Namespace"), and the extension
+ * passes it only an `onAdd` and a tooltip - so the stable selector is the host's
+ * own markup, which is exactly what makes it the native control (SPEC-0013).
+ */
+function createGuestControl(frame: Frame) {
+  return frame.locator(".AddRemoveButtons .add-button");
+}
+
+/** One select of the Create Guest form, reached through the input it holds. */
+function guestCreateControl(frame: Frame, id: string) {
+  return frame.locator(`.Select:has(#${id}) .Select__control`);
+}
+
+/** Picks one option of a Create Guest select, by the text of the option. */
+async function pickGuestOption(frame: Frame, id: string, text: string): Promise<void> {
+  await guestCreateControl(frame, id).click();
+  await frame.locator(`.${id}-options .Select__option`, { hasText: text }).first().click();
+}
+
+/** Opens the create dialog from the page's own control and waits for its reads to answer. */
+async function openCreateGuestDialog(frame: Frame): Promise<void> {
+  await createGuestControl(frame).click();
+  await frame.waitForSelector('[data-testid="swiftguest-create-form"]', { state: "visible", timeout: 60_000 });
+  // The class picker is a text input until the cluster's guest classes answer,
+  // so waiting for the select is waiting for the read rather than racing it.
+  await frame.waitForSelector(".Select:has(#guest-create-class)", { state: "visible", timeout: 60_000 });
+}
+
+/**
+ * A guest name no earlier run can have taken.
+ *
+ * These cases create for real, and `pnpm e2e:cluster:up` is idempotent rather
+ * than destructive, so a fixed name would make the second run of a kept cluster
+ * fail on an AlreadyExists that says nothing about the code.
+ */
+function createdGuestName(prefix: string): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return `${prefix}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
 /**
  * The name the Restore dialog will give the SwiftRestore it creates.
  *
@@ -2560,6 +2613,264 @@ describe("KubeSwift views against the fixture cluster", () => {
       await cluster.cancelDialog(frame);
 
       expect(migrationNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "creates a guest from the page's own create button, and writes exactly what it enumerated",
+    async () => {
+      // The first M6 create whose entry point is not a menu item on an object:
+      // there is no object yet, so the page carries the host's own floating "+"
+      // (SPEC-0013's Registration, rewritten to the native control).
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+
+      const name = createdGuestName("e2e-created");
+
+      await openCreateGuestDialog(frame);
+
+      // The namespace is the page's own filter, which names exactly one: the
+      // write line is where that shows, and it is also the W1 enumeration.
+      expect(await cluster.confirmDialogText(frame)).toContain("Create SwiftGuest kubeswift-e2e/");
+
+      await frame.locator('[data-testid="guest-create-name"]').fill(name);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+
+      // The class is never auto-selected, and choosing it is what makes its
+      // sizing visible - the decision upstream makes by sort order (G3).
+      const sizing = await frame.locator('[data-testid="guest-create-class-sizing"]').innerText();
+
+      expect(sizing.replace(/\s+/g, " ")).toContain("Root disk 20Gi qcow2");
+      expect(sizing.replace(/\s+/g, " ")).toContain("Live migration offline only (ReadWriteOnce/Filesystem)");
+
+      await pickGuestOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+      await pickGuestOption(frame, "guest-create-seed", "e2e-seed-basic");
+      await pickGuestOption(frame, "guest-create-run-policy", "Stopped");
+      await pickGuestOption(frame, "guest-create-node", cluster.clusterNodeName());
+
+      // The storage section ships collapsed: it is opened here, and the pair it
+      // holds is the one the CRD's own CEL rule is about.
+      await frame.locator('[data-testid="guest-create-storage-section"] button').click();
+      await pickGuestOption(frame, "guest-create-access-mode", "ReadWriteMany");
+      await pickGuestOption(frame, "guest-create-volume-mode", "Block");
+
+      await frame.locator('[data-testid="guest-create-guest-agent"] .Checkbox').click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftGuest kubeswift-e2e/${name}`);
+      expect(dialog).toContain("The guest class e2e-small sizes it: 2 vCPU, 4Gi, 20Gi qcow2");
+      expect(dialog).toContain("cloned from the image e2e-ubuntu-2404");
+      expect(dialog).toContain("The seed profile e2e-seed-basic is rendered into a Secret");
+      expect(dialog).toContain("Run policy Stopped");
+      expect(dialog).toContain("No launcher pod is created now");
+      expect(dialog).toContain(`pinned to the node ${cluster.clusterNodeName()}`);
+      // Both overrides together turn the storage line over: this guest CAN be
+      // live-migrated, which the same sentence denied before they were set.
+      expect(dialog).toContain("ReadWriteMany/Block, which two launcher pods can hold at once");
+      expect(dialog).toContain("vsock device");
+      // A create commits resources and destroys nothing, so it keeps the
+      // default styling rather than the accent one a stop takes.
+      expect(await frame.locator('[data-testid="confirm"]').getAttribute("class")).not.toContain("accent");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuest kubeswift-e2e/${name} created`);
+
+      // The row arrives on the very page the dialog was opened from, through
+      // that page's own store: no optimistic write of ours (W2).
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      // The object the API server stored is the object the summary enumerated,
+      // and nothing else: no empty-name references, no fields this form does not
+      // own, and no schema default beyond the osType it sends itself.
+      const spec = JSON.parse(cluster.kubectlField("swiftguests.swift.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "guestAgent",
+        "guestClassRef",
+        "imageRef",
+        "nodeName",
+        "osType",
+        "runPolicy",
+        "seedProfileRef",
+        "storage",
+      ]);
+      expect(spec.guestClassRef).toEqual({ name: "e2e-small" });
+      expect(spec.imageRef).toEqual({ name: "e2e-ubuntu-2404" });
+      expect(spec.seedProfileRef).toEqual({ name: "e2e-seed-basic" });
+      expect(spec.osType).toBe("linux");
+      expect(spec.runPolicy).toBe("Stopped");
+      expect(spec.nodeName).toBe(cluster.clusterNodeName());
+      expect(spec.storage).toEqual({ accessMode: "ReadWriteMany", volumeMode: "Block" });
+      expect(spec.guestAgent).toEqual({ enabled: true });
+
+      // No controller runs here, so the guest stays phaseless - which is the
+      // proof that everything above was written by this dialog and by nothing
+      // else.
+      expect(cluster.kubectlField("swiftguests.swift.kubeswift.io", name, "{.status.phase}")).toBe("");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "offers an image that is not Ready, and says the guest will wait for it",
+    async () => {
+      // G2: upstream's picker discards the readiness its own gateway returns.
+      // This one shows it, offers the image anyway, and says what creating
+      // against it means - because the guest is born Failed and then heals by
+      // itself, which makes "create it now" a legitimate thing to do.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill("e2e-created-waiting");
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await guestCreateControl(frame, "guest-create-image").click();
+
+      const options = await frame.locator(".guest-create-image-options .Select__option").allInnerTexts();
+
+      expect(options.some((option) => option.includes("e2e-image-importing - Importing"))).toBe(true);
+      expect(options.some((option) => option.includes("e2e-ubuntu-2404 - Ready"))).toBe(true);
+      // Dimmed, never disabled: the wait is a consequence, not a refusal.
+      expect(await frame.locator(".guest-create-image-options .Select__option--is-disabled").count()).toBe(0);
+
+      await frame
+        .locator(".guest-create-image-options .Select__option", { hasText: "e2e-image-importing" })
+        .first()
+        .click();
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("The image e2e-image-importing is Importing, not Ready");
+      expect(dialog).toContain("born Failed");
+      expect(dialog).toContain("Resolved=False");
+      expect(dialog).toContain("Images are watched");
+      // A wait never blocks the submit.
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "syncs the OS type from a windows image, and creates the guest with it",
+    async () => {
+      // G4, the born-Failed trap closed: the CRD defaults spec.osType to linux
+      // and the resolver cross-checks it against the image's own, so a Windows
+      // guest created with the field untouched is born Failed. The form reads
+      // the image and sends what it says.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+
+      const name = createdGuestName("e2e-created-win");
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill(name);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await pickGuestOption(frame, "guest-create-image", "e2e-windows-2022");
+
+      // A fact, not a control: there is no osType select to disagree with.
+      const osType = await frame.locator('[data-testid="guest-create-os-type"]').innerText();
+
+      expect(osType).toContain("windows");
+      expect(osType).toContain("read from the image e2e-windows-2022");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("This is a Windows image");
+      expect(dialog).toContain("no GPU profile");
+      expect(dialog).toContain("mounts no filesystems");
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftGuest kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftguests.swift.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual(["guestClassRef", "imageRef", "osType", "runPolicy"]);
+      expect(spec.osType).toBe("windows");
+      expect(spec.imageRef).toEqual({ name: "e2e-windows-2022" });
+      // Sent explicitly although the schema does not default it: the mutating
+      // webhook that would have is disabled on a normal install (G8).
+      expect(spec.runPolicy).toBe("Running");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses a name that is not a DNS label, and warns about one that is taken",
+    async () => {
+      // G12: upstream validates neither. The refusal blocks and names the field
+      // at the field and at the button (W4); the collision only warns, because
+      // the store can be stale and the API server is the authority.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await pickGuestOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+      await frame.locator('[data-testid="guest-create-name"]').fill("Bad_Name");
+
+      const refused = await cluster.confirmDialogText(frame);
+
+      expect(refused).toContain("A guest name is lowercase letters, digits and '-'");
+      expect(refused).toContain("Create Guest is disabled - Name:");
+      expect(await frame.locator('[data-testid="guest-create-submit-blocked"]').count()).toBe(1);
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // A name that is only too long is refused by the same field, with the
+      // count rather than the pattern.
+      await frame.locator('[data-testid="guest-create-name"]').fill("a".repeat(64));
+      expect(await cluster.confirmDialogText(frame)).toContain("at most 63 characters; this one is 64");
+
+      // The fixture whose whole purpose is to have its name taken.
+      await frame.locator('[data-testid="guest-create-name"]').fill("e2e-guest-create-taken");
+
+      const warned = await cluster.confirmDialogText(frame);
+
+      expect(warned).toContain("A SwiftGuest with this name already exists in this namespace");
+      expect(warned).toContain("the fix is a different name");
+      expect(warned).not.toContain("Create Guest is disabled");
+      // A warning never blocks: the submit stays available and the API server's
+      // own AlreadyExists is what the failure path is designed to carry.
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "cancels the create dialog without writing anything",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = guestNames();
+
+      await openCreateGuestDialog(frame);
+      await frame.locator('[data-testid="guest-create-name"]').fill("e2e-created-never");
+      await pickGuestOption(frame, "guest-create-class", "e2e-small");
+      await pickGuestOption(frame, "guest-create-image", "e2e-ubuntu-2404");
+
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(guestNames()).toEqual(before);
+      expect(cluster.kubectlExists("swiftguests.swift.kubeswift.io", "e2e-created-never")).toBe(false);
+      await cluster.expectNoRow(frame, "e2e-created-never");
     },
     TIMEOUT,
   );

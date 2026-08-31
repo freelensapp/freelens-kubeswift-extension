@@ -150,6 +150,15 @@ E2E_STATUS_PATCHES=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-stopped=swiftguest-e2e-guest-migrate-stopped.yaml"
 	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-inflight=swiftguest-e2e-guest-migrate-inflight.yaml"
 	"swiftmigrations.migration.kubeswift.io/e2e-migration-inflight=swiftmigration-e2e-migration-inflight.yaml"
+	# The M6 Create Guest images (SPEC-0013). The dialog offers every image of
+	# the namespace and shows the phase of each, so the two that matter are the
+	# one that is not Ready - selectable, with the will-wait line - and the
+	# Windows one, whose own osType is what the created guest carries. The third
+	# subject of those cases, e2e-guest-create-taken, gets no patch on purpose:
+	# it exists to have its name taken, and a guest with no status at all is what
+	# every guest this form creates looks like on a cluster with no controller.
+	"swiftimages.image.kubeswift.io/e2e-image-importing=swiftimage-e2e-image-importing.yaml"
+	"swiftimages.image.kubeswift.io/e2e-windows-2022=swiftimage-e2e-windows-2022.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -233,6 +242,14 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-stopped={.status.phase}=Stopped"
 	"swiftguests.swift.kubeswift.io/e2e-guest-migrate-sriov={.spec.interfaces[0].type}=sriov"
 	"swiftmigrations.migration.kubeswift.io/e2e-migration-inflight={.status.phase}=Preparing"
+	# The M6 Create Guest subjects (SPEC-0013). The phase of the importing image
+	# is what the will-wait line is computed from, and the Windows image's own
+	# spec.osType is what the created guest's osType is asserted against - both
+	# are read at click time, so a fixture that did not land would look like a UI
+	# regression rather than a missing status.
+	"swiftimages.image.kubeswift.io/e2e-image-importing={.status.phase}=Importing"
+	"swiftimages.image.kubeswift.io/e2e-windows-2022={.status.phase}=Ready"
+	"swiftimages.image.kubeswift.io/e2e-windows-2022={.spec.osType}=windows"
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the

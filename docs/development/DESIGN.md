@@ -501,6 +501,18 @@ verb.
   collision read from a store that may be stale, a reference that may have
   been created since - the dialog warns and submits, and the API server's
   refusal is what the failure path is designed to carry.
+- **A section ships collapsed only when it is optional, consequence-bearing
+  and hides no required field** (decision of 2026-08-31, SPEC-0013, whose
+  Create Guest form is the first large enough to need one). The three
+  conditions are cumulative: every field inside it has a default the object
+  would get anyway, what it changes is a consequence rather than a value the
+  create needs, and that consequence is stated in the open - on the section's
+  own header line, which is visible whether it is open or shut. A collapsed
+  section that holds an error **opens itself**, because a submit blocked on a
+  field nobody can see is the dead control W4 forbids. Its open state lives in
+  the form model, not in the DOM: the 409 reopen remounts the whole message,
+  and a section the user had opened must not close under them. Nothing else
+  may be collapsed - a form does not hide a decision to look shorter.
 
 **Host facts this pattern rests on** (measured in SPEC-0011's spikes, on
 Freelens 1.10.3; they are not obvious and each one has a wrong-looking
