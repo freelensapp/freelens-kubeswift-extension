@@ -1,6 +1,9 @@
-# The transport fixture of SPEC-0017 slice 1 (open item O5, accepted at
-# approval): the one pod in this whole fixture set that is SCHEDULABLE and that
-# therefore PULLS AN IMAGE.
+# The transport fixture of SPEC-0017 (open item O5, accepted at approval): the
+# one pod in this whole fixture set that is SCHEDULABLE and that therefore PULLS
+# AN IMAGE. Slice 1 added it for the guest serial console; slice 2 reuses the
+# SAME pod for the sandbox workload console rather than paying for a second one,
+# which is why one busybox container ends up serving two consoles that have
+# nothing else in common.
 #
 # Why it exists. Every other launcher pod here is deliberately unschedulable
 # (55-launcher-pods.yaml), because the detail views only need the object to
@@ -25,6 +28,16 @@
 # command line), and can read back the relay arguments the extension actually
 # delivered. What socat really does with those arguments stays in the spec's
 # manual verification list, on a cluster with real guests.
+#
+# Why it also writes a sandbox console file (slice 2). A sandbox's console is a
+# FILE that the hypervisor writes and the extension tails, so the transport case
+# for it needs no stub at all: it needs the file to exist, in the run directory
+# keyed on THIS POD's own name, with content the case can recognise. The startup
+# below builds that path from `$(hostname)` and the pod's own namespace rather
+# than from a literal, so the fixture cannot silently disagree with the key rule
+# the extension implements; and it writes exactly two lines, the second of which
+# is the `KUBESWIFT-EXIT-CODE=` marker a real swiftletd's bridge-init appends
+# last. The sandbox that names this pod is at the bottom of this file.
 apiVersion: v1
 kind: Pod
 metadata:
@@ -43,6 +56,14 @@ spec:
       # container called `launcher` on every pod-building path, and both
       # upstream clients hardcode it, so the extension's command line does too.
       image: docker.io/library/busybox:1.37.0
+      env:
+        # The namespace from the downward API, so the run-directory key below is
+        # built from the pod's own identity and not from a literal that could
+        # drift away from the fixture it lives in.
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
       command:
         - /bin/sh
         - -c
@@ -52,6 +73,10 @@ spec:
           printf 'KUBESWIFT-E2E-CONSOLE-OK %s %s\n' "$(hostname)" "$*"
           STUB
           chmod +x /usr/bin/socat
+          run_dir="/var/lib/kubeswift/run/${POD_NAMESPACE}-$(hostname)"
+          mkdir -p "${run_dir}"
+          printf 'KUBESWIFT-E2E-SANDBOX-CONSOLE-OK %s\nKUBESWIFT-EXIT-CODE=0\n' \
+            "$(hostname)" >"${run_dir}/serial.sock.log"
           exec sleep 86400
       resources:
         requests:
@@ -79,3 +104,36 @@ spec:
     name: e2e-ubuntu-2404
   osType: linux
   runPolicy: Running
+---
+# The sandbox whose workload console lives in the pod above (SPEC-0017 slice 2).
+#
+# It reuses the guest transport pod on purpose: a second schedulable pod would
+# mean a second image pull for one assertion, and what the case needs from the
+# pod is a file, which the startup script already writes. The consequence is
+# visible and is itself worth having - `status.podRef` names a pod this sandbox
+# is NOT named after, exactly as a warm-slot checkout's does, so the run
+# directory the extension composes can only be right if it is keyed on the POD.
+# A path keyed on the sandbox would point at
+# /var/lib/kubeswift/run/kubeswift-e2e-e2e-sandbox-console/, which does not
+# exist in that container, and the tail would come back empty.
+#
+# Its phase is terminal with exit code 0, which is the state the console is most
+# worth reading in: the workload's whole output plus the KUBESWIFT-EXIT-CODE=
+# line swiftletd parses into that very exit code. The guard is deliberately not
+# gated on the phase, and this fixture is what proves it.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandbox
+metadata:
+  name: e2e-sandbox-console
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox:console
+  memory: 512Mi
+  command:
+    - /bin/sh
+    - -c
+    - echo hello
+  network:
+    mode: none

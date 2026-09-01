@@ -1,0 +1,23 @@
+# Merge patch applied to the status subresource of
+# swiftsandbox/e2e-sandbox-console. No KubeSwift controller runs in the E2E
+# cluster, so the status a real controller would write is injected here instead.
+#
+# The transport fixture of the workload console (SPEC-0017 slice 2). Two facts
+# only this one carries:
+#
+# - podRef names the SCHEDULABLE busybox pod of 215-console-transport.yaml,
+#   which is not named after this sandbox. That is what makes the case an
+#   assertion rather than a coincidence: the run directory the extension
+#   composes is keyed on the LAUNCHER POD, so the tail can only find the console
+#   file if the key rule was implemented the right way round. It is the same
+#   shape a warm-slot checkout produces, on a pod that really runs.
+# - the phase is terminal with exit code 0, because the console guard is
+#   deliberately NOT gated on the phase: a finished sandbox whose pod survives
+#   has the most complete console there is, and its last line is the
+#   KUBESWIFT-EXIT-CODE= marker this exit code was parsed from.
+status:
+  phase: Completed
+  exitCode: 0
+  podRef: e2e-guest-console-launcher
+  startedAt: "2026-09-01T08:00:00Z"
+  terminalAt: "2026-09-01T08:00:03Z"

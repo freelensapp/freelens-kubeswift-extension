@@ -799,3 +799,115 @@ Open items touched: **O5 is done** - the fixture and the case are in.
 and the transport case watches it expire rather than measuring what a
 real hypervisor needs. O1, O3, O4 and O7 are untouched, and O6 belongs to
 slice 2.
+
+### Workload console as implemented (2026-09-01)
+
+Slice 2, as planned, and it was the content-rather-than-machinery slice
+the plan predicted: the `ActionGuard` union, the `{ object, toolbar }`
+contract, the `<Icon interactive={toolbar} />` idiom, the click-time
+re-evaluation, the one `try` around both host calls, the tab recipe and
+the E2E technique are all slice 1's, reused unchanged. What is new is one
+guard branch, one command string, the inverted run-directory rule and the
+sentences - plus one E2E helper rule that slice 1's CI run earned.
+
+**Reused unchanged.** `sandboxRunDirectoryKey` was already written and
+tested in slice 1, next to its inverse, exactly so that this slice could
+not read one rule without the other. `SwiftSandbox.getPodName` already
+existed, and `status.podRef` was already modelled as the bare string it
+is, so the typed model needed **nothing at all** this time - not even a
+static. `shellQuote`, `runDirectoryRoot`, `serialSocketFileName` and
+`launcherContainerName` are the same constants; the console file name is
+derived from the socket one (`serial.sock.log` is literally the socket
+path with `.log` appended, which is upstream's own naming) rather than
+written out a second time.
+
+**Deviations from the Design section above, each with its reason:**
+
+- **A checkout is `spec.poolRef` AND a pod the sandbox is not named
+  after, not either of them.** The Design's K8 row and the digest's S3
+  disagree in wording (S3 says "plus"), and the either-signal reading is
+  wrong in a way this repository can see: nothing in the CRD promises
+  that a cold sandbox's launcher pod is named exactly after the sandbox -
+  it is a convention, and this suite's own fixtures decorate it with a
+  `-launcher` suffix - so a name mismatch alone would tell
+  `e2e-sandbox-running`, a plain cold sandbox, that its tail is not live.
+  That is a lie in the strong direction, which is the one direction K8
+  cannot afford. The pool reference alone is not enough either, because a
+  checkout that finds no free warm slot falls back to the cold boot path
+  and gets a launcher pod of its own, and **that** console is followed
+  live. So the module carries two predicates: `isSandboxCheckout` (both
+  signals) and `isSandboxColdFallback` (a pool asked for, its own pod),
+  each with its own sentence, and the second one exists precisely to say
+  the reassuring thing a blunter rule would get backwards.
+- **The drawer's Workload Console row sits in the Sandbox section, next
+  to Exit Code, and not next to the Launcher Pod row it talks about.**
+  The Runtime section guards itself away entirely when the status carries
+  no node, pod, runtime or IP - and an M4 case asserts that it does - so
+  the sandbox with no launcher pod, which is exactly the one whose user
+  needs the reason, would never see the row there. Next to the exit code
+  is also where the digest's own S5 puts the exit marker, so the row
+  ended up beside the number its last line produces.
+- **The guard reads one thing and no phase at all.** The Design says "not
+  gated on the phase"; the implementation takes that literally and never
+  looks at `status.phase`, so there is no branch to get wrong later. The
+  unit test asserts the non-gate over six phases including the terminal
+  ones and the empty one.
+- **`sandboxConsoleFile` takes the pod name as an argument** instead of
+  reading it from the sandbox. Deriving it inside would have made the one
+  mistake this slice exists to avoid - a path keyed on the object - a
+  one-word edit away; taking it as a parameter means the mistake has to
+  be written down at the call site to happen at all.
+
+**One host fact this slice had to learn the hard way, and it is E2E's
+rather than the product's.** Slice 1's CI run failed on Linux, on a
+different case: closing a console dock tab while its `kubectl exec` is
+still alive makes the host kill the tab's shell, and the cluster proxy
+then logs a cancelled `UPGRADE-PIPE` dial at **error** level, which the
+suite's error collector counts and attributes to the extension-activation
+case at the top of the file. It passed on macOS only because the exec had
+already exited before the close. It matters more here than in slice 1,
+because `tail -n +1 -F` never ends by itself: so `closeDockTab` now
+refuses to close a tab whose terminal has not shown the host's
+`[Process exited with code` line, with a failure message that says what to
+do instead, and the sandbox transport case sends Ctrl+C into the terminal
+first. The rule lives in the helper rather than in the discipline of
+whoever writes the next console case. Candidate upstream-Freelens
+feedback, next to slice 1's list: a console the user closes should not
+have to be a console the proxy logs an error about.
+
+**And a second host fact, from this slice's own CI run.** The details drawer
+closes on Escape, but the host listens for the key on `window` and a terminal in
+the dock never lets it get that far: xterm holds the keyboard in a hidden
+textarea and cancels the keys it handles, `preventDefault` plus
+`stopPropagation`. So a drawer opened while the dock is showing a terminal - the
+host's own `Terminal` tab is what the dock falls back to once a console tab is
+closed - stayed open for the whole wait, deterministically on Linux and never on
+macOS. The first reading of it was a sequencing rule, assert the drawer before
+opening the terminal, and it was too weak: the terminal that holds the focus can
+be the one the **previous** case left behind. `closeDetails` now presses Escape
+on the drawer and then clicks the drawer's own close icon, which needs no focus
+at all, so the rule is gone and no case has to order itself around the dock.
+
+**The E2E transport case needed no second pod.** O5's cost was paid once,
+in slice 1; this slice reuses that busybox pod by having its startup also
+write a console file in the run directory keyed on **its own** pod name
+(from `$(hostname)` and the downward-API namespace, so the fixture cannot
+silently disagree with the rule the extension implements), with two known
+lines of which the last is `KUBESWIFT-EXIT-CODE=0`. The `e2e-sandbox-console`
+fixture then points `status.podRef` at that pod **without being named
+after it**, which is the shape a warm-slot checkout has - so the case
+proves the pod-keyed rule against a container that really has the file,
+and a path keyed on the sandbox would come back empty. It also proves
+what the tooltip promises about the last line, since `tail -F` keeps
+following and nothing can arrive after it.
+
+Open items touched: **O6 is done** - TRY-IT.md's Limits section now says
+that a sandbox console is read-only by construction and that a shell
+inside the microVM is `swiftctl sandbox attach`, as a documented answer
+and not a control. **O4 is restated and stays open, and it is now the
+most important manual check in the milestone**: nothing in the E2E suite
+can observe a real checkout's buffered console, so the sentence K8 rests
+on - that a checked-out slot's tail stays empty until the workload ends
+and then arrives whole - is still a reading of `action.rs` rather than an
+observation. If it turns out to be wrong, the sentence is wrong on a
+screen. O1, O2, O3 and O7 are untouched.

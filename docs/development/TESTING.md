@@ -297,7 +297,48 @@ is everything the relay actually does: a login prompt, keystrokes reaching the
 guest, the boot-log replay, a Windows guest's silence and a live migration
 followed by a reconnect (SPEC-0017's manual verification list).
 
-These three cases sit immediately before the M4 log-dock case and each one closes
+The SPEC-0017 slice-2 cases follow them, on the inverted mechanism: a sandbox's
+hypervisor writes the guest's serial line to a **file**, so the Workload Console
+types a `tail -n +1 -F` with no stdin and no TTY, and the run directory it names
+is keyed on the **launcher pod** rather than on the object. Three of the four
+prove the wiring and the words - the tail line and the tab title on
+`e2e-sandbox-running`; the same on `e2e-sandbox-pooled`, where the assertion that
+matters is that the line names `e2e-sandbox-pool-slot-1` and that the sandbox's
+own name appears **nowhere** in it, which is the B3 inversion asserted as a
+string and the one check that would catch the milestone's likeliest bug; and the
+disabled verdict with its reason on `e2e-sandbox-create-taken`, whose status
+names no pod, in the row kebab, the drawer toolbar and the drawer's own Workload
+Console row. The fourth is the transport case, and it needed **no second pod**:
+it reuses slice 1's busybox one, whose startup now also writes a console file in
+the run directory keyed on its own pod name, with two known lines of which the
+last is the `KUBESWIFT-EXIT-CODE=0` marker. The `e2e-sandbox-console` fixture
+points `status.podRef` at that pod without being named after it - exactly the
+shape a checkout has - so the tail can only find the file if the pod-keyed rule
+was implemented the right way round, and the case asserts both lines back from
+inside the container plus the exit marker as the terminal's last line.
+
+**No console case may close its tab while its command is still running**, and
+`closeDockTab` enforces it rather than trusting the next author to remember:
+killing the tab's shell under a live `kubectl exec` makes the cluster's proxy log
+a cancelled `UPGRADE-PIPE` dial at error level, the error collector counts every
+`[out] error:` line, and the failure lands on the extension-activation case at
+the top of the file - deterministically on Linux, never on macOS, where the exec
+happens to have exited first (slice 1's CI run, PR #107). Commands against the
+deliberately unschedulable fixtures end by themselves; `tail -F` does not, so the
+sandbox transport case sends Ctrl+C into the terminal and waits for the host's
+`[Process exited with code` line before closing. That the host writes that line
+and leaves the tab standing is itself a host fact these cases rest on, and it is
+candidate upstream-Freelens feedback: a console the user closes should not have
+to be a console the proxy logs an error about. The same run taught a second thing,
+and it lives in `closeDetails` rather than in any case: the details drawer listens
+for Escape on the **window**, and whenever the dock is showing a terminal - its own
+`Terminal` tab is what it falls back to when a console tab is closed - xterm holds
+the keyboard in a hidden textarea and cancels the key, so the drawer never hears
+it. The helper presses Escape on the drawer and, if the panel is still there a few
+seconds later, clicks the drawer's own close icon, which needs no focus at all. No
+case has to order itself around the dock.
+
+These seven cases sit immediately before the M4 log-dock case and each one closes
 the tab it opened, so the dock is empty again when that case runs and it keeps
 its own place as the last case in the file that touches the UI. Each one closes
 it only **after its command has ended** - `closeDockTab` waits for

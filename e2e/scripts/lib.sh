@@ -117,6 +117,7 @@ E2E_STATUS_PATCHES=(
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running=swiftsandbox-e2e-sandbox-running.yaml"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed=swiftsandbox-e2e-sandbox-failed.yaml"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-pooled=swiftsandbox-e2e-sandbox-pooled.yaml"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-console=swiftsandbox-e2e-sandbox-console.yaml"
 	# SwiftSandboxPool declares a `scale` subresource next to its `status` one,
 	# which changes nothing here: `kubectl patch --subresource=status` addresses
 	# the status subresource by name, and `scale` is a separate projection the
@@ -229,6 +230,11 @@ E2E_STATUS_ASSERTIONS=(
 	# from a type a controller actually writes.
 	'swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.conditions[?(@.type=="GuestRunning")].message}=The guest booted and the workload is running.'
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-pooled={.status.podRef}=e2e-sandbox-pool-slot-1"
+	# The workload console's transport subject: its pod is the schedulable busybox
+	# one, and it is NOT named after the sandbox, which is what makes the pod-keyed
+	# run directory an assertion rather than a coincidence (SPEC-0017 slice 2).
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-console={.status.podRef}=e2e-guest-console-launcher"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-console={.status.phase}=Completed"
 	# The two counts the pool list puts side by side, because the gap between
 	# them is the health of the pool. The degraded one reads back a literal 0,
 	# which is the assert that keeps a dropped zero from looking like an absent

@@ -43,6 +43,7 @@ import { SwiftGuestMigrateMenuItem as SwiftGuestMigrateMenuItemV1alpha1 } from "
 import { SwiftGuestStartMenuItem as SwiftGuestStartMenuItemV1alpha1 } from "./menus/swiftguest-start-menu-item-v1alpha1";
 import { SwiftGuestStopMenuItem as SwiftGuestStopMenuItemV1alpha1 } from "./menus/swiftguest-stop-menu-item-v1alpha1";
 import { SwiftGuestTakeSnapshotMenuItem as SwiftGuestTakeSnapshotMenuItemV1alpha1 } from "./menus/swiftguest-take-snapshot-menu-item-v1alpha1";
+import { SwiftSandboxConsoleMenuItem as SwiftSandboxConsoleMenuItemV1alpha1 } from "./menus/swiftsandbox-console-menu-item-v1alpha1";
 import { SwiftSnapshotRestoreMenuItem as SwiftSnapshotRestoreMenuItemV1alpha1 } from "./menus/swiftsnapshot-restore-menu-item-v1alpha1";
 import { FleetClustersPage as FleetClustersPageV1alpha1 } from "./pages/fleetclusters-page-v1alpha1";
 import { SwiftGPUNodesPage as SwiftGPUNodesPageV1alpha1 } from "./pages/swiftgpunodes-page-v1alpha1";
@@ -312,6 +313,19 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       components: {
         MenuItem: (props: { object: any; toolbar?: boolean }) => (
           <SwiftGuestConsoleMenuItemV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    // SPEC-0017 slice 2, and the first action this extension registers on
+    // SwiftSandbox: the workload console, which is the same non-writing shape as
+    // the guest's above with the mechanism inverted - a `tail` on a file rather
+    // than a relay to a socket, so read-only by construction.
+    {
+      kind: SwiftSandboxV1alpha1.kind,
+      apiVersions: SwiftSandboxV1alpha1.crd.apiVersions,
+      components: {
+        MenuItem: (props: { object: any; toolbar?: boolean }) => (
+          <SwiftSandboxConsoleMenuItemV1alpha1 {...props} extension={this} />
         ),
       },
     },

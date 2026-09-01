@@ -15,6 +15,7 @@ import {
 } from "../api/kubeswift/swiftsandbox-v1alpha1";
 import { SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import { formatQuantity } from "../api/kubeswift/types";
+import { canOpenSandboxConsole, sandboxConsoleDrawerExplanation } from "../components/console-commands";
 import { withErrorPage } from "../components/error-page";
 import { existingObjectRef, objectExists } from "../components/object-existence";
 import { findDefaultContainerOfPod } from "../components/pod-logs";
@@ -93,6 +94,8 @@ const SandboxSection = observer(({ object }: SectionProps) => {
   const poolName = spec?.poolRef?.name;
   const poolStore = maybe(() => SwiftSandboxPool.getStore<SwiftSandboxPool>());
   const poolRef = existingObjectRef(poolStore, SwiftSandboxPool.kind, poolName, object.getNs());
+  const consoleFacts = { name: object.getName(), namespace: object.getNs(), spec, status: object.status };
+  const consoleVerdict = canOpenSandboxConsole(consoleFacts);
 
   return (
     <>
@@ -145,6 +148,21 @@ const SandboxSection = observer(({ object }: SectionProps) => {
       {/* Terminal phases only, and `0` is kept: a run that succeeded is a fact. */}
       <DrawerItem name="Exit Code" hidden={exitCode === undefined}>
         <WithTooltip>{exitCode}</WithTooltip>
+      </DrawerItem>
+      {/* Where a user who never hovers a menu finds out why the Workload
+          Console item is greyed, and what it will do when it is not - the
+          second surface W4 requires for a guard's reason, and the durable one,
+          since a disabled `MenuItem` carries `pointer-events: none` and can
+          never show a hover tooltip (SPEC-0010 spike S7, SPEC-0017).
+          Deliberately in this always-rendered section and not next to the
+          Launcher Pod row it talks about: the Runtime section guards itself
+          away entirely on a sandbox with no runtime status, and that sandbox -
+          the one with no launcher pod - is precisely the one whose user needs
+          this sentence. It sits after the exit code because the tail's last
+          line is what produced that number (K10). The whole sentence is the
+          row's own text and not only its tooltip (DESIGN.md section 7). */}
+      <DrawerItem name="Workload Console">
+        <WithTooltip>{sandboxConsoleDrawerExplanation(consoleFacts, consoleVerdict)}</WithTooltip>
       </DrawerItem>
       <DrawerItem name="Started" hidden={!startedAt}>
         {startedAt ? <LocaleDate date={startedAt} /> : null}

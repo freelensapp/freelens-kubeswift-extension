@@ -492,9 +492,15 @@ function plannedRestoreName(dialog: string): string {
  * The precedent is the M4 log-dock case, which asserts `.Dock .Tab` by text for
  * the same reason: the tab is the host's own markup and the title is the only
  * part of it this extension owns.
+ *
+ * `subject` is what follows `Console: ` in that title, which is the guest's name
+ * for a serial console and `<sandbox> (<pod>)` for a workload console - the
+ * sandbox title names its pod because for a checkout the two differ. Matching on
+ * the prefix rather than on the whole string is also what makes these locators
+ * survive the counter the host appends when a tab is the Nth of its kind.
  */
-function consoleTab(frame: Frame, guestName: string) {
-  return frame.locator(".Dock .Tab", { hasText: `Console: ${guestName}` }).first();
+function consoleTab(frame: Frame, subject: string) {
+  return frame.locator(".Dock .Tab", { hasText: `Console: ${subject}` }).first();
 }
 
 /**
@@ -513,6 +519,27 @@ async function terminalText(frame: Frame): Promise<string> {
   await rows.waitFor({ state: "visible", timeout: 60_000 });
 
   return (await rows.innerText()).replace(/\s+/g, "");
+}
+
+/**
+ * The terminal's visible text as LINES, trimmed, with the empty ones dropped.
+ *
+ * The whitespace-stripped reader above is what every needle is written against,
+ * because a long command line wraps mid-token; this one exists for the single
+ * assertion that is about line structure rather than about content - that a
+ * finished sandbox's console ends with its `KUBESWIFT-EXIT-CODE=` marker. The
+ * content lines it reads are short enough not to wrap, which is what makes the
+ * question meaningful at all.
+ */
+async function terminalLines(frame: Frame): Promise<string[]> {
+  const rows = frame.locator(".xterm-rows").first();
+
+  await rows.waitFor({ state: "visible", timeout: 60_000 });
+
+  return (await rows.innerText())
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 }
 
 /**
@@ -547,38 +574,65 @@ async function expectTerminalText(frame: Frame, needle: string, timeout = 60_000
 }
 
 /**
- * Closes a console tab once its command has ended, so the case after this one
- * finds the dock as it was.
+ * The line the host writes into a terminal when the session's process is gone.
+ *
+ * Whitespace-stripped, like every other needle here. It is the host reporting
+ * the exec's own exit: the tab stays, and only a closed websocket would take it
+ * away, which is what makes these cases readable at all.
+ */
+const processExitedLine = "[Processexitedwithcode";
+
+/**
+ * Sends Ctrl+C to the terminal and waits for the session to end.
+ *
+ * For a command that ends by itself - every `kubectl exec` against this
+ * cluster's deliberately unschedulable pods - nothing needs to be interrupted.
+ * For one that does not, `tail -F` being exactly that, this is how a case leaves
+ * the tab in the state `closeDockTab` insists on.
+ *
+ * Done the way a user does it: a click into the terminal's own screen, which is
+ * what xterm focuses its hidden textarea on, and then the keystroke, which
+ * xterm turns into the interrupt byte on the session's stdin. The textarea is
+ * not pressed directly because it is deliberately invisible, and Playwright's
+ * actionability check would refuse it.
+ */
+async function interruptTerminal(frame: Frame): Promise<void> {
+  await frame.locator(".xterm-screen").first().click();
+  await frame.page().keyboard.press("Control+C");
+  await expectTerminalText(frame, processExitedLine, 60_000);
+}
+
+/**
+ * Closes a console tab, so the case after this one finds the dock as it was.
  *
  * The dock covers the lower half of every list page underneath it, and the M4
  * log-dock case at the end of this file is written on the assumption that it is
  * the one that opens it.
  *
- * The wait for `[Process exited with code` before the click is not politeness.
- * Closing a tab whose `kubectl exec` is still alive kills the shell process
- * while the `pods/exec` upgrade is in flight, and the HOST's kubectl proxy then
- * logs the abandoned dial - `[UPGRADE-PIPE] dial 127.0.0.1:NNNNN failed: ...
- * operation was canceled` - at error level, which this suite's error collector
- * reads as a process error and fails the activation case with it. That is what
- * the host does whenever a connected console is closed, not a defect of this
- * extension (recorded in SPEC-0017's notes, and a candidate for the
- * upstream-Freelens feedback list), so the rule lives on this side: a console
- * tab is closed only after its command has ended, and then the proxy has no
- * upgrade left to cancel. It is also why the defect was invisible on macOS,
- * where kubectl had already exited by the time the tab was closed, and
- * deterministic on the CI Linux runner, where it had not.
- *
- * Every console case can obey the rule, because every one of them ends: the
- * fixture launcher pods are unschedulable, so kubectl exits by itself with
- * "unable to upgrade connection: pod ... does not have a host assigned", and
- * the transport case's exec ends with code 0. A shell that exits leaves its tab
- * open and writes `[Process exited with code N]` into the terminal (SPEC-0017's
- * host fact 2), which is what makes the end of a command observable at all.
+ * **It refuses to close a tab whose remote command is still running**, and that
+ * refusal is the point rather than a precaution. Closing a live console makes
+ * the host kill the tab's shell under the `kubectl exec` it is running, and the
+ * cluster proxy then logs a cancelled UPGRADE-PIPE dial at error level - which
+ * this suite's own error collector counts, so the extension-activation case at
+ * the top of the file fails, on a different case, deterministically on Linux and
+ * not at all on macOS where the exec happened to have exited first (SPEC-0017,
+ * slice 1's CI run). The rule therefore lives in the helper and not in the
+ * discipline of whoever writes the next console case: end the session first
+ * (`interruptTerminal` when the command does not end by itself), then close.
  */
-async function closeDockTab(frame: Frame, guestName: string): Promise<void> {
-  const tab = consoleTab(frame, guestName);
+async function closeDockTab(frame: Frame, subject: string): Promise<void> {
+  const tab = consoleTab(frame, subject);
 
-  await expectTerminalText(frame, "[Processexitedwithcode", 60_000);
+  try {
+    await expectTerminalText(frame, processExitedLine, 60_000);
+  } catch (error) {
+    throw new Error(
+      `The console tab "${subject}" was still running its command when the case tried to close it. Closing a live ` +
+        "console kills the shell under a running kubectl exec and the cluster proxy logs a cancelled UPGRADE-PIPE " +
+        "dial, which this suite collects as an error and fails the activation case with. End the session first - " +
+        `interruptTerminal(frame) for a command that never ends by itself. ${String(error)}`,
+    );
+  }
 
   await tab.locator('[data-testid^="dock-tab-close-for-"]').first().click();
   await tab.waitFor({ state: "detached", timeout: 60_000 });
@@ -6005,9 +6059,256 @@ describe("KubeSwift views against the fixture cluster", () => {
       // states it as its own assertion: the exec is claimed to have RUN, and a
       // run that never ends would be a different result from the one asserted
       // above.
-      await expectTerminalText(frame, "[Processexitedwithcode", 60_000);
+      await expectTerminalText(frame, processExitedLine, 60_000);
 
       await closeDockTab(frame, "e2e-guest-console");
+    },
+    TIMEOUT,
+  );
+
+  // ---------------------------------------------------------------------------
+  // M7 (SPEC-0017 slice 2): the SwiftSandbox workload console.
+  //
+  // The same technique and the same honest split as the three cases above, on
+  // the inverted mechanism: a sandbox's hypervisor writes the guest's serial
+  // line to a FILE, so the console is a `tail` rather than a relay, it carries
+  // no stdin and no TTY, and its run directory is keyed on the LAUNCHER POD
+  // rather than on the object. That last inversion is the milestone's likeliest
+  // bug and it is invisible on a cold sandbox, where the two rules produce the
+  // same string - so the pooled case below asserts it as a string, and the
+  // transport case proves it against a container that really has the file.
+  it(
+    "opens a workload console from the row kebab and types the tail line into the terminal",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+
+      // The drawer first and the terminal after it, which is now only how it
+      // reads best. It used to be a rule: the dock keeps a terminal of its own,
+      // xterm cancels the Escape key `closeDetails` presses, and a drawer
+      // opened while that terminal has the keyboard never hides. The rule was
+      // too weak anyway - the terminal that holds the focus can be the one the
+      // PREVIOUS case left behind - so the helper now clicks the drawer's own
+      // close icon when the key does not land, and any case may open a drawer
+      // whenever it likes.
+      //
+      // This is the second surface the reason has to reach (W4): the drawer's
+      // own row, which is on screen without opening any menu.
+      await pr.openDrawer(frame, "e2e-sandbox-running");
+
+      const consoleRow = (await pr.inspectDrawerRows(frame)).find((row) => row.label === "Workload Console");
+
+      expect(consoleRow?.text).toContain("Available:");
+      expect(consoleRow?.text).toContain(
+        "/var/lib/kubeswift/run/kubeswift-e2e-e2e-sandbox-running-launcher/serial.sock.log",
+      );
+
+      await cluster.closeDetails(frame);
+      await cluster.openRowMenu(frame, "e2e-sandbox-running");
+
+      const items = await cluster.actionMenuItems(frame, ".Menu", "swiftsandbox-");
+      const consoleItem = items.find((item) => item.testId === "swiftsandbox-console-action");
+
+      // An enabled item says what opens, then the three things no upstream
+      // surface says: why it is read-only (K9), what THIS sandbox's tail will do
+      // (K8 - this one booted cold, so it is live), and that the last line of a
+      // finished sandbox is machinery (K10).
+      expect(consoleItem?.disabled).toBe(false);
+      expect(consoleItem?.title).toContain("kubectl exec into the launcher container of");
+      expect(consoleItem?.title).toContain("kubeswift-e2e/e2e-sandbox-running-launcher");
+      expect(consoleItem?.title).toContain("writes the guest's serial line to a file rather than to a socket");
+      expect(consoleItem?.title).toContain("booted cold");
+      expect(consoleItem?.title).toContain("KUBESWIFT-EXIT-CODE=");
+
+      await frame.locator('.Menu [data-testid="swiftsandbox-console-action"]').click();
+
+      // The tab, by the title the extension chose: the sandbox AND its pod,
+      // unlike the guest's, because for a checkout the two differ.
+      const tab = consoleTab(frame, "e2e-sandbox-running (e2e-sandbox-running-launcher)");
+
+      await tab.waitFor({ state: "visible", timeout: 60_000 });
+
+      const typed = await expectTerminalText(frame, "e2e-sandbox-running-launcher");
+
+      // The command line, which is what a regression would break: the tail verb,
+      // the launcher container, and the path keyed on the POD.
+      expect(typed).toContain("tail-n+1-F");
+      expect(typed).toContain("-c'launcher'--");
+      expect(typed).toContain("/var/lib/kubeswift/run/kubeswift-e2e-e2e-sandbox-running-launcher/serial.sock.log");
+
+      // And what the line must NOT carry: this is a read, so no stdin and no
+      // TTY. The guest's line has `-i -t` between the verb and the namespace;
+      // this one goes straight to `-n`.
+      expect(typed).toContain("exec-n'kubeswift-e2e'");
+      expect(typed).not.toContain("-i-t");
+
+      await closeDockTab(frame, "e2e-sandbox-running (e2e-sandbox-running-launcher)");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "keys a checkout's console on the slot's pod, not on the sandbox",
+    async () => {
+      // THE assertion that catches the milestone's likeliest bug, as a string.
+      // e2e-sandbox-pooled is a warm-pool checkout: its status.podRef names the
+      // claimed slot's pod, which belongs to the POOL, so the run directory the
+      // extension composes must be keyed on that pod. A path derived from the
+      // sandbox's own name would point at a directory that does not exist, and
+      // on a cold sandbox the same mistake is invisible because the two rules
+      // produce the same string.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.openRowMenu(frame, "e2e-sandbox-pooled");
+
+      const consoleItem = (await cluster.actionMenuItems(frame, ".Menu", "swiftsandbox-")).find(
+        (item) => item.testId === "swiftsandbox-console-action",
+      );
+
+      // The milestone's single most valuable sentence, and the one three
+      // upstream surfaces get wrong: a checkout's workload runs over vsock and
+      // its output is appended only when the workload ends (K8).
+      expect(consoleItem?.disabled).toBe(false);
+      expect(consoleItem?.title).toContain("This sandbox is a checkout");
+      expect(consoleItem?.title).toContain("e2e-sandbox-pool-slot-1");
+      expect(consoleItem?.title).toContain("NOT live");
+
+      // Not gated on the phase either: this sandbox is Completed, and a terminal
+      // sandbox whose pod survives has the most complete console there is.
+      await frame.locator('.Menu [data-testid="swiftsandbox-console-action"]').click();
+
+      // The tab title names the slot pod, which is the only place a user ever
+      // sees one (K11).
+      const tab = consoleTab(frame, "e2e-sandbox-pooled (e2e-sandbox-pool-slot-1)");
+
+      await tab.waitFor({ state: "visible", timeout: 60_000 });
+
+      const typed = await expectTerminalText(frame, "e2e-sandbox-pool-slot-1");
+
+      expect(typed).toContain("/var/lib/kubeswift/run/kubeswift-e2e-e2e-sandbox-pool-slot-1/serial.sock.log");
+      // The inversion itself: the sandbox's own name appears NOWHERE in the
+      // command line, because nothing in it is derived from the object.
+      expect(typed).not.toContain("e2e-sandbox-pooled");
+
+      await closeDockTab(frame, "e2e-sandbox-pooled (e2e-sandbox-pool-slot-1)");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "disables the workload console with its reason, in the kebab, the toolbar and the drawer",
+    async () => {
+      // The sandbox nothing has reconciled, which is where upstream's Logs
+      // button is ungated and would open a terminal against a pod that does not
+      // exist (K6). Its status names no pod, and that is a sandbox's NORMAL
+      // first state: its first observable phase is empty rather than Pending.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.openRowMenu(frame, "e2e-sandbox-create-taken");
+
+      const item = (await cluster.actionMenuItems(frame, ".Menu", "swiftsandbox-")).find(
+        (menuItem) => menuItem.testId === "swiftsandbox-console-action",
+      );
+
+      expect(item?.disabled).toBe(true);
+      expect(item?.title).toContain("names no launcher pod yet");
+      expect(item?.title).toContain("first observable phase is empty rather than Pending");
+
+      // The E2E half of W4: the click is stopped by the stylesheet, not only by
+      // the handler, so Playwright's actionability check refuses it.
+      let clickWasRefused = false;
+
+      try {
+        await frame.locator('.Menu [data-testid="swiftsandbox-console-action"]').click({ timeout: 3000 });
+      } catch {
+        clickWasRefused = true;
+      }
+
+      if (!clickWasRefused) {
+        throw new Error("A disabled workload console item must not be clickable.");
+      }
+
+      await cluster.closeRowMenu(frame);
+
+      // The same verdict in the drawer toolbar - one registration, both surfaces
+      // (W5) - and in the drawer's own row.
+      await pr.openDrawer(frame, "e2e-sandbox-create-taken");
+
+      const toolbarItem = (
+        await cluster.actionMenuItems(frame, ".Drawer.KubeObjectDetails .MenuActions", "swiftsandbox-")
+      ).find((menuItem) => menuItem.testId === "swiftsandbox-console-action");
+
+      expect(toolbarItem?.disabled).toBe(true);
+      expect(toolbarItem?.title).toContain("names no launcher pod yet");
+
+      const consoleRow = (await pr.inspectDrawerRows(frame)).find((row) => row.label === "Workload Console");
+
+      expect(consoleRow?.text).toContain("Unavailable:");
+      expect(consoleRow?.text).toContain("names no launcher pod yet");
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "tails a real console file: the workload console brings the container's own lines back",
+    async () => {
+      // The transport case of slice 2, on the SAME schedulable pod slice 1
+      // added: a second one would mean a second image pull for one assertion,
+      // and what this case needs from the pod is a file, which the startup
+      // script writes (215-console-transport.yaml).
+      //
+      // What it proves that nothing else can: the `tail` line the extension
+      // composes, typed into a terminal tab Freelens spawned, opens the
+      // `pods/exec` stream and brings the container's own bytes back - and that
+      // the path it composed is right, because a path keyed on the sandbox
+      // instead of on the pod would name a directory that does not exist in
+      // that container and the tail would come back empty. The sandbox is
+      // deliberately NOT named after its pod, exactly as a checkout is not.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.openRowMenu(frame, "e2e-sandbox-console");
+
+      const consoleItem = (await cluster.actionMenuItems(frame, ".Menu", "swiftsandbox-")).find(
+        (item) => item.testId === "swiftsandbox-console-action",
+      );
+
+      expect(consoleItem?.disabled).toBe(false);
+
+      await frame.locator('.Menu [data-testid="swiftsandbox-console-action"]').click();
+      await consoleTab(frame, "e2e-sandbox-console (e2e-guest-console-launcher)").waitFor({
+        state: "visible",
+        timeout: 60_000,
+      });
+
+      const consolePath = "/var/lib/kubeswift/run/kubeswift-e2e-e2e-guest-console-launcher/serial.sock.log";
+
+      // The line first, so a failure below is unambiguous about which half
+      // broke.
+      const typed = await expectTerminalText(frame, "e2e-guest-console-launcher");
+
+      expect(typed).toContain(consolePath);
+      expect(typed).not.toContain("run/kubeswift-e2e-e2e-sandbox-console");
+
+      // Then the file's own content, which appears nowhere in the command line
+      // and carries the container's hostname, so it can only have come from
+      // inside THAT pod.
+      const answered = await expectTerminalText(frame, "KUBESWIFT-E2E-SANDBOX-CONSOLE-OK", 120_000);
+
+      expect(answered).toContain("KUBESWIFT-E2E-SANDBOX-CONSOLE-OKe2e-guest-console-launcher");
+      expect(answered).toContain("KUBESWIFT-EXIT-CODE=0");
+
+      // And the exit marker is the LAST line, which is what the tooltip promises
+      // and what swiftletd parses the exit code out of. `tail -F` keeps
+      // following, so nothing else can arrive after it.
+      const lines = await terminalLines(frame);
+
+      expect(lines[lines.length - 1]).toBe("KUBESWIFT-EXIT-CODE=0");
+
+      // `tail -F` never ends on its own - that is what following a file means -
+      // so the session is interrupted before the tab is closed. Closing it live
+      // would kill the shell under a running exec and make the cluster proxy log
+      // a cancelled dial, which this suite counts as an error (closeDockTab
+      // refuses to do it, and this is the case that would hit that refusal).
+      await interruptTerminal(frame);
+      await closeDockTab(frame, "e2e-sandbox-console (e2e-guest-console-launcher)");
     },
     TIMEOUT,
   );
@@ -6042,12 +6343,12 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       await logTab.waitFor({ state: "visible", timeout: 60_000 });
 
-      // The drawer is deliberately left open. Once the log panel is up the
-      // host's dock owns the keyboard - its own search field handles Escape -
-      // so `closeDetails`, which presses Escape, cannot shut the drawer from
-      // here. That is why this case is the last one that touches the UI:
-      // nothing after it reads the DOM, and the app is torn down immediately
-      // afterwards.
+      // The drawer is deliberately left open: this is the last case that
+      // touches the UI, nothing after it reads the DOM, and the app is torn
+      // down immediately afterwards. Closing it would work - the log panel's
+      // dock owns the keyboard, its own search field eats Escape, and
+      // `closeDetails` falls back to the drawer's close icon exactly for that -
+      // but there is nothing left to close it for.
     },
     TIMEOUT,
   );

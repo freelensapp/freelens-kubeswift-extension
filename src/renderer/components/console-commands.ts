@@ -403,3 +403,286 @@ export function guestConsoleDrawerExplanation(guest: GuestConsoleFacts, verdict:
     `${guestSerialSocket(guest)}.`
   );
 }
+
+// ---------------------------------------------------------------------------
+// The sandbox half (SPEC-0017 slice 2): the workload console.
+//
+// The asymmetry this half exists to respect is not a detail, it is the whole
+// design: for a SANDBOX the hypervisor is told to write the guest's serial line
+// to a FILE, never to a socket, and deliberately so - swiftletd re-reads that
+// file after the hypervisor has exited to recover the workload's exit code, and
+// a socket does not survive that exit. So a sandbox console is read-only by
+// construction, following it is a `tail` and not a relay, and the command line
+// carries no `-i` and no `-t` because there is no stdin to give it.
+// ---------------------------------------------------------------------------
+
+/**
+ * The file the hypervisor's serial line is written to for a sandbox: literally
+ * the guest socket's own file name with `.log` appended, which is upstream's
+ * naming and not this module's.
+ *
+ * Unbounded: nothing upstream rotates, truncates or caps it, so a long-running
+ * sandbox's console grows for the life of the pod. Worth knowing, not worth
+ * refusing to open.
+ */
+export const sandboxConsoleFileName = `${serialSocketFileName}.log`;
+
+/** The marker swiftletd parses into `status.exitCode`, and the last line of a finished sandbox. */
+export const sandboxExitCodeMarker = "KUBESWIFT-EXIT-CODE=";
+
+/** What a SwiftSandbox's spec must look like for the console functions to read it. */
+export interface SandboxConsoleSpecFacts {
+  poolRef?: { name?: string };
+}
+
+/**
+ * What a SwiftSandbox's status must look like for them.
+ *
+ * `podRef` is a bare STRING here - the launcher pod's name - where a SwiftGuest
+ * carries a full `ObjectReference`. That near-miss between two CRDs of the same
+ * project is modelled rather than smoothed over, because the pod name is what
+ * the run-directory key is built from and getting it from the wrong shape would
+ * be silent.
+ */
+export interface SandboxConsoleStatusFacts {
+  phase?: string;
+  podRef?: string;
+}
+
+/** The slice of a SwiftSandbox the console functions work on. */
+export interface SandboxConsoleFacts {
+  name: string;
+  namespace: string;
+  spec?: SandboxConsoleSpecFacts;
+  status?: SandboxConsoleStatusFacts;
+}
+
+/**
+ * The launcher pod, read from `status.podRef` and never derived from the
+ * sandbox's name.
+ *
+ * Deriving it would be right for a cold sandbox and wrong for every checkout,
+ * which is the whole trap of B3: a warm-slot checkout's pod belongs to the pool
+ * (`<pool>-slot-xxxxx`), so a name derived from the sandbox would exec into a
+ * pod that does not exist.
+ */
+export function sandboxLauncherPodName(sandbox: SandboxConsoleFacts): string | undefined {
+  return sandbox.status?.podRef || undefined;
+}
+
+/** The console file the convention puts in the run directory with the given key. */
+export function conventionalSandboxConsoleFile(key: string): string {
+  return `${runDirectoryRoot}/${key}/${sandboxConsoleFileName}`;
+}
+
+/**
+ * Where a sandbox's console file is: the run directory keyed on the LAUNCHER
+ * POD, and the console file inside it.
+ *
+ * Takes the pod name rather than reading it, so that the one caller that could
+ * be tempted to pass the sandbox's own name has to write that mistake down.
+ * `sandboxRunDirectoryKey` is the inverse of the guest rule and lives next to
+ * it, above.
+ */
+export function sandboxConsoleFile(namespace: string, podName: string): string {
+  return conventionalSandboxConsoleFile(sandboxRunDirectoryKey(namespace, podName));
+}
+
+/**
+ * Whether this sandbox was really served from a warm slot, which is what decides
+ * what its tail will DO (K8).
+ *
+ * BOTH signals, not either: a `spec.poolRef`, because only a sandbox that asked
+ * for a pool can be served from one, AND a `status.podRef` that names a pod the
+ * sandbox is not named after, because that is the claimed slot showing through.
+ * A checkout that finds no free warm slot falls back to the cold materialize and
+ * boot path and gets a launcher pod of its own, and that sandbox's console IS
+ * followed live - so a pool reference alone must not produce the warning, and
+ * `isSandboxColdFallback` is what tells the two apart.
+ *
+ * The pod name alone must not produce it either. Nothing in the CRD promises
+ * that a cold sandbox's launcher pod is named exactly after the sandbox - it is
+ * a convention, and this repository's own E2E fixtures decorate it with a
+ * `-launcher` suffix - so a name that merely differs proves nothing without the
+ * pool reference beside it.
+ */
+export function isSandboxCheckout(sandbox: SandboxConsoleFacts): boolean {
+  const podName = sandboxLauncherPodName(sandbox);
+
+  return Boolean(sandbox.spec?.poolRef?.name) && podName !== undefined && podName !== sandbox.name;
+}
+
+/**
+ * Whether this sandbox asked for a warm slot and got a launcher pod of its own
+ * anyway, which is what a checkout that found no free slot looks like.
+ *
+ * Worth a sentence of its own precisely because it is the case a blunter rule
+ * would warn about wrongly: this console is followed live, exactly like a cold
+ * sandbox's, and the pool reference in the drawer is the only thing that would
+ * suggest otherwise.
+ */
+export function isSandboxColdFallback(sandbox: SandboxConsoleFacts): boolean {
+  return Boolean(sandbox.spec?.poolRef?.name) && !isSandboxCheckout(sandbox);
+}
+
+/**
+ * Whether a workload console can be opened on this sandbox, and why not when it
+ * cannot (W4).
+ *
+ * One question only: is there a launcher pod to exec into. Deliberately NOT
+ * gated on the phase, which is where upstream's own Logs button is right and its
+ * Shell button is wrong: a terminal sandbox whose pod still exists has the most
+ * complete console in the milestone - the workload's whole output plus its exit
+ * marker - so gating on `Running` would hide exactly the console worth reading.
+ * Where upstream is wrong is the other direction: it is ungated even when there
+ * is no pod at all, and opens a terminal against a pod that does not exist (K6).
+ *
+ * A `deletionTimestamp` is not read here: it makes the item ABSENT rather than
+ * disabled (DESIGN.md section 12's one stated exception), which is a decision
+ * about rendering and belongs to the component, exactly as it does for the
+ * guest.
+ */
+export function canOpenSandboxConsole(sandbox: SandboxConsoleFacts): ActionGuard {
+  if (!sandboxLauncherPodName(sandbox)) {
+    return disabled(
+      "The status names no launcher pod yet, so there is no console file to follow. A sandbox's first observable " +
+        "phase is empty rather than Pending, so this is also what a sandbox nothing has reconciled yet looks like.",
+    );
+  }
+
+  return enabled;
+}
+
+/** What `sandboxConsoleCommand` needs beyond the sandbox itself. */
+export interface SandboxConsoleCommandInput {
+  sandbox: SandboxConsoleFacts;
+  /** As `GuestConsoleCommandInput.kubectlPath`: empty on a default install. */
+  kubectlPath?: string;
+  /** As `GuestConsoleCommandInput.platform`: `os.platform()`, taken as a parameter to stay pure. */
+  platform: string;
+}
+
+/**
+ * The line the terminal tab types to follow a sandbox's console, in full.
+ *
+ * `tail -n +1 -F` is upstream's own: `-n +1` starts at the first line, so the
+ * whole file to date arrives at once before the follow begins, and `-F` (not
+ * `-f`) keeps waiting when the file does not exist yet or is replaced, which is
+ * the normal state of a sandbox that has not booted.
+ *
+ * **No `-i` and no `-t`**, and that is not an omission: this is a read, the
+ * command line says so, and a TTY on a stream nothing can be typed into would
+ * promise an interactivity the mechanism cannot have (B1, B2).
+ */
+export function sandboxConsoleCommand({ sandbox, kubectlPath, platform }: SandboxConsoleCommandInput): string {
+  const podName = sandboxLauncherPodName(sandbox) ?? "";
+  const file = shellQuote(sandboxConsoleFile(sandbox.namespace, podName));
+
+  const parts = [
+    kubectlPath || "kubectl",
+    "exec",
+    "-n",
+    shellQuote(sandbox.namespace),
+    shellQuote(podName),
+    "-c",
+    shellQuote(launcherContainerName),
+    "--",
+    "sh",
+    "-c",
+    shellQuote(`tail -n +1 -F ${file}`),
+  ];
+
+  if (platform !== windowsPlatform) {
+    parts.unshift("exec");
+  }
+
+  return parts.join(" ");
+}
+
+/**
+ * The dock tab's title: the sandbox AND its pod.
+ *
+ * The pod is named here and not in the guest's title because for a checkout the
+ * two differ, and that difference is otherwise invisible - a slot pod is
+ * something a user never sees anywhere else (K11). For a cold sandbox the
+ * repetition is the price of the title being readable the same way every time.
+ */
+export function sandboxConsoleTabTitle(sandbox: SandboxConsoleFacts): string {
+  return `Console: ${sandbox.name} (${sandboxLauncherPodName(sandbox) ?? "no pod"})`;
+}
+
+/**
+ * What the workload console item says, sentence by sentence.
+ *
+ * A disabled item says only the guard's reason, as the guest's does. An enabled
+ * one says what opens, then the three things the recon settled and no upstream
+ * surface carries: that the console is read-only BY MECHANISM (K9), what this
+ * particular sandbox's tail will actually do - live for a cold one, empty until
+ * the workload ends for a checkout (K8) - and that the last line of a finished
+ * sandbox is machinery rather than output (K10).
+ */
+export function sandboxConsoleTooltipSentences(sandbox: SandboxConsoleFacts, verdict: ActionGuard): string[] {
+  if (!verdict.enabled) {
+    return [verdict.reason];
+  }
+
+  const podName = sandboxLauncherPodName(sandbox) ?? "";
+  const sentences = [
+    `Opens a terminal tab that runs kubectl exec into the ${launcherContainerName} container of ` +
+      `${sandbox.namespace}/${podName} and follows the sandbox's console file ` +
+      `${sandboxConsoleFile(sandbox.namespace, podName)}.`,
+    "It is read-only by construction: for a sandbox the hypervisor writes the guest's serial line to a file " +
+      "rather than to a socket, so that swiftletd can re-read it after the hypervisor exits, and there is " +
+      "nothing to type into.",
+  ];
+
+  if (isSandboxCheckout(sandbox)) {
+    sentences.push(
+      `This sandbox is a checkout: its workload runs in the pool slot's pod ${podName}, over vsock, and its ` +
+        "output is appended to the console file in one lump when the workload ends. The tail is therefore NOT " +
+        "live: it stays empty until then, and then arrives whole.",
+    );
+  } else if (isSandboxColdFallback(sandbox)) {
+    sentences.push(
+      "This sandbox asked for a pool slot and got a launcher pod of its own, which is what a checkout that found " +
+        "no free slot and fell back to the cold boot path looks like: its console is written by the hypervisor as " +
+        "the workload runs, so the tail is live.",
+    );
+  } else {
+    sentences.push(
+      "This sandbox booted cold, so the tail starts at the first line of the console file: the whole console to " +
+        "date arrives at once, and then it follows live.",
+    );
+  }
+
+  sentences.push(
+    `The last line of a finished sandbox is ${sandboxExitCodeMarker}<n>, which swiftletd parses into the exit code ` +
+      "the drawer shows: it is machinery, not workload output.",
+  );
+
+  return sentences;
+}
+
+/** The tooltip as the item carries it: the sentences above, as one string. */
+export function sandboxConsoleTooltip(sandbox: SandboxConsoleFacts, verdict: ActionGuard): string {
+  return sandboxConsoleTooltipSentences(sandbox, verdict).join(" ");
+}
+
+/**
+ * What the drawer says about the workload console, for the user who never hovers
+ * anything - the second surface W4 requires for the guard's reason, and the
+ * durable one.
+ */
+export function sandboxConsoleDrawerExplanation(sandbox: SandboxConsoleFacts, verdict: ActionGuard): string {
+  if (!verdict.enabled) {
+    return `Unavailable: ${verdict.reason}`;
+  }
+
+  const podName = sandboxLauncherPodName(sandbox) ?? "";
+
+  return (
+    `Available: Workload Console opens a terminal tab that runs kubectl exec into the ${launcherContainerName} ` +
+    `container of ${sandbox.namespace}/${podName} and follows ` +
+    `${sandboxConsoleFile(sandbox.namespace, podName)}.`
+  );
+}

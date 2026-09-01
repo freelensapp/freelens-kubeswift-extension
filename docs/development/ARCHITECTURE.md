@@ -58,11 +58,13 @@ src/
   renderer/menus/            # Actions (kubeObjectMenuItems): one file per verb,
                              # rendered by the host in both the list row kebab
                              # and the detail drawer's toolbar. Every one of them
-                             # writes except swiftguest-console-menu-item-v1alpha1
-                             # .tsx, which makes no API call at all: it composes a
-                             # command line and hands it to a host terminal tab,
-                             # so it carries no confirmation dialog and is not
-                             # built on guest-action-menu-item.tsx
+                             # writes except the two console items,
+                             # swiftguest-console-menu-item-v1alpha1.tsx and
+                             # swiftsandbox-console-menu-item-v1alpha1.tsx, which
+                             # make no API call at all: they compose a command
+                             # line and hand it to a host terminal tab, so they
+                             # carry no confirmation dialog and are not built on
+                             # guest-action-menu-item.tsx
   renderer/components/       # Shared pure modules: status classifiers, the
                              # action guards and payloads, the create dialogs'
                              # gating, validation, payloads and write
@@ -74,11 +76,14 @@ src/
                              # sandbox-create.ts - one module for BOTH sandbox
                              # kinds, since every SwiftSandboxPool field except
                              # the two warm counts is a SwiftSandbox field), the
-                             # console machinery (console-commands.ts: the
+                             # console machinery (console-commands.ts: both
                              # guards, the two inverted run-directory key rules,
                              # the serial-socket source and its validation, the
-                             # composed kubectl exec line and every sentence the
-                             # tooltips and the drawer row carry), the
+                             # sandbox console file, the two composed kubectl exec
+                             # lines - a socket relay for a guest, a tail on a
+                             # file for a sandbox, which is read-only by
+                             # construction - and every sentence the tooltips and
+                             # the drawer rows carry), the
                              # storage vocabulary
                              # two create forms share (kube-storage.ts: the
                              # access/volume mode pair, the CRDs' CEL rule and

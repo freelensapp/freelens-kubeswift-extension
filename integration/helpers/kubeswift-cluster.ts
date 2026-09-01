@@ -26,6 +26,8 @@ export const E2E_NAMESPACE = process.env.E2E_NAMESPACE || "kubeswift-e2e";
 /** Connecting a cluster involves starting a proxy, so it is not quick. */
 const CLUSTER_TIMEOUT = 5 * 60 * 1000;
 const ELEMENT_TIMEOUT = 60 * 1000;
+/** What Escape gets before `closeDetails` reaches for the drawer's close icon. */
+const DRAWER_ESCAPE_TIMEOUT = 5 * 1000;
 
 /**
  * Where failure screenshots go. run-suite.sh points this at the repository
@@ -657,8 +659,63 @@ export async function clearNotifications(frame: Frame): Promise<void> {
   await frame.waitForTimeout(500);
 }
 
-/** Closes the detail panel: the drawer listens for Escape. */
+/**
+ * Closes the detail panel, wherever the keyboard happens to be.
+ *
+ * The drawer listens for Escape on `window`, so the key closes it only if it
+ * gets that far - and it does not always. Whenever the host's dock is showing a
+ * terminal (it keeps one `Terminal` tab of its own, and that is what it falls
+ * back to after a console tab is closed) xterm holds the keyboard in a hidden
+ * textarea and cancels the keys it handles, Escape among them: `preventDefault`
+ * plus `stopPropagation`, so the drawer's listener never runs and the panel
+ * stays open until the wait gives up. Deterministic on Linux CI, invisible on
+ * macOS.
+ *
+ * Hence the two attempts: Escape on the drawer itself, and then the drawer's
+ * own close icon, which needs no focus at all. No caller has to know what the
+ * dock is doing, and no case has to order itself around it.
+ */
 export async function closeDetails(frame: Frame): Promise<void> {
-  await frame.press("body", "Escape");
-  await frame.waitForSelector(".Drawer.KubeObjectDetails", { state: "hidden", timeout: ELEMENT_TIMEOUT });
+  const drawer = frame.locator(".Drawer.KubeObjectDetails").first();
+
+  // Failing to press is not itself a failure: with no drawer on screen the wait
+  // below is satisfied at once, which is the state the caller asked for. Hence
+  // the short timeout too - a drawer the caller has just read from is there or
+  // it never was.
+  await drawer.press("Escape", { timeout: DRAWER_ESCAPE_TIMEOUT }).catch(() => {});
+
+  try {
+    await frame.waitForSelector(".Drawer.KubeObjectDetails", { state: "hidden", timeout: DRAWER_ESCAPE_TIMEOUT });
+
+    return;
+  } catch {
+    // The key went somewhere else. The close icon does not care.
+  }
+
+  // `<Icon material="close" />` in the drawer's title bar, whose material name
+  // is on the span the icon renders (Freelens 1.10.3,
+  // packages/core/src/renderer/components/drawer/drawer.tsx). The title bar's
+  // other icons are nested - the copy one inside the title text, the object
+  // menu's inside its own menu - so the direct child is unambiguous.
+  const closeIcon = drawer.locator('.drawer-title > .Icon:has([data-icon-name="close"])');
+  let clickFailure: string | undefined;
+
+  try {
+    await closeIcon.click({ timeout: DRAWER_ESCAPE_TIMEOUT });
+  } catch (error) {
+    // The drawer may have been closing all along; the wait below decides.
+    clickFailure = (error as Error).message.split("\n")[0];
+  }
+
+  try {
+    await frame.waitForSelector(".Drawer.KubeObjectDetails", { state: "hidden", timeout: ELEMENT_TIMEOUT });
+  } catch {
+    const screenshot = await captureScreenshot(frame, "close-details");
+
+    throw new Error(
+      "The details drawer answered neither Escape nor its own close icon" +
+        (clickFailure ? ` (the click reported: ${clickFailure})` : "") +
+        `.${screenshot ? ` Screenshot: ${screenshot}` : ""}`,
+    );
+  }
 }
