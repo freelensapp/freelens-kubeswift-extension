@@ -1,8 +1,12 @@
 # SPEC-0017: VM serial console and the sandbox workload console (M7)
 
-- **Status:** Approved (Roberto, 2026-09-01, in chat: the reduced scope
-  with the in-guest sandbox shell excluded, the transport E2E fixture of
-  O5 and the `swiftctl` sentence of O6 all accepted at approval)
+- **Status:** Implemented (PR #107 the SwiftGuest serial console, PR
+  #108 the SwiftSandbox workload console; CI green on main after each.
+  Verified waits for the M7 milestone review and for the manual KVM
+  checks listed under Tests, O4 above all. Approved by Roberto on
+  2026-09-01, in chat: the reduced scope with the in-guest sandbox shell
+  excluded, the transport E2E fixture of O5 and the `swiftctl` sentence
+  of O6 all accepted at approval)
 - **Milestone:** M7 (see [ROADMAP.md](../development/ROADMAP.md), the "VM
   serial console" and "Sandbox exec, and the workload console tail" rows)
 - **KubeSwift version reviewed:** `v0.13.12` (`724b5ef`). Every console

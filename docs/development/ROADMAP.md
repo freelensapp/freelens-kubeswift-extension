@@ -120,8 +120,8 @@ here when it is written.
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| VM serial console | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | In PR |
-| Sandbox workload console tail (the interactive in-guest shell is excluded: it needs the gateway's vsock frame protocol, which is upstream's AGPL wire format, see SPEC-0017) | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | In PR |
+| VM serial console | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Done |
+| Sandbox workload console tail (the interactive in-guest shell is excluded: it needs the gateway's vsock frame protocol, which is upstream's AGPL wire format, see SPEC-0017) | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Done |
 
 ### Cross-cutting
 
