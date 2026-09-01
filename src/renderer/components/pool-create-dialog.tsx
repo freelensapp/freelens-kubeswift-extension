@@ -31,7 +31,7 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { SwiftGuestPool } from "../api/kubeswift/swiftguestpool-v1alpha1";
-import { AddRowButton, CollapsibleSection, Field, FormRow, WriteSummary } from "./create-dialog";
+import { AddRowButton, CollapsibleSection, dialogReopenDelay, Field, FormRow, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
@@ -854,7 +854,9 @@ async function submitPool(model: PoolCreateDialogModel, params: Renderer.Compone
   const values = poolFormValues(model);
   const namespace = values.namespace.trim();
   const name = values.name.trim();
-  const reopen = () => setTimeout(() => ConfirmDialog.open(params), 0);
+  // Not zero: reopening inside the host's own 100ms leave animation leaves the
+  // dialog at `opacity: 0` forever (the mechanism is on `dialogReopenDelay`).
+  const reopen = () => setTimeout(() => ConfirmDialog.open(params), dialogReopenDelay);
   const blocked = poolCreateSubmitBlockReason(inputs, values);
 
   if (blocked) {

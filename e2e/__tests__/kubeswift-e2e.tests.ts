@@ -24,6 +24,42 @@ import type { ElectronApplication, Frame, Page } from "playwright";
 const TIMEOUT = 10 * 60 * 1000;
 
 /**
+ * Asserts that a create dialog the API server's `AlreadyExists` sent back is
+ * really ON SCREEN, and not merely present.
+ *
+ * Waiting for it to DETACH first is what makes the second wait meaningful: the
+ * host's own close is still on screen when the notification lands, so a bare
+ * `visible` wait matches the dialog that is on its way out rather than the one
+ * coming back.
+ *
+ * The class and the opacity are the part no `inputValue()` can see, which is
+ * why nobody caught the defect before SPEC-0016 slice 2: the host's `Animate`
+ * (Freelens 1.10.3) clears its `leave` class in a `setTimeout(leaveDuration)`
+ * that its own effect CANCELS when the dialog is reopened inside that 100ms
+ * window, so a reopen at zero delay keeps BOTH classes and
+ * `.opacity-scale.leave` wins the cascade - a form nobody can see, over a page
+ * nobody can click, because it still intercepts every pointer event.
+ * `dialogReopenDelay` (`create-dialog.tsx`) is the fix, and this is the assert
+ * that keeps it, on every dialog of this repository that reopens on a 409.
+ */
+async function expectReopenedDialogVisible(frame: Frame): Promise<void> {
+  await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "detached", timeout: 60_000 });
+  await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "visible", timeout: 60_000 });
+  await frame.waitForTimeout(500);
+
+  const reopened = await frame.evaluate(() => {
+    const dialog = document.querySelector('[data-testid="confirmation-dialog"]');
+
+    return dialog
+      ? { className: dialog.className, opacity: getComputedStyle(dialog).opacity }
+      : { className: "(absent)", opacity: "(absent)" };
+  });
+
+  expect(reopened.className).not.toContain("leave");
+  expect(reopened.opacity).toBe("1");
+}
+
+/**
  * The control of the Take Snapshot dialog's backend select.
  *
  * The host's `Select` spends its `id` on react-select's `inputId`, not on the
@@ -2363,9 +2399,10 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       expect(message).toContain("Change the name");
 
-      // The dialog is back, with everything the user typed still in it - which
-      // is only true because the form model lives outside React (spike T1).
-      await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "visible", timeout: 60_000 });
+      // The dialog is back, on screen rather than merely present, with
+      // everything the user typed still in it - which is only true because the
+      // form model lives outside React (spike T1).
+      await expectReopenedDialogVisible(frame);
       expect(await frame.locator('[data-testid="snapshot-name"]').inputValue()).toBe("e2e-snapshot-ready");
 
       await cluster.cancelDialog(frame);
@@ -5562,30 +5599,8 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       expect(message).toContain("Change the name and try again");
 
-      // The dialog really goes away and really comes back. Waiting for it to
-      // detach first is what makes the second wait meaningful: the host's own
-      // close is still on screen when the notification lands, so a bare
-      // `visible` wait matches the one that is on its way out.
-      await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "detached", timeout: 60_000 });
-      await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "visible", timeout: 60_000 });
-      await frame.waitForTimeout(500);
-
-      // And it is really ON SCREEN, not present at opacity 0. The host's
-      // `Animate` clears its `leave` class in a timeout that its own effect
-      // cancels when the dialog is reopened inside the 100ms leave window, so a
-      // reopen at zero delay keeps both classes and `.opacity-scale.leave` wins
-      // the cascade - a form nobody can see, over a page nobody can click.
-      // `dialogReopenDelay` is the fix; this is the assert that keeps it.
-      const reopened = await frame.evaluate(() => {
-        const dialog = document.querySelector('[data-testid="confirmation-dialog"]');
-
-        return dialog
-          ? { className: dialog.className, opacity: getComputedStyle(dialog).opacity }
-          : { className: "(absent)", opacity: "(absent)" };
-      });
-
-      expect(reopened.className).not.toContain("leave");
-      expect(reopened.opacity).toBe("1");
+      // The dialog really goes away, really comes back, and really is on screen.
+      await expectReopenedDialogVisible(frame);
 
       // Everything the user typed is still there, across the whole form and not
       // just its first field.

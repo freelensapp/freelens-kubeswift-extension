@@ -25,7 +25,7 @@ import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
 import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
-import { Field, ObjectPickerField, WriteSummary } from "./create-dialog";
+import { dialogReopenDelay, Field, ObjectPickerField, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
@@ -373,7 +373,9 @@ export const KernelCreateForm = observer(({ model }: { model: KernelDialogModel 
 async function submitKernel(model: KernelDialogModel, params: Renderer.Component.ConfirmDialogParams): Promise<void> {
   const namespace = model.values.namespace.trim();
   const name = model.values.name.trim();
-  const reopen = () => setTimeout(() => ConfirmDialog.open(params), 0);
+  // Not zero: reopening inside the host's own 100ms leave animation leaves the
+  // dialog at `opacity: 0` forever (the mechanism is on `dialogReopenDelay`).
+  const reopen = () => setTimeout(() => ConfirmDialog.open(params), dialogReopenDelay);
   // The click handler re-evaluates the verdict before writing anything, exactly
   // as the menu items do: a disabled button is a styling contract, not a guard.
   const blocked = kernelSubmitBlockReason(model.values);

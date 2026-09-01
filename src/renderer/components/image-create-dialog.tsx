@@ -29,7 +29,14 @@ import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
 import { SwiftImage } from "../api/kubeswift/swiftimage-v1alpha1";
-import { CollapsibleSection, Field, ObjectPickerField, QuantityField, WriteSummary } from "./create-dialog";
+import {
+  CollapsibleSection,
+  dialogReopenDelay,
+  Field,
+  ObjectPickerField,
+  QuantityField,
+  WriteSummary,
+} from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
@@ -645,7 +652,9 @@ export const ImageCreateForm = observer(({ model }: { model: ImageDialogModel })
 async function submitImage(model: ImageDialogModel, params: Renderer.Component.ConfirmDialogParams): Promise<void> {
   const namespace = model.values.namespace.trim();
   const name = model.values.name.trim();
-  const reopen = () => setTimeout(() => ConfirmDialog.open(params), 0);
+  // Not zero: reopening inside the host's own 100ms leave animation leaves the
+  // dialog at `opacity: 0` forever (the mechanism is on `dialogReopenDelay`).
+  const reopen = () => setTimeout(() => ConfirmDialog.open(params), dialogReopenDelay);
   // The click handler re-evaluates the verdict before writing anything, exactly
   // as the menu items do: a disabled button is a styling contract, not a guard.
   const blocked = imageSubmitBlockReason(model.values);

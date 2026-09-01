@@ -529,9 +529,17 @@ alternative):
   "the dialog stays open after a 409" is implemented as catch-in-`ok`
   (never rethrow: a rethrown `JsonApiErrorParsed` also triggers the host's
   own "Unknown error occurred while ok-ing" toast) plus
-  `setTimeout(() => ConfirmDialog.open(sameParams), 0)`, and that reopen
-  remounts the message. React-local state would be wiped exactly when the
-  user needs it most.
+  `setTimeout(() => ConfirmDialog.open(sameParams), dialogReopenDelay)`, and
+  that reopen remounts the message. React-local state would be wiped exactly
+  when the user needs it most.
+- **The reopen must wait out the host's `leaveDuration`** (SPEC-0016
+  slice 2 and its follow-up, 2026-09-01). `@freelensapp/animate` clears the
+  `leave` class it adds on close in a `setTimeout(leaveDuration)` that its own
+  effect CANCELS when the dialog reopens inside that 100 ms window, so a
+  reopen at zero delay keeps both classes, `.opacity-scale.leave` wins the
+  cascade, and the form sits at `opacity: 0` forever over a page it still
+  intercepts every click on. `dialogReopenDelay` (250 ms, `create-dialog.tsx`)
+  is the one constant every create dialog reopens through.
 - **`okButtonProps` must be a MobX observable object** whose fields are
   mutated as validity changes. A plain object is inert: nothing re-renders
   the host's button.

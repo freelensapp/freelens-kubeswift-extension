@@ -207,6 +207,14 @@ E2E_STATUS_ASSERTIONS=(
 	# on, which is declared in Go and written by nothing at all.
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.conditions[0].type}=GuestRunning"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.conditions[0].reason}=MaterializeFailed"
+	# The running half of that same correction (1b, 2026-09-01): this fixture
+	# carried a `RootfsReady: True` beside its three real conditions, and it was
+	# dropped rather than replaced - the success path writes no condition for the
+	# materialize, it writes `status.rootfs`. The Status column of this row is the
+	# newest condition's own message, so it is pinned here by condition TYPE
+	# rather than by index: the text the E2E row assert reads must keep coming
+	# from a type a controller actually writes.
+	'swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.conditions[?(@.type=="GuestRunning")].message}=The guest booted and the workload is running.'
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-pooled={.status.podRef}=e2e-sandbox-pool-slot-1"
 	# The two counts the pool list puts side by side, because the gap between
 	# them is the health of the pool. The degraded one reads back a literal 0,

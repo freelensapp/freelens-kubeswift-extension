@@ -32,6 +32,7 @@ import { SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import {
   AddRowButton,
   CollapsibleSection,
+  dialogReopenDelay,
   Field,
   FormRow,
   ObjectPickerField,
@@ -981,7 +982,9 @@ async function submitSandboxPool(
   const inputs = sandboxCreateInputs(model);
   const namespace = model.values.namespace.trim();
   const name = model.values.name.trim();
-  const reopen = () => setTimeout(() => ConfirmDialog.open(params), 0);
+  // Not zero: reopening inside the host's own 100ms leave animation leaves the
+  // dialog at `opacity: 0` forever (the mechanism is on `dialogReopenDelay`).
+  const reopen = () => setTimeout(() => ConfirmDialog.open(params), dialogReopenDelay);
   // The click handler re-evaluates the verdict before writing anything, exactly
   // as the menu items do: a disabled button is a styling contract, not a guard.
   const blocked = sandboxPoolSubmitBlockReason(inputs, model.values);

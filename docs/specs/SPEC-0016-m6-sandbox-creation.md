@@ -759,12 +759,16 @@ from, the text above:
     the mechanism and the measurement next to it), and the E2E case now waits
     for the dialog to DETACH before waiting for it to come back, then asserts
     that it carries no `leave` class and computes `opacity: 1`. That assert is
-    what stops the fix regressing, and it is what the follow-up copies.
-  - **The other seven create dialogs still carry it**, because their `reopen`
-    closures are their own. Moving them onto the same constant is a small
-    follow-up with one assert each, not something a form PR should smuggle in;
-    the `Animate` bug itself goes on the upstream-Freelens list next to the
-    kebab-unmount finding and the hardcoded white box.
+    what stops the fix regressing, and the follow-up below factored it into the
+    one `expectReopenedDialogVisible` helper every 409 case now shares.
+  - **The other ten create dialogs carried it too**, because their `reopen`
+    closures were their own. **The follow-up landed on 2026-09-01**: all ten
+    reopen through `dialogReopenDelay`, none of them declares a delay of its
+    own, and the shared assert runs on the shipped Take Snapshot dialog as well
+    - the one this pass reproduced the defect on, which failed that assert
+    before the fix and passes it after. The `Animate` bug itself goes on the
+    upstream-Freelens list next to the kebab-unmount finding and the hardcoded
+    white box.
 - **The scratch-disk section's header line was saying, in the same screen,
   what its three radio descriptions and its always-Block fact say one scroll
   below.** That is the duplication SPEC-0013 slice 3 removed from the GPU

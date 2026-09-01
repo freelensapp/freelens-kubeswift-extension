@@ -12,6 +12,16 @@
 # There is deliberately no top-level `message` here: this sandbox exercises the
 # third rung of the Status column's ladder (the newest condition's own message,
 # GuestRunning below), while e2e-sandbox-failed exercises the first one.
+#
+# The conditions are the ones a controller really writes. A `RootfsReady: True`
+# used to sit between Resolved and GPUAllocated; it was dropped on 2026-09-01
+# (correction 1b owed to SPEC-0008, the running half of the correction the
+# failed fixture took first): RootfsReady is declared in Go and written by
+# nothing at all, and the success path has no condition of its own for the
+# materialize - what it produces is `status.rootfs` above, which this fixture
+# already carries. Nothing is invented in its place. The newest condition is
+# still GuestRunning, so the Status column of this row is unchanged, and lib.sh
+# pins that message by condition TYPE so the fixture cannot drift back.
 status:
   phase: Running
   nodeName: __NODE_NAME__
@@ -55,12 +65,6 @@ status:
       reason: ReferencesResolved
       message: The kernel profile and the GPU profile were resolved.
       lastTransitionTime: "2026-08-28T09:44:00Z"
-      observedGeneration: 1
-    - type: RootfsReady
-      status: "True"
-      reason: Materialized
-      message: The OCI rootfs was verified and materialized on the node.
-      lastTransitionTime: "2026-08-28T09:44:30Z"
       observedGeneration: 1
     - type: GPUAllocated
       status: "True"

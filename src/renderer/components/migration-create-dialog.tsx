@@ -34,7 +34,7 @@ import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import { SwiftMigration } from "../api/kubeswift/swiftmigration-v1alpha1";
-import { Field, WriteSummary } from "./create-dialog";
+import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
@@ -636,7 +636,9 @@ async function submitMigration(
   const { guest, values } = model;
   const inputs = migrationInputs(model);
   const name = values.name.trim();
-  const reopen = () => setTimeout(() => ConfirmDialog.open(params), 0);
+  // Not zero: reopening inside the host's own 100ms leave animation leaves the
+  // dialog at `opacity: 0` forever (the mechanism is on `dialogReopenDelay`).
+  const reopen = () => setTimeout(() => ConfirmDialog.open(params), dialogReopenDelay);
   // The click handler re-evaluates the verdict before writing anything, exactly
   // as the menu items do: a disabled button is a styling contract, not a guard.
   const blocked = migrationSubmitBlockReason(inputs, values);

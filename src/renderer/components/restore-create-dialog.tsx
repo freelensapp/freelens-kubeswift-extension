@@ -32,7 +32,7 @@ import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftRestore } from "../api/kubeswift/swiftrestore-v1alpha1";
-import { Field, WriteSummary } from "./create-dialog";
+import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts, notFoundStatusCode } from "./guest-actions";
@@ -561,7 +561,9 @@ export const RestoreCreateForm = observer(({ model }: { model: RestoreDialogMode
 async function submitRestore(model: RestoreDialogModel, params: Renderer.Component.ConfirmDialogParams): Promise<void> {
   const { snapshot, values } = model;
   const name = values.name.trim();
-  const reopen = () => setTimeout(() => ConfirmDialog.open(params), 0);
+  // Not zero: reopening inside the host's own 100ms leave animation leaves the
+  // dialog at `opacity: 0` forever (the mechanism is on `dialogReopenDelay`).
+  const reopen = () => setTimeout(() => ConfirmDialog.open(params), dialogReopenDelay);
   // The click handler re-evaluates the verdict before writing anything, exactly
   // as the menu items do: a disabled button is a styling contract, not a guard.
   const blocked = restoreSubmitBlockReason(snapshot, values, model.existingGuests);

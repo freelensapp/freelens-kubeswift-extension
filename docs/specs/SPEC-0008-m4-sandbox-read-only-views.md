@@ -657,7 +657,9 @@ did. The two judgement calls in the classifier table (`Completed` as success,
     `nodeName: __NODE_NAME__`, `podRef`, `network.primaryIP`, `runtime`,
     `rootfs` (with `sizeBytes`, so the humanized-bytes assert of the pre-review
     pass has something to catch), `model`, `scratchDisk`, `gpu` with
-    `nodeName: __NODE_NAME__`, `startedAt`, and four `True` conditions. The
+    `nodeName: __NODE_NAME__`, `startedAt`, and three `True` conditions
+    (**corrected 2026-09-01** from four, see "Corrections from SPEC-0016" in the
+    Notes: the `RootfsReady: True` among them was dropped, not replaced). The
     failed one gets phase `Failed`, a non-zero `exitCode`, `terminalAt`, a
     `message`, and a `GuestRunning: False` condition with a materialize-failed
     reason carrying the text the Status column must show (**corrected
@@ -1178,6 +1180,19 @@ in that spec's second implementation PR.
    documentation fix and not a bug. The condition types in "Docs versus schema
    discrepancies" item 5 stay listed as documentation rather than API, which is
    the same finding one level up.
+
+   1b. **The running fixture carried the same invention on its success path**,
+   and it was missed when the failed one was corrected: `e2e-sandbox-running`
+   listed a `RootfsReady: True` between `Resolved` and `GPUAllocated`. It was
+   **dropped rather than replaced** (2026-09-01, in the dialog-reopen
+   follow-up): the success path writes no condition of its own for the
+   materialize - what it produces is `status.rootfs`, which that fixture already
+   carries - and inventing a second condition type to stand in for one no
+   controller writes would repeat the defect. The three conditions left are the
+   ones the recon does document, the newest of them is still `GuestRunning`, so
+   the row's Status column and its E2E assert are unchanged, and `lib.sh` now
+   reads that message back **by condition type** rather than by index, the way
+   the failed fixture's type and reason are pinned above.
 2. **The gateway's `SandboxService` was not retired, and kubeswift-ui does have
    sandbox screens.** `proto/kubeswift/v1/sandbox.proto` still declares the
    service, with a sixteen-field create message and an eleven-field create-pool

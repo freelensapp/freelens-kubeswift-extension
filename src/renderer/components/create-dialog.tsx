@@ -59,10 +59,11 @@ export interface WriteSummaryFacts {
  *
  * `leaveDuration` defaults to 100ms
  * (`default-leave-duration.injectable.ts`), and the `Dialog` passes no override,
- * so 250ms clears the window with room for a slow frame. The other seven create
- * dialogs of this repository still reopen at zero and still carry the defect;
- * moving them onto this constant is the follow-up SPEC-0016's notes name, and
- * the `Animate` bug itself goes on the upstream-Freelens list.
+ * so 250ms clears the window with room for a slow frame. Every create dialog of
+ * this repository reopens through this one constant and none declares a delay of
+ * its own (the follow-up landed 2026-09-01), with one E2E assert per 409 case
+ * that the dialog carries no `leave` class and computes `opacity: 1`. The
+ * `Animate` bug itself goes on the upstream-Freelens list.
  */
 export const dialogReopenDelay = 250;
 
