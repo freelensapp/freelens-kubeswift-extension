@@ -1,12 +1,18 @@
 # SPEC-0016: Create forms for SwiftSandbox and SwiftSandboxPool (M6)
 
-- **Status:** Implemented (PR #101 the Create Sandbox Pool form, PR #102
-  the Create Sandbox form with the warm-slot checkout, PR #103 the
-  409-reopen fix across every create dialog; CI green on main after each.
-  Verified waits for the M6 milestone review and for the manual KVM
-  checks listed under Tests. Approved by Roberto on 2026-08-31, in chat:
-  the completion of M6 was delegated in conversation; drafted, reviewed
-  and implemented under that delegation)
+- **Status:** Verified (2026-09-01: non-regression tests green in CI on
+  main after PR #101 the Create Sandbox Pool form, PR #102 the Create
+  Sandbox form with the warm-slot checkout and PR #103 the 409-reopen fix
+  across every create dialog; end-of-milestone pre-review pass PASS on
+  all 15 views in both themes, 74 asserts and no FAIL, with both create
+  controls reported; milestone review of M6 approved by Roberto in chat
+  on 2026-09-01 on the reports and the pass, with the judgment calls -
+  the Lifecycle section rendered before the scratch disk, the derived
+  shape sent even when it equals a default, the DRA refusal on both
+  fields - delegated to the reviewing agent and kept as implemented; the
+  KVM-only checks under Manual verification stay open. Approved by
+  Roberto on 2026-08-31, in chat, under the delegation of the whole of
+  M6)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md), the
   "Sandbox / SandboxPool creation" row)
 - **KubeSwift version reviewed:** `v0.13.12` (`724b5ef`). Both sandbox

@@ -1,8 +1,12 @@
 # SPEC-0014: Create forms for SwiftGuestClass, SwiftImage, SwiftKernel and SwiftSeedProfile (M6)
 
-- **Status:** Implemented (PRs #95 and #96, the two slices, merged
-  2026-08-31, main CI green; Verified pending the end-of-milestone
-  pre-review pass and review)
+- **Status:** Verified (2026-09-01: non-regression tests green in CI on
+  main after both slices; end-of-milestone pre-review pass PASS on all 15
+  views in both themes, 74 asserts and no FAIL, with the four create
+  controls reported; milestone review of M6 approved by Roberto in chat
+  on 2026-09-01 on the reports and the pass, with the judgment calls
+  delegated to the reviewing agent; the KVM-only checks under Manual
+  verification stay open)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (`724b5ef`), the newest
   tag; `main` (`d66cff5`) is ahead of it and carries no release. The
