@@ -38,6 +38,7 @@ import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./de
 import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
 import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
 import { KubeSwiftIcon } from "./icons/kubeswift";
+import { SwiftGuestConsoleMenuItem as SwiftGuestConsoleMenuItemV1alpha1 } from "./menus/swiftguest-console-menu-item-v1alpha1";
 import { SwiftGuestMigrateMenuItem as SwiftGuestMigrateMenuItemV1alpha1 } from "./menus/swiftguest-migrate-menu-item-v1alpha1";
 import { SwiftGuestStartMenuItem as SwiftGuestStartMenuItemV1alpha1 } from "./menus/swiftguest-start-menu-item-v1alpha1";
 import { SwiftGuestStopMenuItem as SwiftGuestStopMenuItemV1alpha1 } from "./menus/swiftguest-stop-menu-item-v1alpha1";
@@ -298,6 +299,19 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       components: {
         MenuItem: (props: { object: any; toolbar?: boolean }) => (
           <SwiftGuestMigrateMenuItemV1alpha1 {...props} extension={this} />
+        ),
+      },
+    },
+    // SPEC-0017 slice 1, and the first action of this extension that writes
+    // NOTHING: it composes a `kubectl exec` line and hands it to a terminal tab
+    // the host owns. Registered on SwiftGuest like the four above, and rendered
+    // by the host in the same two surfaces (W5).
+    {
+      kind: SwiftGuestV1alpha1.kind,
+      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
+      components: {
+        MenuItem: (props: { object: any; toolbar?: boolean }) => (
+          <SwiftGuestConsoleMenuItemV1alpha1 {...props} extension={this} />
         ),
       },
     },

@@ -1,0 +1,81 @@
+# The transport fixture of SPEC-0017 slice 1 (open item O5, accepted at
+# approval): the one pod in this whole fixture set that is SCHEDULABLE and that
+# therefore PULLS AN IMAGE.
+#
+# Why it exists. Every other launcher pod here is deliberately unschedulable
+# (55-launcher-pods.yaml), because the detail views only need the object to
+# exist. A console does not: `kubectl exec` against a Pending pod fails with
+# "cannot exec into a container in a pending pod", so without this pod the E2E
+# suite could prove that the extension types the right string and never that the
+# string works. One pod and one case buy the assertion that a `kubectl exec`
+# issued from a terminal tab Freelens spawned actually reaches into a container
+# and brings its output back.
+#
+# Why busybox, and what it costs. `docker.io/library/busybox` is the smallest
+# official image with a POSIX shell; it is pinned by tag so the cluster is
+# reproducible. `e2e/scripts/cluster-up.sh` waits for this pod to be Ready, so
+# the pull is a cluster-setup concern with a clear failure message rather than a
+# flaky test. Nothing else in the suite depends on a registry.
+#
+# Why the container ships a `socat` of its own. The real relay is `socat` inside
+# KubeSwift's launcher image, which this cluster has no copy of and no licence to
+# build. The stub below stands in for it: it prints one unmistakable marker and
+# the arguments it was handed, so the E2E case can assert output that could only
+# have come from INSIDE this pod (the marker appears nowhere in the composed
+# command line), and can read back the relay arguments the extension actually
+# delivered. What socat really does with those arguments stays in the spec's
+# manual verification list, on a cluster with real guests.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-guest-console-launcher
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+    swift.kubeswift.io/guest: e2e-guest-console
+spec:
+  # Short, because the case may delete and recreate the cluster often and a
+  # lingering pod is nobody's friend.
+  terminationGracePeriodSeconds: 1
+  containers:
+    - name: launcher
+      # The container name is not a choice: KubeSwift runs the hypervisor in a
+      # container called `launcher` on every pod-building path, and both
+      # upstream clients hardcode it, so the extension's command line does too.
+      image: docker.io/library/busybox:1.37.0
+      command:
+        - /bin/sh
+        - -c
+        - |
+          cat >/usr/bin/socat <<'STUB'
+          #!/bin/sh
+          printf 'KUBESWIFT-E2E-CONSOLE-OK %s %s\n' "$(hostname)" "$*"
+          STUB
+          chmod +x /usr/bin/socat
+          exec sleep 86400
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+---
+# The guest that pod belongs to. Running with a podRef, so the console guard
+# enables the action, and with NO `status.console.serialSocket` on purpose: this
+# is the fixture that exercises the DERIVED CONVENTION branch of the socket
+# source, while e2e-guest-running exercises the published-field branch that
+# takes precedence over it (K2). The path the case reads back from the terminal
+# is therefore `/var/lib/kubeswift/run/kubeswift-e2e-e2e-guest-console/serial.sock`,
+# keyed on the guest and not on the pod.
+apiVersion: swift.kubeswift.io/v1alpha1
+kind: SwiftGuest
+metadata:
+  name: e2e-guest-console
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  guestClassRef:
+    name: e2e-small
+  imageRef:
+    name: e2e-ubuntu-2404
+  osType: linux
+  runPolicy: Running

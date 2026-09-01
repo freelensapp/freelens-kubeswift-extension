@@ -258,6 +258,58 @@ every create dialog reopens through the same `dialogReopenDelay`. Their fixtures
 injected because a pool nothing has reconciled is what the picker has to render,
 and the sandbox whose name is taken, which carries no status for the same reason.
 
+The SPEC-0017 slice-1 cases are the first in this suite to assert a **terminal
+tab**, and the first to depend on a pod that really runs. Two of the three prove
+the wiring and the words: the Serial Console item on `e2e-guest-running` opens a
+dock tab titled after the guest and types a `kubectl exec` line naming
+`e2e-guest-running-launcher`, the `launcher` container and the socket path that
+guest's status publishes; and the item is disabled, with the reason that names
+the mechanism rather than the symptom, on a stopped guest and on one whose status
+names no pod - in the row kebab, in the drawer toolbar and in the drawer's own
+Serial Console row, which is the surface a user who never hovers anything reads.
+The technique behind them is that Freelens's terminal loads no canvas or WebGL
+renderer, so xterm uses its DOM renderer and the typed line is real text in
+`.xterm-rows`; a terminal row is a fixed number of columns wide, so the cases
+compare the rows with every whitespace removed, which is what makes a path that
+wraps mid-token readable again.
+
+The third is the transport case, and it is the reason this suite now pulls an
+image. `e2e/fixtures/215-console-transport.yaml` adds **one schedulable pod** -
+`docker.io/library/busybox` pinned by tag, in a container named `launcher`
+because the extension's command line names that container - and the SwiftGuest
+whose `status.podRef` points at it. Every other launcher pod in the fixture set
+is deliberately unschedulable, and `kubectl exec` against a Pending pod fails, so
+without this one the suite could prove that the extension types the right string
+and never that the string works. The pod's startup writes a stub `socat` that
+prints an unmistakable marker and its own arguments; the case asserts that marker
+in the terminal DOM, together with the container's hostname, so the bytes it
+reads can only have come from inside that pod - the marker appears nowhere in the
+composed command line. The same fixture carries **no** `status.console.serialSocket`,
+which makes it the case that proves the derived convention path end to end, while
+`e2e-guest-running` proves the published-field branch that takes precedence over
+it. `cluster-up.sh` waits for that pod to be Ready, so the image pull is a
+cluster-setup concern with a clear failure message rather than a flaky first
+assertion; `kind load docker-image` after a host-side `docker pull` was
+considered and rejected, because it would make cluster creation depend on the
+developer's docker credential store and on the host already having the image
+while reaching exactly the same registry. What stays manual on a real KVM cluster
+is everything the relay actually does: a login prompt, keystrokes reaching the
+guest, the boot-log replay, a Windows guest's silence and a live migration
+followed by a reconnect (SPEC-0017's manual verification list).
+
+These three cases sit immediately before the M4 log-dock case and each one closes
+the tab it opened, so the dock is empty again when that case runs and it keeps
+its own place as the last case in the file that touches the UI. Each one closes
+it only **after its command has ended** - `closeDockTab` waits for
+`[Process exited with code` before clicking - because killing a tab whose
+`kubectl exec` is still mid-upgrade makes the host's own kubectl proxy log the
+abandoned dial (`[UPGRADE-PIPE] dial ...: operation was canceled`) at error
+level, which the activation case's error collector counts as a failure; that log
+line is the host's behaviour whenever a connected console is closed, so a user
+closing a live console in the real app produces it too, which puts it on the
+upstream-Freelens feedback list rather than in this extension's code (SPEC-0017's
+notes carry the mechanism).
+
 The pre-review pass (layer 4) stays read-only by construction and by assert,
 because it runs against the demo cluster a human reviewer is about to walk
 through.

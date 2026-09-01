@@ -655,3 +655,147 @@ DESIGN.md section 6's four states, plus what is specific here.
 ## Notes and deviations
 
 Filled during implementation when reality diverges from the plan.
+
+### Serial console as implemented (2026-09-01)
+
+Slice 1, as planned. The M6 machinery was reused unchanged where it fits
+and deliberately not reused where it does not: the `ActionGuard` union,
+`launcherPodTarget` and the phase constants of `guest-status.ts` are the
+shipped ones, the `{ object, toolbar }` contract and the
+`<Icon interactive={toolbar} />` idiom are SPEC-0010's, and the click-time
+guard re-evaluation is the same three lines - but the item is **not**
+built on `menus/guest-action-menu-item.tsx`, because that shell exists to
+carry a confirmation and a write plan and this action makes no API call
+at all. Nothing in `components/create-dialog.tsx` is touched; nothing in
+`guest-actions.ts` changed.
+
+**The typed model needed two statics and no field.** `SwiftGuestStatus`
+already declared `console.serialSocket`, `podRef` and `phase`, and the
+drawer already rendered the Serial Socket row, so the spec's "the models
+gain two statics only" was exact: `SwiftGuest.getPodName` and
+`SwiftGuest.getSerialSocket`, both used by the drawer.
+
+**Three host facts were read in the `v1.10.3` checkout and then proved
+live in the E2E run, never recalled:**
+
+1. `Renderer.Component.createTerminalTab(tabParams?)` and
+   `Renderer.Component.terminalStore.sendCommand(command, { enter, tabId })`
+   are exported, take the shapes the digest recorded, and the tab's shell
+   session really carries the cluster's kubeconfig and the bundled
+   kubectl on its `PATH` - the transport case is the proof, since the
+   line it types resolves `kubectl` and reaches the cluster with no
+   configuration of ours.
+2. **A shell that exits does not close the tab.** The session writes
+   `[Process exited with code N]` into the terminal and leaves the
+   websocket open; only a closed websocket makes the terminal dock tab
+   close itself. This is what makes the E2E cases possible at all: the
+   `exec` prefix means the session ends within a second or two of the
+   command, and a tab that vanished with it could not be read.
+3. `Common.App.Preferences.getKubectlPath()` is empty on a default
+   install, so the bare name is what the line carries.
+4. **The host renumbers the tab title.** `dockStore.createTab` appends a
+   parenthesised counter when the new tab is the Nth of its kind, and Freelens always
+   keeps one `Terminal` tab in the dock, so a console tab is titled
+   `Console: <guest> (2)` on a fresh window. The title this spec chose is
+   the prefix; the suffix is the host's, it is what Pod Shell gets too,
+   and the E2E cases match on the prefix rather than fighting it.
+
+These are the places the implementation is more specific than, or
+different from, the text above:
+
+- **The guard tests the two explaining phases BEFORE the pod reference.**
+  The Design's table lists `Running` + `podRef` first and `podRef`
+  absent as its own row, which leaves the overlap unstated: a stopped
+  guest has no `podRef` either, and both rows are true of it. The
+  implementation answers with the sentence that carries the mechanism
+  (`Stopped`: a stop deletes the launcher pod) rather than the one that
+  reports the symptom, and the unit test pins that order. Same for
+  `Migrating`.
+- **An absent phase with a pod named is treated as unknown, and
+  permitted.** The table has a row for "unknown or unparseable phase" and
+  a row for "phase anything else", and an absent phase is arguably in
+  neither. W4 settles it: unknown state permits the action, so a guest
+  whose status names a pod but carries no phase gets the console and
+  kubectl says what it finds. A guest with no `podRef` is still disabled,
+  because without a pod name there is no command to compose.
+- **`Migrating` is not a phase this KubeSwift version can report.** The
+  `v0.13.12` SwiftGuest enum allows `Pending`, `Scheduling`, `Running`,
+  `Stopped` and `Failed` and nothing else, so during a live migration the
+  phase stays `Running` and the branch cannot fire. It is implemented
+  anyway, as the spec names it: if a controller ever reports the
+  interval, the console says what survives it instead of falling through
+  to the unknown-phase permit and saying nothing. Recorded here because
+  the Design section reads as though the phase existed.
+- **The socket validation is an allowlist, not a metacharacter
+  denylist.** The spec says "an absolute path with no shell
+  metacharacter"; the code accepts `[A-Za-z0-9._/-]` only. Stricter on
+  purpose, and one class it excludes is not a shell character at all: a
+  comma or a colon in the path would smuggle an extra option into
+  `UNIX-CONNECT:<path>` through **socat's own address grammar**, without
+  touching the shell. Everything a real KubeSwift path contains is inside
+  the allowlist.
+- **Both surfaces of the reason, and a third.** The item's `title`
+  attribute reaches the kebab and the drawer toolbar, as SPEC-0010
+  established. The drawer's own explanation is a **new row**, `Serial
+  Console`, rather than the Condition row SPEC-0010 used: the Condition
+  row explains the phase, and this reason is about the launcher pod and
+  the socket inside it, which the phase does not say. The whole sentence
+  is the row's text and not only its tooltip (DESIGN.md section 7).
+- **W9's boundary is one `try`, not two.** The spec says the tab-open
+  failure is the only failure the extension reports. `sendCommand`
+  returns a promise, so leaving it outside the `try` would turn a
+  rejection into an unhandled one nobody attributes to the click. Both
+  calls sit in the same `try` with a single call-site fallback, which
+  keeps one notification per failed console open. Everything past a
+  successful send is still the terminal's.
+- **The E2E transport fixture ships a stub `socat`.** O5 asked for one
+  schedulable pod so that a case could prove the exec connects. The pod
+  is `docker.io/library/busybox` pinned by tag, in a container named
+  `launcher`; its startup writes a `socat` that prints a marker and its
+  own arguments, because the real relay lives in KubeSwift's launcher
+  image, which this cluster has no copy of and no licence to build. The
+  case therefore proves the transport - a `kubectl exec` typed into a
+  Freelens terminal tab reaches into a container and brings its output
+  back, carrying the relay arguments the extension composed - and not
+  what socat does with them, which stays in the manual list. Same
+  fixture, second job: it carries no `status.console.serialSocket`, so it
+  is also the end-to-end proof of the derived-convention branch.
+- **The image is pulled by the kind node, not loaded into it.** The spec
+  suggested considering `docker pull` plus `kind load docker-image` in
+  `cluster-up.sh`. Rejected: it reaches the same registry while adding a
+  dependency on the developer's docker credential store (which hangs on
+  a macOS Docker Desktop configured with `credsStore: desktop`) and on
+  the host already having the image. `cluster-up.sh` waits for the pod to
+  be Ready instead, so the pull fails loudly at setup rather than
+  flakily inside a case.
+- **Closing a console while its command still runs makes the HOST log an
+  error (host fact, 2026-09-01).** Killing the shell process of a tab
+  whose `kubectl exec` is mid-upgrade leaves the host's kubectl proxy
+  with a dial nobody awaits, and it reports that at error level:
+  `[UPGRADE-PIPE] dial 127.0.0.1:NNNNN failed: dial tcp ...: operation
+  was canceled`, printed at the same instant as the host's own
+  `[SHELL-SESSION]: Killing shell process (pid=...)` and `shell has
+  exited`. Nothing in this extension emits it and nothing in this
+  extension can suppress it - it is what Freelens does whenever a
+  **connected** console is closed, so a user who closes a live serial
+  console in the real app produces the same line. Worth raising with
+  upstream Freelens (candidate for the feedback list): an expected
+  cancellation logged at error level is a level question, not an error.
+  The E2E rule that follows: **a console tab is closed only after its
+  command has ended**, otherwise the host proxy logs the cancelled
+  upgrade at error level and the activation case - whose collector reads
+  every `error:` line of the main process - fails with it. `closeDockTab`
+  therefore waits for `[Process exited with code` before it clicks the
+  close control, which every console case can satisfy: the unschedulable
+  launcher pods make kubectl exit by itself ("unable to upgrade
+  connection: pod ... does not have a host assigned") and the transport
+  case's exec ends with code 0. Found on Linux CI, where the exec was
+  still connecting when the tab closed; on macOS kubectl had already
+  exited, so the same suite passed there - the usual shape of a
+  timing-dependent defect.
+
+Open items touched: **O5 is done** - the fixture and the case are in.
+**O2 stays open**: the fifteen-second wait is still upstream's number,
+and the transport case watches it expire rather than measuring what a
+real hypervisor needs. O1, O3, O4 and O7 are untouched, and O6 belongs to
+slice 2.

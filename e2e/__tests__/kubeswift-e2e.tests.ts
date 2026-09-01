@@ -486,6 +486,104 @@ function plannedRestoreName(dialog: string): string {
   return match[1];
 }
 
+/**
+ * The dock tab a console open produced, by the title the extension chose.
+ *
+ * The precedent is the M4 log-dock case, which asserts `.Dock .Tab` by text for
+ * the same reason: the tab is the host's own markup and the title is the only
+ * part of it this extension owns.
+ */
+function consoleTab(frame: Frame, guestName: string) {
+  return frame.locator(".Dock .Tab", { hasText: `Console: ${guestName}` }).first();
+}
+
+/**
+ * The terminal's visible text, with every whitespace removed.
+ *
+ * Freelens's terminal loads no canvas or WebGL renderer, so xterm uses its DOM
+ * renderer and the typed line is real text in `.xterm-rows` (SPEC-0017,
+ * digest C4). A row is a fixed number of columns wide, so a command line as long
+ * as this one WRAPS mid-token and a naive `toContain` on a path would fail on a
+ * terminal that is working perfectly; dropping the whitespace rejoins the token
+ * across the wrap. It also means the needles below are written without spaces.
+ */
+async function terminalText(frame: Frame): Promise<string> {
+  const rows = frame.locator(".xterm-rows").first();
+
+  await rows.waitFor({ state: "visible", timeout: 60_000 });
+
+  return (await rows.innerText()).replace(/\s+/g, "");
+}
+
+/**
+ * Waits until the terminal shows `needle`, and returns everything it showed.
+ *
+ * Polled rather than awaited on a selector, because what arrives in a terminal
+ * is text inside one element rather than an element of its own. The failure
+ * message carries the whole screen, which is the only useful thing to look at
+ * when a console does not do what it was asked.
+ */
+async function expectTerminalText(frame: Frame, needle: string, timeout = 60_000): Promise<string> {
+  const deadline = Date.now() + timeout;
+
+  for (;;) {
+    const seen = await terminalText(frame);
+
+    if (seen.includes(needle)) {
+      return seen;
+    }
+
+    if (Date.now() > deadline) {
+      const screenshot = await cluster.captureScreenshot(frame, `terminal-${needle.slice(0, 24)}`);
+
+      throw new Error(
+        `The terminal never showed "${needle}". What it showed: ${seen || "(nothing)"}.` +
+          (screenshot ? ` Screenshot: ${screenshot}` : ""),
+      );
+    }
+
+    await frame.waitForTimeout(500);
+  }
+}
+
+/**
+ * Closes a console tab once its command has ended, so the case after this one
+ * finds the dock as it was.
+ *
+ * The dock covers the lower half of every list page underneath it, and the M4
+ * log-dock case at the end of this file is written on the assumption that it is
+ * the one that opens it.
+ *
+ * The wait for `[Process exited with code` before the click is not politeness.
+ * Closing a tab whose `kubectl exec` is still alive kills the shell process
+ * while the `pods/exec` upgrade is in flight, and the HOST's kubectl proxy then
+ * logs the abandoned dial - `[UPGRADE-PIPE] dial 127.0.0.1:NNNNN failed: ...
+ * operation was canceled` - at error level, which this suite's error collector
+ * reads as a process error and fails the activation case with it. That is what
+ * the host does whenever a connected console is closed, not a defect of this
+ * extension (recorded in SPEC-0017's notes, and a candidate for the
+ * upstream-Freelens feedback list), so the rule lives on this side: a console
+ * tab is closed only after its command has ended, and then the proxy has no
+ * upgrade left to cancel. It is also why the defect was invisible on macOS,
+ * where kubectl had already exited by the time the tab was closed, and
+ * deterministic on the CI Linux runner, where it had not.
+ *
+ * Every console case can obey the rule, because every one of them ends: the
+ * fixture launcher pods are unschedulable, so kubectl exits by itself with
+ * "unable to upgrade connection: pod ... does not have a host assigned", and
+ * the transport case's exec ends with code 0. A shell that exits leaves its tab
+ * open and writes `[Process exited with code N]` into the terminal (SPEC-0017's
+ * host fact 2), which is what makes the end of a command observable at all.
+ */
+async function closeDockTab(frame: Frame, guestName: string): Promise<void> {
+  const tab = consoleTab(frame, guestName);
+
+  await expectTerminalText(frame, "[Processexitedwithcode", 60_000);
+
+  await tab.locator('[data-testid^="dock-tab-close-for-"]').first().click();
+  await tab.waitFor({ state: "detached", timeout: 60_000 });
+}
+
 describe("KubeSwift views against the fixture cluster", () => {
   let app: ElectronApplication;
   let window: Page;
@@ -1832,18 +1930,21 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       const runningRowItems = await cluster.actionMenuItems(frame, ".Menu");
 
-      // Four registrations since SPEC-0012 added the Migrate surface. Take
-      // Snapshot is never disabled: there is a valid snapshot for every settled
-      // guest state, and the gating that matters is per-backend, inside the
-      // dialog, where the backend choice exists. Migrate is disabled only for a
-      // guest that forbids migration and for an SR-IOV one, neither of which
-      // this subject is.
+      // Five registrations since SPEC-0017 added the Serial Console surface.
+      // Take Snapshot is never disabled: there is a valid snapshot for every
+      // settled guest state, and the gating that matters is per-backend, inside
+      // the dialog, where the backend choice exists. Migrate is disabled only
+      // for a guest that forbids migration and for an SR-IOV one, neither of
+      // which this subject is; Serial Console is enabled for this one because
+      // it is Running and its status names a launcher pod.
       expect(runningRowItems.map((item) => item.testId).sort()).toEqual([
+        "swiftguest-console-action",
         "swiftguest-migrate-action",
         "swiftguest-start-action",
         "swiftguest-stop-action",
         "swiftguest-take-snapshot-action",
       ]);
+      expect(runningRowItems.find((item) => item.testId === "swiftguest-console-action")?.disabled).toBe(false);
       expect(runningRowItems.find((item) => item.testId === "swiftguest-take-snapshot-action")?.disabled).toBe(false);
       expect(runningRowItems.find((item) => item.testId === "swiftguest-migrate-action")?.disabled).toBe(false);
 
@@ -1881,6 +1982,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       const toolbarItems = await cluster.actionMenuItems(frame, ".Drawer.KubeObjectDetails .MenuActions");
 
       expect(toolbarItems.map((item) => item.testId).sort()).toEqual([
+        "swiftguest-console-action",
         "swiftguest-migrate-action",
         "swiftguest-start-action",
         "swiftguest-stop-action",
@@ -5683,6 +5785,229 @@ describe("KubeSwift views against the fixture cluster", () => {
       await kebab.click();
       await frame.waitForSelector(".Menu .MenuItem", { state: "visible", timeout: 60_000 });
       await cluster.closeRowMenu(frame);
+    },
+    TIMEOUT,
+  );
+
+  // ---------------------------------------------------------------------------
+  // M7 (SPEC-0017 slice 1): the SwiftGuest serial console.
+  //
+  // What the fixture cluster proves, and the split is stated once because it is
+  // the honest half of this milestone: no KubeSwift controller runs here and no
+  // real launcher image exists, so what the first two cases prove is the wiring
+  // and the words - the guard's verdict in both surfaces, and the exact command
+  // line the extension types into a terminal tab Freelens spawned. The third
+  // case proves the TRANSPORT, against the one schedulable pod of the fixture
+  // set (215-console-transport.yaml): that a `kubectl exec` issued from that tab
+  // really reaches into a container and brings its output back. Without it the
+  // suite would prove that we type the right string and never that the string
+  // works.
+  //
+  // The technique, and why it works: Freelens's terminal loads only the fit and
+  // web-links addons and no canvas or WebGL renderer, so xterm uses its DOM
+  // renderer and the typed line is real text in `.xterm-rows`, readable by
+  // Playwright. The text is compared with every whitespace removed, because a
+  // terminal row is a fixed number of columns wide and a long command line wraps
+  // mid-token: joining the rows and dropping the spaces is what makes a token
+  // that straddles a wrap boundary readable again.
+  //
+  // These are the last cases that need an uncovered page, which is why they sit
+  // here rather than earlier: the dock covers the lower half of every list page
+  // underneath it. Each one closes the tab it opened, so the M4 log-dock case
+  // below still finds an empty dock and keeps its own place as the last case
+  // that touches the UI - and each one closes it only AFTER its command has
+  // ended, which is `closeDockTab`'s job and is explained there: a tab closed
+  // over a live `kubectl exec` makes the host's proxy log the cancelled upgrade
+  // at error level, and the activation case collects that as a failure.
+  it(
+    "opens a serial console from the row kebab and types the exec line into the terminal",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-running");
+
+      const items = await cluster.actionMenuItems(frame, ".Menu");
+      const consoleItem = items.find((item) => item.testId === "swiftguest-console-action");
+
+      // An enabled item says what is about to happen, and then what to expect
+      // from it: the Linux blank-console causes are the improvement no upstream
+      // surface carries (K5).
+      expect(consoleItem?.disabled).toBe(false);
+      expect(consoleItem?.title).toContain("kubectl exec into the launcher container of");
+      expect(consoleItem?.title).toContain("kubeswift-e2e/e2e-guest-running-launcher");
+      expect(consoleItem?.title).toContain("getty@ttyS0");
+
+      await frame.locator('.Menu [data-testid="swiftguest-console-action"]').click();
+
+      // The tab, by the title the extension chose: the guest, and not its pod,
+      // whose name is a migration artefact the drawer already shows.
+      const tab = consoleTab(frame, "e2e-guest-running");
+
+      await tab.waitFor({ state: "visible", timeout: 60_000 });
+
+      // The command line itself, which is the assertion that protects the whole
+      // design: the pod name, the container and the composed socket path are
+      // exactly what a regression would break. This subject's status publishes
+      // `console.serialSocket`, so what the line must carry is that value and
+      // not the derived convention (K2) - the transport case below is the one
+      // that proves the other branch.
+      const typed = await expectTerminalText(frame, "e2e-guest-running-launcher");
+
+      // The socket is quoted twice over - once for the remote `sh -c`, once for
+      // the local shell that types the line - so the needles are the path and
+      // the relay verb rather than the exact quoting, which the unit tests own.
+      expect(typed).toContain("-c'launcher'--");
+      expect(typed).toContain("UNIX-CONNECT:");
+      expect(typed).toContain("/var/run/kubeswift/e2e-guest-running/serial.sock");
+      expect(typed).toContain("foriin$(seq115);dotest-S");
+
+      await closeDockTab(frame, "e2e-guest-running");
+
+      // And the second surface the reason has to reach, for the user who never
+      // hovers anything (W4): the drawer's own row, which says the console is
+      // available and what it will connect to.
+      await pr.openDrawer(frame, "e2e-guest-running");
+
+      const rows = await pr.inspectDrawerRows(frame);
+      const consoleRow = rows.find((row) => row.label === "Serial Console");
+
+      expect(consoleRow?.text).toContain("Available:");
+      expect(consoleRow?.text).toContain("/var/run/kubeswift/e2e-guest-running/serial.sock");
+      expect(rows.find((row) => row.label === "Serial Socket")?.text).toBe(
+        "/var/run/kubeswift/e2e-guest-running/serial.sock",
+      );
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "disables the serial console with its reason, in the kebab and in the drawer",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      // A stopped guest is told the MECHANISM, not the symptom: it has no
+      // launcher pod either, and the sentence that helps is the one saying why
+      // (K3). Read from the item's own tooltip attribute rather than from a
+      // hover, because a disabled `MenuItem` carries `pointer-events: none` and
+      // the host's hover tooltip can never be shown for it (spike S7).
+      await cluster.openRowMenu(frame, "e2e-guest-action-stopped");
+
+      const stoppedItem = (await cluster.actionMenuItems(frame, ".Menu")).find(
+        (item) => item.testId === "swiftguest-console-action",
+      );
+
+      expect(stoppedItem?.disabled).toBe(true);
+      expect(stoppedItem?.title).toContain("stopping deletes its launcher pod");
+
+      // The E2E half of W4: the click is stopped by the stylesheet, not only by
+      // the handler, so Playwright's actionability check refuses it.
+      let clickWasRefused = false;
+
+      try {
+        await frame.locator('.Menu [data-testid="swiftguest-console-action"]').click({ timeout: 3000 });
+      } catch {
+        clickWasRefused = true;
+      }
+
+      if (!clickWasRefused) {
+        throw new Error("A disabled console item must not be clickable.");
+      }
+
+      await cluster.closeRowMenu(frame);
+
+      // And the other refusal: a guest nothing has reconciled, whose status
+      // names no pod at all. That is the state every guest is in between
+      // creation and the first reconciliation.
+      await cluster.openRowMenu(frame, "e2e-guest-pending");
+
+      const pendingItem = (await cluster.actionMenuItems(frame, ".Menu")).find(
+        (item) => item.testId === "swiftguest-console-action",
+      );
+
+      expect(pendingItem?.disabled).toBe(true);
+      expect(pendingItem?.title).toContain("names no launcher pod yet");
+
+      await cluster.closeRowMenu(frame);
+
+      // The same verdict in the drawer toolbar - one registration, both
+      // surfaces (W5) - and in the drawer's own row, which is where a user who
+      // never opens a menu finds it.
+      await pr.openDrawer(frame, "e2e-guest-action-stopped");
+
+      const toolbarItem = (await cluster.actionMenuItems(frame, ".Drawer.KubeObjectDetails .MenuActions")).find(
+        (item) => item.testId === "swiftguest-console-action",
+      );
+
+      expect(toolbarItem?.disabled).toBe(true);
+      expect(toolbarItem?.title).toContain("stopping deletes its launcher pod");
+
+      const consoleRow = (await pr.inspectDrawerRows(frame)).find((row) => row.label === "Serial Console");
+
+      expect(consoleRow?.text).toContain("Unavailable:");
+      expect(consoleRow?.text).toContain("stopping deletes its launcher pod");
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "reaches into the launcher container: the exec typed into the tab really connects",
+    async () => {
+      // THE transport case (SPEC-0017 open item O5, accepted at approval), and
+      // the only one in this suite that depends on a pod that really runs.
+      //
+      // What it proves that nothing else can: the line the extension composes,
+      // typed into a terminal tab Freelens spawned, is picked up by the tab's
+      // own shell, resolves kubectl and the cluster's kubeconfig from the
+      // session the host prepared, opens the `pods/exec` stream, runs the wait
+      // loop inside the container, and brings the container's own bytes back
+      // into the DOM. The marker it looks for appears NOWHERE in the composed
+      // command line, so it can only have come from inside the pod, and it
+      // carries the container's hostname, so it can only have come from THAT
+      // pod (the stub is explained in 215-console-transport.yaml).
+      //
+      // It is also the fixture with no `status.console.serialSocket`, so the
+      // path the terminal reads back is the DERIVED CONVENTION - keyed on the
+      // guest, not on the pod - which is the branch the case above cannot see.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.openRowMenu(frame, "e2e-guest-console");
+
+      const consoleItem = (await cluster.actionMenuItems(frame, ".Menu")).find(
+        (item) => item.testId === "swiftguest-console-action",
+      );
+
+      expect(consoleItem?.disabled).toBe(false);
+
+      await frame.locator('.Menu [data-testid="swiftguest-console-action"]').click();
+      await consoleTab(frame, "e2e-guest-console").waitFor({ state: "visible", timeout: 60_000 });
+
+      const conventionPath = "/var/lib/kubeswift/run/kubeswift-e2e-e2e-guest-console/serial.sock";
+
+      // The line first, so a failure below is unambiguous about which half
+      // broke.
+      const typed = await expectTerminalText(frame, "e2e-guest-console-launcher");
+
+      expect(typed).toContain(conventionPath);
+
+      // Then the answer. The wait loop runs its fifteen seconds first, because
+      // the socket a real hypervisor would have created is not there - which is
+      // itself worth seeing happen rather than assuming.
+      const answered = await expectTerminalText(frame, "KUBESWIFT-E2E-CONSOLE-OK", 120_000);
+
+      expect(answered).toContain("KUBESWIFT-E2E-CONSOLE-OKe2e-guest-console-launcher");
+      expect(answered).toContain(`UNIX-CONNECT:${conventionPath}`);
+
+      // And the session ended with the tab still there: `exec` replaced the
+      // tab's shell, so this line is the host reporting the exec's own exit.
+      // `closeDockTab` waits for the same line before it clicks, but this case
+      // states it as its own assertion: the exec is claimed to have RUN, and a
+      // run that never ends would be a different result from the one asserted
+      // above.
+      await expectTerminalText(frame, "[Processexitedwithcode", 60_000);
+
+      await closeDockTab(frame, "e2e-guest-console");
     },
     TIMEOUT,
   );

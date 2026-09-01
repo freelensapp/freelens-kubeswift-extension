@@ -313,6 +313,30 @@ export class SwiftGuest extends Renderer.K8sApi.LensExtensionKubeObject<
   }
 
   /**
+   * The launcher pod the controller published for this guest.
+   *
+   * `status.podRef` and never the `swift.kubeswift.io/guest` label: the field is
+   * the controller's own pointer to the pod it created, and it is nil'd when the
+   * pod is not scheduled, which a label selection could not tell (SPEC-0010,
+   * spike S6).
+   */
+  static getPodName(object: SwiftGuest): string | undefined {
+    return object.status?.podRef?.name;
+  }
+
+  /**
+   * The serial socket the cluster published for this guest, if any.
+   *
+   * It answers **where**, never **whether**: the controller sets it from a pod
+   * annotation and never clears it, so a stopped guest can still carry it
+   * (SPEC-0017). Nothing guards on it; the console command prefers it over the
+   * derived convention, after validating it (`components/console-commands.ts`).
+   */
+  static getSerialSocket(object: SwiftGuest): string | undefined {
+    return object.status?.console?.serialSocket;
+  }
+
+  /**
    * A guest boots either from a disk image or from a kernel, never from both.
    * Returns the kind of boot the spec asks for, or `undefined` when neither
    * reference is set.

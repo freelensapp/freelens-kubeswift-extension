@@ -1,0 +1,32 @@
+# Merge patch applied to the status subresource of swiftguest/e2e-guest-console,
+# the transport subject of SPEC-0017 slice 1 (215-console-transport.yaml). No
+# KubeSwift controller runs in the E2E cluster, so what one would write is
+# injected here.
+#
+# Two facts, and the absence of a third:
+#
+# - `phase: Running` and a `podRef`, which is what the console guard needs.
+# - the podRef names the ONE schedulable pod of this fixture set, so the command
+#   the terminal types really connects.
+# - NO `console.serialSocket`, on purpose: this is the fixture that proves the
+#   derived convention is used when the cluster published nothing, end to end.
+#   e2e-guest-running is its counterpart and carries the field.
+status:
+  phase: Running
+  nodeName: __NODE_NAME__
+  restartCount: 0
+  runtime:
+    hypervisor: cloud-hypervisor
+    pid: 4477
+  podRef:
+    apiVersion: v1
+    kind: Pod
+    name: e2e-guest-console-launcher
+    namespace: kubeswift-e2e
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: GuestRunning
+      message: The guest is running.
+      lastTransitionTime: "2026-09-01T09:00:00Z"
+      observedGeneration: 1

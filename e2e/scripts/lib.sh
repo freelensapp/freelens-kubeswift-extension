@@ -53,6 +53,13 @@ E2E_OWNER_POOL_NAME="e2e-pool"
 # substitutes it can be read under `set -u`.
 E2E_NODE_NAME="${E2E_NODE_NAME:-}"
 
+# The one schedulable fixture pod (SPEC-0017 slice 1): cluster-up.sh waits for
+# it, and the E2E suite execs into it to prove that a console opened from a
+# Freelens terminal tab really connects. Named here so the wait and the failure
+# message stay in one place.
+E2E_CONSOLE_POD_NAME="e2e-guest-console-launcher"
+E2E_CONSOLE_POD_IMAGE="docker.io/library/busybox:1.37.0" # datasource=docker depName=busybox
+
 KUBESWIFT_CRD_BASE_URL="https://raw.githubusercontent.com/kubeswift-io/kubeswift/${KUBESWIFT_VERSION}/config/crd/bases"
 
 # The 15 CRDs KubeSwift ships, across its 9 API groups. All of them are applied
@@ -168,6 +175,11 @@ E2E_STATUS_PATCHES=(
 	"swiftkernels.kernel.kubeswift.io/e2e-kernel-pulling=swiftkernel-e2e-kernel-pulling.yaml"
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-s3=swiftsnapshot-e2e-snapshot-create-s3.yaml"
 	"swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-orphan=swiftsnapshot-e2e-snapshot-create-orphan.yaml"
+	# The M7 transport subject (SPEC-0017 slice 1). The only guest in this set
+	# whose launcher pod really runs, and deliberately the only Running one with
+	# no `status.console.serialSocket`: it is what proves the derived convention
+	# is what the command line carries when the cluster published nothing.
+	"swiftguests.swift.kubeswift.io/e2e-guest-console=swiftguest-e2e-guest-console.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -197,6 +209,7 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftgpunodes.gpu.kubeswift.io/__NODE_NAME__={.status.vfioReady}=true"
 	"swiftgpunodes.gpu.kubeswift.io/e2e-gpu-node-absent={.status.phase}=Error"
 	"swiftgpunodes.gpu.kubeswift.io/e2e-gpu-node-absent={.status.vfioReady}=false"
+	"swiftguests.swift.kubeswift.io/e2e-guest-console={.status.podRef.name}=e2e-guest-console-launcher"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.phase}=Running"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.podRef}=e2e-sandbox-running-launcher"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.phase}=Failed"

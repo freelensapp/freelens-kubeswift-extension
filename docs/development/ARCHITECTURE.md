@@ -55,9 +55,14 @@ src/
                              # carry a create entry point, through the host's own
                              # addRemoveButtons
   renderer/details/          # Detail panels (kubeObjectDetailItems)
-  renderer/menus/            # Write actions (kubeObjectMenuItems): one file
-                             # per verb, rendered by the host in both the list
-                             # row kebab and the detail drawer's toolbar
+  renderer/menus/            # Actions (kubeObjectMenuItems): one file per verb,
+                             # rendered by the host in both the list row kebab
+                             # and the detail drawer's toolbar. Every one of them
+                             # writes except swiftguest-console-menu-item-v1alpha1
+                             # .tsx, which makes no API call at all: it composes a
+                             # command line and hands it to a host terminal tab,
+                             # so it carries no confirmation dialog and is not
+                             # built on guest-action-menu-item.tsx
   renderer/components/       # Shared pure modules: status classifiers, the
                              # action guards and payloads, the create dialogs'
                              # gating, validation, payloads and write
@@ -69,6 +74,11 @@ src/
                              # sandbox-create.ts - one module for BOTH sandbox
                              # kinds, since every SwiftSandboxPool field except
                              # the two warm counts is a SwiftSandbox field), the
+                             # console machinery (console-commands.ts: the
+                             # guards, the two inverted run-directory key rules,
+                             # the serial-socket source and its validation, the
+                             # composed kubectl exec line and every sentence the
+                             # tooltips and the drawer row carry), the
                              # storage vocabulary
                              # two create forms share (kube-storage.ts: the
                              # access/volume mode pair, the CRDs' CEL rule and

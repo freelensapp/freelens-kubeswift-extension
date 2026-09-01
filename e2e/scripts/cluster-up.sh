@@ -172,6 +172,26 @@ inject_statuses() {
 	done
 }
 
+wait_for_console_pod() {
+	# The one schedulable pod of the fixture set, and therefore the one image
+	# this cluster pulls (SPEC-0017 slice 1, open item O5, and the comment at the
+	# top of fixtures/215-console-transport.yaml). Waiting for it here makes the
+	# pull a cluster-setup concern with a clear failure message, instead of a
+	# flaky first assertion inside the Playwright suite; every other pod in the
+	# set is deliberately unschedulable and is never waited for.
+	#
+	# `kind load docker-image` after a host-side `docker pull` was considered and
+	# rejected: it would make cluster creation depend on the developer's docker
+	# credential store (which hangs on a macOS Docker Desktop configured with
+	# `credsStore: desktop`) and on the host already having the image, while
+	# reaching exactly the same registry. The kind node's own containerd pulls it
+	# with no credentials at all.
+	log "waiting for the console transport pod ${E2E_CONSOLE_POD_NAME} (pulls ${E2E_CONSOLE_POD_IMAGE})"
+	kubectl_e2e wait --for=condition=Ready "pod/${E2E_CONSOLE_POD_NAME}" \
+		--namespace "${E2E_NAMESPACE}" --timeout=300s >/dev/null ||
+		die "the console transport pod ${E2E_CONSOLE_POD_NAME} never became Ready; is ${E2E_CONSOLE_POD_IMAGE} reachable?"
+}
+
 verify_statuses() {
 	local entry target rest json_path expected actual resource name
 
@@ -218,6 +238,7 @@ main() {
 	apply_owned_fixtures
 	inject_statuses
 	verify_statuses
+	wait_for_console_pod
 
 	log "cluster ready: kubeconfig=${E2E_KUBECONFIG} context=${E2E_KUBE_CONTEXT}"
 }

@@ -5,6 +5,7 @@ import { SwiftGPUNode } from "../api/kubeswift/swiftgpunode-v1alpha1";
 import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftGuestPool } from "../api/kubeswift/swiftguestpool-v1alpha1";
+import { canOpenGuestConsole, guestConsoleDrawerExplanation } from "../components/console-commands";
 import { withErrorPage } from "../components/error-page";
 import { deleteCascade } from "../components/guest-actions";
 import { classifyGuest } from "../components/guest-status";
@@ -54,7 +55,7 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
     const gpuProfileName = spec?.gpuProfileRef?.name;
     const seedProfileName = spec?.seedProfileRef?.name;
     const nodeName = SwiftGuest.getNodeName(object);
-    const podName = status?.podRef?.name;
+    const podName = SwiftGuest.getPodName(object);
     const podNamespace = status?.podRef?.namespace ?? object.getNs();
     const namespace = object.getNs();
     const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
@@ -63,6 +64,8 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
     const owningPool = SwiftGuest.getOwningPool(object);
     const guestPoolStore = maybe(() => SwiftGuestPool.getStore<SwiftGuestPool>());
     const cascade = deleteCascade({ name: object.getName(), namespace, spec, status });
+    const consoleFacts = { name: object.getName(), namespace, spec, status };
+    const consoleVerdict = canOpenGuestConsole(consoleFacts);
 
     // A stale or not-yet-reconciled status can name a Node or Pod that is no
     // longer (or not yet) there; `nodesStore`/`podsStore` may also simply not
@@ -195,8 +198,21 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) =>
         <DrawerItem name="PID" hidden={status?.runtime?.pid === undefined}>
           <WithTooltip>{status?.runtime?.pid}</WithTooltip>
         </DrawerItem>
-        <DrawerItem name="Serial Socket" hidden={!status?.console?.serialSocket}>
-          <WithTooltip>{status?.console?.serialSocket}</WithTooltip>
+        <DrawerItem name="Serial Socket" hidden={!SwiftGuest.getSerialSocket(object)}>
+          <WithTooltip>{SwiftGuest.getSerialSocket(object)}</WithTooltip>
+        </DrawerItem>
+        {/* Where a user who never hovers a menu finds out why the Serial
+            Console item is greyed - the second surface W4 requires for a
+            guard's reason, and the durable one, since a disabled `MenuItem`
+            carries `pointer-events: none` and can never show a hover tooltip
+            (SPEC-0010 spike S7, SPEC-0017). It is the Condition row's job for
+            Start and Stop, and the console needs its own because its reason is
+            about the launcher pod and the socket inside it rather than about
+            the phase alone. The whole sentence is the row's text and not only
+            its tooltip: DESIGN.md section 7 does not let anything important
+            live in a tooltip alone. */}
+        <DrawerItem name="Serial Console">
+          <WithTooltip>{guestConsoleDrawerExplanation(consoleFacts, consoleVerdict)}</WithTooltip>
         </DrawerItem>
 
         <DrawerTitle>Network</DrawerTitle>
