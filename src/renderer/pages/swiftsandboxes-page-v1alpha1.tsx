@@ -2,6 +2,8 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftSandbox, type SwiftSandboxApi } from "../api/kubeswift/swiftsandbox-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { createSandboxTitle } from "../components/sandbox-create";
+import { openCreateSandboxDialog } from "../components/sandbox-create-dialog";
 import { classifySandbox, sandboxMessage } from "../components/sandbox-status";
 import styles from "./swiftsandboxes-page.module.scss";
 import stylesInline from "./swiftsandboxes-page.module.scss?inline";
@@ -69,6 +71,11 @@ export const SwiftSandboxesPage = observer((props: SwiftSandboxesPageProps) =>
           sortingCallbacks={sortingCallbacks}
           searchFilters={[(object: KubeObject) => object.getSearchFields()]}
           renderHeaderTitle={KubeObject.crd.title}
+          // The host's own floating create affordance, the idiom SPEC-0013
+          // established and seven pages already carry: never a custom control
+          // where a native one exists (DESIGN.md pillar 1). The stylesheet's
+          // clearance rule goes with it.
+          addRemoveButtons={{ onAdd: openCreateSandboxDialog, addTooltip: createSandboxTitle }}
           renderTableHeader={renderTableHeader}
           renderTableContents={(object: KubeObject) => {
             const condition = classifySandbox(object.status);

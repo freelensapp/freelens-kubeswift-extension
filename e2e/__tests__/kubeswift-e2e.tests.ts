@@ -365,6 +365,71 @@ async function openCreateSandboxPoolDialog(frame: Frame): Promise<void> {
   await frame.waitForSelector(".Select:has(#sandbox-create-kernel-profile)", { state: "visible", timeout: 60_000 });
 }
 
+/** The SwiftSandboxes the cluster holds, by name: the only way to see a create that did not happen. */
+function sandboxNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftsandboxes.sandbox.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
+/**
+ * Opens the Create Sandbox dialog from the page's own control, and waits for its
+ * reads to answer.
+ *
+ * The kernel-profile picker is a text input until the namespace's SwiftKernels
+ * come back, so waiting for the select is waiting for the read rather than
+ * racing it - the idiom every create opener of this suite uses.
+ */
+async function openCreateSandboxDialog(frame: Frame): Promise<void> {
+  await pageCreateControl(frame).click();
+  await frame.waitForSelector('[data-testid="swiftsandbox-create-form"]', { state: "visible", timeout: 60_000 });
+  await frame.waitForSelector(".Select:has(#sandbox-create-kernel-profile)", { state: "visible", timeout: 60_000 });
+}
+
+/** One source radio of the Create Sandbox form, reached the way every host `Radio` is. */
+function sandboxSourceRadio(frame: Frame, source: "new" | "checkout") {
+  return frame
+    .locator(`[data-testid="sandbox-create-source"] .Radio:has([data-testid="sandbox-create-source-${source}"])`)
+    .first();
+}
+
+/** One scratch-disk source radio, which is the control that makes an empty block unbuildable. */
+function scratchSourceRadio(frame: Frame, source: "none" | "blank" | "existing") {
+  return frame
+    .locator(
+      `[data-testid="sandbox-create-scratch-source"] .Radio:has([data-testid="sandbox-create-scratch-source-${source}"])`,
+    )
+    .first();
+}
+
+/** One GPU backend radio of the Create Sandbox form. */
+function sandboxGpuBackendRadio(frame: Frame, backend: "none" | "profile" | "dra") {
+  return frame
+    .locator(
+      `[data-testid="sandbox-create-gpu-backend"] .Radio:has([data-testid="sandbox-create-gpu-backend-${backend}"])`,
+    )
+    .first();
+}
+
+/** Switches the form to a checkout, and waits for the pool read to have answered. */
+async function useSandboxCheckout(frame: Frame): Promise<void> {
+  await sandboxSourceRadio(frame, "checkout").click();
+  await frame.waitForSelector(".Select:has(#sandbox-create-pool)", { state: "visible", timeout: 60_000 });
+}
+
+/** Adds one argv row to a list of the Create Sandbox form and fills it. */
+async function addArgvRow(frame: Frame, list: "command" | "args", index: number, value: string): Promise<void> {
+  await frame.locator(`[data-testid="sandbox-create-add-${list}"]`).click();
+  await frame.locator(`[data-testid="sandbox-create-${list}-${index}-value"]`).fill(value);
+}
+
+/** Adds one environment row of the Create Sandbox form and fills both of its fields. */
+async function addEnvRow(frame: Frame, index: number, name: string, value: string): Promise<void> {
+  await frame.locator('[data-testid="sandbox-create-add-env"]').click();
+  await frame.locator(`[data-testid="sandbox-create-env-${index}-name"]`).fill(name);
+  await frame.locator(`[data-testid="sandbox-create-env-${index}-value"]`).fill(value);
+}
+
 /** The digest the image cases pin by: a well-formed sha256 that names nothing. */
 const e2eImageDigest = `sha256:${"1234567890abcdef".repeat(4)}`;
 
@@ -5052,6 +5117,496 @@ describe("KubeSwift views against the fixture cluster", () => {
       await cluster.cancelDialog(frame);
 
       expect(sandboxPoolNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "creates a cold sandbox with its whole workload, and reads back what the server stamped",
+    async () => {
+      // SPEC-0016 slice 2, the cold path end to end. What it proves that no unit
+      // test can: the argv arrays reach the API server exactly as they were
+      // typed - one row is one element, so a quoted argument stays whole - and
+      // every value this form deliberately does not send comes back stamped
+      // anyway, including the `volumeMode: Block` that the scratch disk's own
+      // control never asks about.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-sbx");
+
+      await openCreateSandboxDialog(frame);
+      await frame.locator('[data-testid="sandbox-create-name"]').fill(name);
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold");
+
+      // The workload: one row per argv element, which is what makes upstream's
+      // whitespace splitting inexpressible here.
+      await addArgvRow(frame, "command", 0, "/bin/sh");
+      await addArgvRow(frame, "args", 0, "-c");
+      await addArgvRow(frame, "args", 1, "echo hello world");
+      await frame.locator('[data-testid="sandbox-create-working-dir"]').fill("/workspace");
+      await addEnvRow(frame, 0, "SANDBOX_MODE", "fast");
+      await addEnvRow(frame, 1, "SANDBOX_SEED", "7");
+
+      await frame.locator('[data-testid="sandbox-create-timeout"]').fill("30m");
+      await frame.locator('[data-testid="sandbox-create-ttl"]').fill("1h");
+
+      await openFormSection(frame, "sandbox-create-scratch-section");
+      await scratchSourceRadio(frame, "blank").click();
+      await frame.locator('[data-testid="sandbox-create-scratch-size"]').fill("100Gi");
+      await frame.locator('[data-testid="sandbox-create-scratch-storage-class"]').fill("e2e-fast");
+
+      await openFormSection(frame, "sandbox-create-model-section");
+      await frame
+        .locator('[data-testid="sandbox-create-model-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/model:v1");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftSandbox kubeswift-e2e/${name}`);
+      // What the create makes, and what it never makes.
+      expect(dialog).toContain("a runtime-intent ConfigMap");
+      expect(dialog).toContain(`a Pod named exactly ${name}`);
+      expect(dialog).toContain("a NetworkPolicy");
+      expect(dialog).toContain(`a claim named ${name}-scratch`);
+      expect(dialog).toContain("No Service and no Secret are EVER created");
+      // The workload, as argv rather than as a string.
+      expect(dialog).toContain("The workload is /bin/sh -c echo hello world");
+      expect(dialog).toContain("nothing is split on whitespace");
+      // The will-not-heal vocabulary, and the phase honesty behind it.
+      expect(dialog).toContain("EMPTY phase, not Pending");
+      expect(dialog).toContain("empty phase with one False condition");
+      expect(dialog).toContain("delete and a re-create");
+      expect(dialog).toContain("DELETES the SwiftSandbox object itself");
+      expect(dialog).toContain("only ttl actually changes anything");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSandbox kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "args",
+        "command",
+        "cpu",
+        "env",
+        "image",
+        "memory",
+        "model",
+        "rootfsMode",
+        "scratchDisk",
+        "timeout",
+        "ttl",
+        "workingDir",
+      ]);
+
+      // What the form sent.
+      expect(spec.image).toBe("ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold");
+      expect(spec.command).toEqual(["/bin/sh"]);
+      expect(spec.args).toEqual(["-c", "echo hello world"]);
+      expect(spec.workingDir).toBe("/workspace");
+      expect(spec.env).toEqual([
+        { name: "SANDBOX_MODE", value: "fast" },
+        { name: "SANDBOX_SEED", value: "7" },
+      ]);
+      expect(spec.timeout).toBe("30m");
+      expect(spec.ttl).toBe("1h");
+      expect(spec.scratchDisk.blank.size).toBe("100Gi");
+      expect(spec.scratchDisk.blank.storageClassName).toBe("e2e-fast");
+      expect(spec.model.imageRef).toBe("ghcr.io/freelensapp/kubeswift-e2e/model:v1");
+
+      // What the API server stamped, which this form never sends - `volumeMode`
+      // above all, because the control that would have carried it does not
+      // exist: the disk is Block whatever any client says.
+      expect(spec.cpu).toBe(1);
+      expect(spec.memory).toBe("512Mi");
+      expect(spec.rootfsMode).toBe("block");
+      expect(spec.model.mountPath).toBe("/model");
+      expect(spec.scratchDisk.blank.volumeMode).toBe("Block");
+      // And what it does NOT stamp: `network.mode`'s default lives INSIDE a
+      // block this form omits, so the absence is a proof of what was sent.
+      expect(spec.network).toBeUndefined();
+
+      // No controller runs here, so the sandbox stays phaseless - which is what
+      // a REAL cluster shows first too, and what the summary promised.
+      expect(cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", name, "{.status.phase}")).toBe("");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "checks a slot out of a warm pool, with the shape read from it rather than asked for",
+    async () => {
+      // A2 and S3, the centre of this spec. `spec.poolRef.name` is the WHOLE
+      // client-side protocol - no claim field, no lease, no annotation and no
+      // gateway RPC - so a CRD-native client really can check a slot out, which
+      // is the question this milestone carried. What an E2E can prove is the
+      // protocol and the derivation; the claim itself, the re-parented ownerRef
+      // and the counts moving are manual, because no controller runs here.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-sbx-claim");
+
+      await openCreateSandboxDialog(frame);
+      await frame.locator('[data-testid="sandbox-create-name"]').fill(name);
+      await useSandboxCheckout(frame);
+      // The option text carries the phase and both counts, which upstream's own
+      // cluster-wide picker shows nowhere although its gateway returns them.
+      await pickCreateOption(frame, "sandbox-create-pool", "e2e-sandbox-pool - Ready");
+      await addArgvRow(frame, "command", 0, "/usr/bin/env");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain("e2e-sandbox-pool - Ready, 2 warm, 1 claimed");
+      // The four are facts read from the pool, not controls: the image input and
+      // the vCPU input of the cold path are gone entirely.
+      expect(await frame.locator('[data-testid="sandbox-create-derived-shape"]').count()).toBe(1);
+      expect(await frame.locator('[data-testid="sandbox-create-image"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="sandbox-create-cpu"]').count()).toBe(0);
+      expect(dialog).toContain("Slot shape, read from the pool");
+      expect(dialog).toContain("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+      expect(dialog).toContain("SENT from it");
+      expect(dialog).toContain("silently runs this workload inside the pool image's rootfs");
+      // GPU is inexpressible with a pool, so the section is replaced by the
+      // reason rather than rendered and ignored (W12 option dropping).
+      expect(await frame.locator('[data-testid="sandbox-create-gpu-section"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="sandbox-create-gpu-dropped"]').count()).toBe(1);
+      expect(dialog).toContain("mutually exclusive with BOTH GPU backends");
+      expect(dialog).toContain("the checkout runs first and the GPU request is silently ignored");
+      // And the checkout's own promise, which is that a miss is not a failure.
+      expect(dialog).toContain("cold-boots if none is");
+      expect(dialog).toContain("NOT a failure");
+      expect(dialog).not.toContain("always cold-fall-back");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSandbox kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual(["command", "cpu", "image", "memory", "poolRef", "rootfsMode"]);
+      // The one field that is the whole protocol.
+      expect(spec.poolRef).toEqual({ name: "e2e-sandbox-pool" });
+      // And the four the schema says a claimant must match and nothing compares.
+      expect(spec.image).toBe("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+      expect(spec.cpu).toBe(1);
+      expect(spec.memory).toBe("512Mi");
+      expect(spec.rootfsMode).toBe("block");
+      expect(spec.command).toEqual(["/usr/bin/env"]);
+      // No GPU reached the object, whatever the form was holding.
+      expect(spec.gpuProfileRef).toBeUndefined();
+      expect(spec.gpuResourceClaim).toBeUndefined();
+      expect(spec.network).toBeUndefined();
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that a command-less checkout always cold-falls-back, and submits it anyway",
+    async () => {
+      // S5, which upstream warns about nowhere at all: only the cold path
+      // resolves the image's own entrypoint, so a pooled sandbox with no command
+      // never uses a warm slot however many are free. It is a warning, so it
+      // never blocks (W12).
+      //
+      // This is also where the derivation is PROVED rather than merely
+      // asserted: `e2e-sandbox-pool-cold` carries cpu 2, 1Gi and virtiofs, three
+      // values the API server would never stamp, so a readback that shows them
+      // can only have got them from the pool.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-sbx-cold");
+
+      await openCreateSandboxDialog(frame);
+      await frame.locator('[data-testid="sandbox-create-name"]').fill(name);
+      await useSandboxCheckout(frame);
+      await pickCreateOption(frame, "sandbox-create-pool", "e2e-sandbox-pool-cold");
+
+      const warned = await cluster.confirmDialogText(frame);
+
+      // A pool nothing has reconciled reports no phase and no counts, and the
+      // option says so rather than leaving a blank.
+      expect(warned).toContain("e2e-sandbox-pool-cold - no phase yet, 0 warm, 0 claimed");
+      expect(warned).toContain("This checkout names no command, so it will always cold-fall-back");
+      expect(warned).toContain("Adding one argv row is what makes the checkout a checkout");
+      expect(warned).not.toContain("Create Sandbox is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSandbox kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual(["cpu", "image", "memory", "poolRef", "rootfsMode"]);
+      expect(spec.poolRef).toEqual({ name: "e2e-sandbox-pool-cold" });
+      // Three values no default could have produced, which is what makes this a
+      // proof that the shape was read from the pool and sent from it.
+      expect(spec.cpu).toBe(2);
+      expect(spec.memory).toBe("1Gi");
+      expect(spec.rootfsMode).toBe("virtiofs");
+      expect(spec.image).toBe("ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold");
+      expect(spec.command).toBeUndefined();
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses the scratch disk, the model path and the two expiries, each with its reason",
+    async () => {
+      // The webhook-only rules of A5, A7 and A9, which on a normal install
+      // nobody else enforces at all: the sandbox webhook ships disabled, so
+      // these messages are the only ones an operator will ever see.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+
+      const before = sandboxNames();
+
+      await openCreateSandboxDialog(frame);
+      await frame.locator('[data-testid="sandbox-create-name"]').fill("e2e-sandbox-refusals");
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold");
+
+      // A zero scratch size: the schema has no minimum, so it is stored happily
+      // and then fails at the PVC create, with the sandbox parked on Binding.
+      await openFormSection(frame, "sandbox-create-scratch-section");
+      await scratchSourceRadio(frame, "blank").click();
+      await frame.locator('[data-testid="sandbox-create-scratch-size"]').fill("0");
+
+      const zeroSize = await cluster.confirmDialogText(frame);
+
+      expect(zeroSize).toContain("Create Sandbox is disabled - Scratch disk size:");
+      expect(zeroSize).toContain("A size of zero is accepted by the API server and honoured by nothing");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // A collapsed section that holds an error opens itself and cannot be shut
+      // while it does: a submit blocked on a field nobody can see is the dead
+      // control W4 forbids.
+      await openFormSection(frame, "sandbox-create-scratch-section");
+      expect(await frame.locator('[data-testid="sandbox-create-scratch-size"]').count()).toBe(1);
+
+      await frame.locator('[data-testid="sandbox-create-scratch-size"]').fill("100Gi");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // A relative model mount path, which is not a mount point at all.
+      await openFormSection(frame, "sandbox-create-model-section");
+      await frame
+        .locator('[data-testid="sandbox-create-model-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/model:v1");
+      await frame.locator('[data-testid="sandbox-create-model-mount-path"]').fill("weights");
+
+      const relativePath = await cluster.confirmDialogText(frame);
+
+      expect(relativePath).toContain("Create Sandbox is disabled - Model mount path:");
+      expect(relativePath).toContain("A mount path is absolute");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      await frame.locator('[data-testid="sandbox-create-model-mount-path"]').fill("/models");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // A negative run cap, which force-terminates the sandbox on the first poll.
+      await frame.locator('[data-testid="sandbox-create-timeout"]').fill("-5m");
+
+      const negativeTimeout = await cluster.confirmDialogText(frame);
+
+      expect(negativeTimeout).toContain("Create Sandbox is disabled - Timeout:");
+      expect(negativeTimeout).toContain("first five-second poll");
+      expect(negativeTimeout).toContain("the workload never runs");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // And a retention of zero, whose consequence is sharper: it deletes the
+      // object itself before anyone reads the result.
+      await frame.locator('[data-testid="sandbox-create-timeout"]').fill("30m");
+      await frame.locator('[data-testid="sandbox-create-ttl"]').fill("0");
+
+      const zeroTtl = await cluster.confirmDialogText(frame);
+
+      expect(zeroTtl).toContain("Create Sandbox is disabled - TTL:");
+      expect(zeroTtl).toContain("DELETES the SwiftSandbox object itself");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // A duration that is not a Go duration at all is a different refusal.
+      await frame.locator('[data-testid="sandbox-create-ttl"]').fill("1 day");
+
+      const badDuration = await cluster.confirmDialogText(frame);
+
+      expect(badDuration).toContain("This is not a Go duration");
+      expect(badDuration).toContain("Neither field carries a schema pattern or a format");
+
+      await cluster.cancelDialog(frame);
+
+      expect(sandboxNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "makes a GPU and a pool inexpressible, and refuses a DRA claim that names both",
+    async () => {
+      // The two exclusivities of A6. One is made inexpressible by the control -
+      // a checkout has no GPU section at all - and the other cannot be, because
+      // a claim name and a template name are two objects an operator types the
+      // name of, so that half is a refusal that names both fields.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+
+      const before = sandboxNames();
+
+      await openCreateSandboxDialog(frame);
+      await frame.locator('[data-testid="sandbox-create-name"]').fill("e2e-sandbox-gpu");
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold");
+
+      // The native backend, with the profile picked: legal, and the header line
+      // carries the park rather than a refusal - an unsupported tier parks a
+      // sandbox where it makes a pool error-backoff with no status at all.
+      await openFormSection(frame, "sandbox-create-gpu-section");
+      await sandboxGpuBackendRadio(frame, "profile").click();
+      await pickCreateOption(frame, "sandbox-create-gpu-profile", "e2e-gpu-profile-hgx");
+
+      const parked = await cluster.confirmDialogText(frame);
+
+      expect(parked).toContain("parks this sandbox forever");
+      expect(parked).toContain("gpu-sandbox kernel");
+      expect(parked).not.toContain("Create Sandbox is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // The DRA branch: exactly one of the two names.
+      await sandboxGpuBackendRadio(frame, "dra").click();
+
+      const neither = await cluster.confirmDialogText(frame);
+
+      expect(neither).toContain("Create Sandbox is disabled - Resource claim:");
+      expect(neither).toContain("allocates nothing at all");
+
+      await frame.locator('[data-testid="sandbox-create-gpu-claim"]').fill("e2e-shared-claim");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await frame.locator('[data-testid="sandbox-create-gpu-claim-template"]').fill("e2e-claim-template");
+
+      const both = await cluster.confirmDialogText(frame);
+
+      expect(both).toContain("Create Sandbox is disabled - Resource claim:");
+      expect(both).toContain("never both");
+      expect(both).toContain("a webhook that ships disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // And the pair a pool makes inexpressible: switching to a checkout takes
+      // the whole section away and leaves the reason in its place.
+      await useSandboxCheckout(frame);
+
+      expect(await frame.locator('[data-testid="sandbox-create-gpu-section"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="sandbox-create-gpu-dropped"]').count()).toBe(1);
+
+      const dropped = await cluster.confirmDialogText(frame);
+
+      expect(dropped).toContain("A GPU sandbox always boots cold");
+      expect(dropped).toContain("Choose New microVM to ask for a GPU");
+      // The refusal went with the section, because the section is gone.
+      expect(dropped).not.toContain("Create Sandbox is disabled - Resource claim:");
+
+      await cluster.cancelDialog(frame);
+
+      expect(sandboxNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that a sandbox name is taken, and keeps the whole form when the 409 arrives",
+    async () => {
+      // S1 and the reopen. The collision warning does not block - the read
+      // behind it can be stale and only the API server can answer - so an
+      // ignored warning has to come back as a usable failure rather than as a
+      // lost form, which is only true because the form model lives outside
+      // React (SPEC-0011 spike T1). This form is the tallest one that reopen
+      // has ever had to protect.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.clearNotifications(frame);
+
+      const before = sandboxNames();
+
+      await openCreateSandboxDialog(frame);
+      await frame.locator('[data-testid="sandbox-create-name"]').fill("e2e-sandbox-create-taken");
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold");
+      await addArgvRow(frame, "command", 0, "/bin/sh");
+      await frame.locator('[data-testid="sandbox-create-working-dir"]').fill("/workspace");
+      await frame.locator('[data-testid="sandbox-create-ttl"]').fill("1h");
+
+      const warned = await cluster.confirmDialogText(frame);
+
+      expect(warned).toContain("A SwiftSandbox named e2e-sandbox-create-taken already exists in kubeswift-e2e");
+      expect(warned).toContain("this form stays open when it is");
+      expect(warned).not.toContain("Create Sandbox is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // Submitted anyway. `confirmDialog` is deliberately not used here: it
+      // waits for the dialog to disappear, and the whole point of this path is
+      // that it comes back.
+      await frame.locator('[data-testid="confirm"]').click();
+
+      const message = await cluster.expectNotification(frame, "error", "already exists");
+
+      expect(message).toContain("Change the name and try again");
+
+      // The dialog really goes away and really comes back. Waiting for it to
+      // detach first is what makes the second wait meaningful: the host's own
+      // close is still on screen when the notification lands, so a bare
+      // `visible` wait matches the one that is on its way out.
+      await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "detached", timeout: 60_000 });
+      await frame.waitForSelector('[data-testid="confirmation-dialog"]', { state: "visible", timeout: 60_000 });
+      await frame.waitForTimeout(500);
+
+      // And it is really ON SCREEN, not present at opacity 0. The host's
+      // `Animate` clears its `leave` class in a timeout that its own effect
+      // cancels when the dialog is reopened inside the 100ms leave window, so a
+      // reopen at zero delay keeps both classes and `.opacity-scale.leave` wins
+      // the cascade - a form nobody can see, over a page nobody can click.
+      // `dialogReopenDelay` is the fix; this is the assert that keeps it.
+      const reopened = await frame.evaluate(() => {
+        const dialog = document.querySelector('[data-testid="confirmation-dialog"]');
+
+        return dialog
+          ? { className: dialog.className, opacity: getComputedStyle(dialog).opacity }
+          : { className: "(absent)", opacity: "(absent)" };
+      });
+
+      expect(reopened.className).not.toContain("leave");
+      expect(reopened.opacity).toBe("1");
+
+      // Everything the user typed is still there, across the whole form and not
+      // just its first field.
+      expect(await frame.locator('[data-testid="sandbox-create-name"]').inputValue()).toBe("e2e-sandbox-create-taken");
+      expect(await frame.locator('[data-testid="sandbox-create-image"]').inputValue()).toBe(
+        "ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold",
+      );
+      expect(await frame.locator('[data-testid="sandbox-create-command-0-value"]').inputValue()).toBe("/bin/sh");
+      expect(await frame.locator('[data-testid="sandbox-create-working-dir"]').inputValue()).toBe("/workspace");
+      expect(await frame.locator('[data-testid="sandbox-create-ttl"]').inputValue()).toBe("1h");
+
+      await cluster.cancelDialog(frame);
+
+      // And the sandbox that was already there is untouched: a refused create
+      // writes nothing, and there is no second object.
+      expect(sandboxNames()).toEqual(before);
+      expect(
+        cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", "e2e-sandbox-create-taken", "{.spec.image}"),
+      ).toBe("ghcr.io/freelensapp/kubeswift-e2e/sandbox:taken");
+
+      await cluster.clearNotifications(frame);
     },
     TIMEOUT,
   );

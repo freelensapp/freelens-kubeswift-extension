@@ -201,6 +201,12 @@ E2E_STATUS_ASSERTIONS=(
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-running={.status.podRef}=e2e-sandbox-running-launcher"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.phase}=Failed"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.exitCode}=1"
+	# The carrier of a materialize failure, pinned by type (correction 1 owed to
+	# SPEC-0008, made in SPEC-0016's second PR): it is GuestRunning: False with a
+	# materialize-failed reason, never the RootfsReady this fixture used to lean
+	# on, which is declared in Go and written by nothing at all.
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.conditions[0].type}=GuestRunning"
+	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-failed={.status.conditions[0].reason}=MaterializeFailed"
 	"swiftsandboxes.sandbox.kubeswift.io/e2e-sandbox-pooled={.status.podRef}=e2e-sandbox-pool-slot-1"
 	# The two counts the pool list puts side by side, because the gap between
 	# them is the health of the pool. The degraded one reads back a literal 0,

@@ -163,8 +163,8 @@ export const quantityFormatMessage =
 
 /** What zero is refused with, which is the refusal the schema does not carry. */
 export const quantityZeroMessage =
-  "A size of zero is accepted by the API server and honoured by nothing: the schema sets no minimum, so a class " +
-  "with a zero here is stored happily and produces guests that cannot start.";
+  "A size of zero is accepted by the API server and honoured by nothing: the schema sets no minimum, so a zero " +
+  "here is stored happily and produces an object nothing can start.";
 
 /** What a negative quantity is refused with. */
 export const quantityNegativeMessage =

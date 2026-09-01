@@ -13,6 +13,10 @@
 // and the pool summary. Slice 2 adds the sandbox's own surface (the workload,
 // the two expiries, the scratch disk, the GPU exclusivities and the checkout) on
 // top of the same `SlotShapeValues`, and derives that shape from a picked pool.
+// Everything the slot shape decides is called by both halves; where the two
+// kinds say the same rule with different words, the shared function takes the
+// wording as an argument and the DEFAULT is the pool's, which is where it was
+// written.
 //
 // What creating a SwiftSandboxPool mechanically IS, and why so little of it is
 // visible from the schema:
@@ -51,14 +55,20 @@
 
 import { formatBytes } from "../api/kubeswift/types";
 import { forbiddenStatusCode, notFoundStatusCode, writeFailurePrefix } from "./guest-actions";
-import { gpuProfileSummary } from "./guest-create";
+import { gpuProfileSummary, nextRowId } from "./guest-create";
 import { hasQuantityUnit, quantityError, unitlessQuantityWarning } from "./guestclass-create";
 import { conflictStatusCode, kernelNodeLabel, kernelNodeLabelValue } from "./migration-create";
 
+import type {
+  SwiftSandboxEnvVar,
+  SwiftSandboxGpuResourceClaim,
+  SwiftSandboxScratchDisk,
+  SwiftSandboxSpec,
+} from "../api/kubeswift/swiftsandbox-v1alpha1";
 import type { SwiftSandboxPoolSpec } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import type { Quantity } from "../api/kubeswift/types";
 import type { ApiFailureFacts } from "./guest-actions";
-import type { GuestGpuProfileFacts } from "./guest-create";
+import type { GuestGpuProfileFacts, GuestPvcFacts } from "./guest-create";
 
 /** The verb, on the page's create control, on the OK button and in the failure sentences. */
 export const createSandboxPoolTitle = "Create Sandbox Pool";
@@ -366,6 +376,11 @@ export function slotNameExample(name: string): string {
 // B2: the slot shape.
 // ---------------------------------------------------------------------------
 
+/** A label key's name segment, and the optional DNS-subdomain prefix before its '/'. */
+const labelNamePattern = /^[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$/;
+const labelValuePattern = /^([A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?)?$/;
+const maxLabelSegmentLength = 63;
+
 /** What an empty image reference is refused with. */
 export const slotImageRequiredMessage =
   "An OCI image is required: it is what every warm slot boots as its root filesystem, and a claiming SwiftSandbox " +
@@ -377,16 +392,7 @@ export const slotImageWhitespaceMessage =
   "schema declares a bare string - so what a padded reference produces is a registry lookup that fails, on every " +
   "node, with a message about a name nobody typed.";
 
-/** Why a typed image reference would be refused, or `undefined` when it is legal. */
-export function slotImageError(image: string): string | undefined {
-  if (!image.trim()) {
-    return slotImageRequiredMessage;
-  }
-
-  return /\s/.test(image) ? slotImageWhitespaceMessage : undefined;
-}
-
-/** What a cpu that is not a whole number is refused with. */
+/** What a cpu that is not a whole number is refused with. Shared: it is the schema's own type. */
 export const slotCpuFormatMessage =
   "A vCPU count is a whole number: the schema declares it as an int32, so 1.5 and 'two' are refused by the API " +
   "server rather than rounded.";
@@ -396,8 +402,89 @@ export const slotCpuMinimumMessage =
   "A slot has at least 1 vCPU, which is the schema's own minimum. A microVM with none cannot boot, and a pool of " +
   "them warms nothing.";
 
+/** What a model mount path that is not absolute is refused with. */
+export const modelMountPathRelativeMessage =
+  "A mount path is absolute: it is the in-guest mount point of the model tree, and a relative one is not a mount " +
+  "point at all. Nothing refuses it - there is no pool webhook and the schema declares a bare string - so what it " +
+  "produces is a slot whose weights are not where the workload looks for them.";
+
+/**
+ * What each refusal of the slot shape SAYS, per kind.
+ *
+ * The conditions are the same on both forms, because they are the same fields;
+ * the consequences are not, and every one of these sentences names one. A form
+ * about a sandbox that told its operator what a POOL would do with the value is
+ * the drift this record exists to remove - the screenshot pass found five of
+ * them. The DEFAULT is the pool's, which is where they were written (slice 1).
+ */
+export interface SlotShapeRefusalWording {
+  imageRequired: string;
+  imageWhitespace: string;
+  cpuMinimum: string;
+  nodeSelectorKeyPrefix: string;
+  nodeSelectorKeyName: string;
+  modelMountPathRelative: string;
+}
+
+/** The pool's own words, which are the ones slice 1 shipped. */
+export const poolSlotRefusalWording: SlotShapeRefusalWording = {
+  imageRequired: slotImageRequiredMessage,
+  imageWhitespace: slotImageWhitespaceMessage,
+  cpuMinimum: slotCpuMinimumMessage,
+  nodeSelectorKeyPrefix:
+    "The part before the '/' of a label key is a DNS-1123 subdomain, like kubeswift.io. Nothing here refuses a " +
+    "malformed one - a nodeSelector is a plain map in this schema - but the launcher Pod the controller then " +
+    "builds is refused by the API server on every single reconcile.",
+  nodeSelectorKeyName:
+    `A label key is at most ${maxLabelSegmentLength} characters of letters, digits, '-', '_' and '.', starting ` +
+    "and ending with a letter or a digit, optionally prefixed with a DNS subdomain and a '/'. The pool stores " +
+    "whatever is typed and the Pod that carries it is what the API server refuses.",
+  modelMountPathRelative: modelMountPathRelativeMessage,
+};
+
+/** The sandbox's own words for the same five refusals. */
+export const sandboxSlotRefusalWording: SlotShapeRefusalWording = {
+  imageRequired:
+    "An OCI image is required: it is what this sandbox boots as its root filesystem, and it is the one field of " +
+    "the spec the schema cannot default. A digest reference (repo@sha256:...) is preferred, because it pins " +
+    "exactly what runs.",
+  imageWhitespace:
+    "An image reference carries no whitespace. Nothing refuses it - the schema declares a bare string with no " +
+    "pattern - so what a padded reference produces is a registry lookup that fails at materialize time, which is " +
+    "TERMINAL: the sandbox goes Failed about a name nobody typed.",
+  cpuMinimum:
+    "A sandbox has at least 1 vCPU, which is the schema's own minimum. A microVM with none cannot boot at all.",
+  nodeSelectorKeyPrefix:
+    "The part before the '/' of a label key is a DNS-1123 subdomain, like kubeswift.io. Nothing here refuses a " +
+    "malformed one - a nodeSelector is a plain map in this schema - but the launcher Pod the controller then " +
+    "builds is refused by the API server on every single reconcile.",
+  nodeSelectorKeyName:
+    `A label key is at most ${maxLabelSegmentLength} characters of letters, digits, '-', '_' and '.', starting ` +
+    "and ending with a letter or a digit, optionally prefixed with a DNS subdomain and a '/'. The sandbox stores " +
+    "whatever is typed and the Pod that carries it is what the API server refuses.",
+  modelMountPathRelative:
+    "A mount path is absolute: it is the in-guest mount point of the model tree, and a relative one is not a " +
+    "mount point at all. The schema declares a bare string with no pattern, so nothing refuses it - what it " +
+    "produces is a sandbox whose weights are not where the workload looks for them.",
+};
+
+/** Why a typed image reference would be refused, or `undefined` when it is legal. */
+export function slotImageError(
+  image: string,
+  wording: SlotShapeRefusalWording = poolSlotRefusalWording,
+): string | undefined {
+  if (!image.trim()) {
+    return wording.imageRequired;
+  }
+
+  return /\s/.test(image) ? wording.imageWhitespace : undefined;
+}
+
 /** Why a typed vCPU count would be refused, or `undefined` when it is legal. */
-export function slotCpuError(cpu: string): string | undefined {
+export function slotCpuError(
+  cpu: string,
+  wording: SlotShapeRefusalWording = poolSlotRefusalWording,
+): string | undefined {
   const value = cpu.trim();
 
   if (!value) {
@@ -408,7 +495,7 @@ export function slotCpuError(cpu: string): string | undefined {
     return slotCpuFormatMessage;
   }
 
-  return Number.parseInt(value, 10) < 1 ? slotCpuMinimumMessage : undefined;
+  return Number.parseInt(value, 10) < 1 ? wording.cpuMinimum : undefined;
 }
 
 /**
@@ -424,27 +511,19 @@ export function slotMemoryError(memory: string): string | undefined {
   return quantityError(memory);
 }
 
-/** What a model mount path that is not absolute is refused with. */
-export const modelMountPathRelativeMessage =
-  "A mount path is absolute: it is the in-guest mount point of the model tree, and a relative one is not a mount " +
-  "point at all. Nothing refuses it - there is no pool webhook and the schema declares a bare string - so what it " +
-  "produces is a slot whose weights are not where the workload looks for them.";
-
 /** Why a typed mount path would be refused, or `undefined` when it is legal. */
-export function modelMountPathError(mountPath: string): string | undefined {
+export function modelMountPathError(
+  mountPath: string,
+  wording: SlotShapeRefusalWording = poolSlotRefusalWording,
+): string | undefined {
   const value = mountPath.trim();
 
   if (!value) {
     return undefined;
   }
 
-  return value.startsWith("/") ? undefined : modelMountPathRelativeMessage;
+  return value.startsWith("/") ? undefined : wording.modelMountPathRelative;
 }
-
-/** A label key's name segment, and the optional DNS-subdomain prefix before its '/'. */
-const labelNamePattern = /^[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$/;
-const labelValuePattern = /^([A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?)?$/;
-const maxLabelSegmentLength = 63;
 
 /** The fields one node-selector row can carry a message on. */
 export type NodeSelectorField = "key" | "value";
@@ -456,7 +535,10 @@ export const nodeSelectorFieldLabels: Record<NodeSelectorField, string> = { key:
 const nodeSelectorFieldOrder: NodeSelectorField[] = ["key", "value"];
 
 /** Why a node-selector label key would be refused, or `undefined` when it is legal. */
-export function nodeSelectorKeyError(key: string): string | undefined {
+export function nodeSelectorKeyError(
+  key: string,
+  wording: SlotShapeRefusalWording = poolSlotRefusalWording,
+): string | undefined {
   const value = key.trim();
 
   if (!value) {
@@ -468,19 +550,11 @@ export function nodeSelectorKeyError(key: string): string | undefined {
   const name = slash < 0 ? value : value.slice(slash + 1);
 
   if (slash >= 0 && (!prefix || !dnsSubdomainPattern.test(prefix) || prefix.length > maxObjectNameLength)) {
-    return (
-      "The part before the '/' of a label key is a DNS-1123 subdomain, like kubeswift.io. Nothing here refuses a " +
-      "malformed one - a nodeSelector is a plain map in this schema - but the launcher Pod the controller then " +
-      "builds is refused by the API server on every single reconcile."
-    );
+    return wording.nodeSelectorKeyPrefix;
   }
 
   if (!name || name.length > maxLabelSegmentLength || !labelNamePattern.test(name)) {
-    return (
-      `A label key is at most ${maxLabelSegmentLength} characters of letters, digits, '-', '_' and '.', starting ` +
-      "and ending with a letter or a digit, optionally prefixed with a DNS subdomain and a '/'. The pool stores " +
-      "whatever is typed and the Pod that carries it is what the API server refuses."
-    );
+    return wording.nodeSelectorKeyName;
   }
 
   return undefined;
@@ -510,7 +584,10 @@ export function nodeSelectorValueError(value: string): string | undefined {
  * form exists to remove. An entirely empty row is not an error - it is a row
  * the user has not filled in yet - and it is dropped from the payload instead.
  */
-export function nodeSelectorErrors(shape: SlotShapeValues): NodeSelectorMessages[] {
+export function nodeSelectorErrors(
+  shape: SlotShapeValues,
+  wording: SlotShapeRefusalWording = poolSlotRefusalWording,
+): NodeSelectorMessages[] {
   const rows = shape.nodeSelector;
 
   return rows.map((row, index) => {
@@ -523,7 +600,7 @@ export function nodeSelectorErrors(shape: SlotShapeValues): NodeSelectorMessages
         "A label key is required once the row has a value: a nodeSelector is a map, so there is no entry for a " +
         "value with no key, and the value would simply not be sent.";
     } else {
-      const keyError = nodeSelectorKeyError(key);
+      const keyError = nodeSelectorKeyError(key, wording);
 
       if (keyError) {
         messages.key = keyError;
@@ -781,13 +858,56 @@ export function slotShapeErrors(inputs: SandboxCreateInputs, shape: SlotShapeVal
 }
 
 /**
+ * What each reference warning of the slot shape SAYS, per kind.
+ *
+ * The conditions are the same for both forms - a name that the read did not
+ * return, or a read that was refused - and the consequence is not: a name that
+ * resolves to nothing keeps a pool from warming a single slot, and keeps a
+ * sandbox from ever booting. One implementation of WHEN to warn, two sets of
+ * words for WHAT it costs, rather than two implementations of both.
+ */
+export interface SlotShapeWarningWording {
+  /** How the unitless-memory warning names this field. */
+  memoryLabel: string;
+  kernelUnverified: string;
+  kernelMissing: (name: string) => string;
+  gpuProfileMissing: (name: string) => string;
+  gpuProfileUnverified: (name: string) => string;
+  secretUnverified: (what: string) => string;
+  secretMissing: (name: string, what: string) => string;
+}
+
+/** The pool's own words, which are the ones slice 1 shipped. */
+export const poolSlotWarningWording: SlotShapeWarningWording = {
+  memoryLabel: "slot memory",
+  kernelUnverified:
+    "The SwiftKernels of this namespace could not be listed from here, so this name is unverified. A kernel " +
+    "profile that does not exist is not refused at admission - the slots simply never boot.",
+  kernelMissing: (name) =>
+    `No SwiftKernel named ${name} is in this namespace. Nothing refuses the pool for it: the slots ` +
+    "fail to boot instead, and the pool reports it as a warming failure rather than as a missing reference.",
+  gpuProfileMissing: (name) =>
+    `No SwiftGPUProfile named ${name} is in this namespace. A GPU pool whose profile cannot be resolved parks with an empty phase and a 30-second requeue, indefinitely - it never turns terminal on its own.`,
+  gpuProfileUnverified: hgxProfileUnverifiedWarning,
+  secretUnverified: (what) =>
+    "The Secrets of this namespace could not be listed from here, so this name is unverified. A Secret that " +
+    `does not exist is not refused at admission - ${what} fails on the slot instead.`,
+  secretMissing: (name, what) =>
+    `No Secret named ${name} is in this namespace. Nothing refuses the pool for it: ${what} fails on every slot, so the pool never warms one.`,
+};
+
+/**
  * Everything worth saying about a slot shape that would still be accepted.
  *
  * Warnings never block (W12). Every one of these is about a read that may have
  * failed or a name that may have been created since, which is precisely where a
  * client-side heuristic must not be in the driver's seat.
  */
-export function slotShapeWarnings(inputs: SandboxCreateInputs, shape: SlotShapeValues): SlotShapeMessages {
+export function slotShapeWarnings(
+  inputs: SandboxCreateInputs,
+  shape: SlotShapeValues,
+  wording: SlotShapeWarningWording = poolSlotWarningWording,
+): SlotShapeMessages {
   const warnings: SlotShapeMessages = {};
   const memory = shape.memory.trim();
   const kernelProfile = shape.kernelProfile.trim();
@@ -796,25 +916,21 @@ export function slotShapeWarnings(inputs: SandboxCreateInputs, shape: SlotShapeV
   const verifyKey = shape.verifyKeySecret.trim();
 
   if (memory && !quantityError(memory) && !hasQuantityUnit(memory)) {
-    warnings.memory = unitlessQuantityWarning("slot memory", memory);
+    warnings.memory = unitlessQuantityWarning(wording.memoryLabel, memory);
   }
 
   if (kernelProfile) {
     if (inputs.kernelsUnverified) {
-      warnings.kernelProfile =
-        "The SwiftKernels of this namespace could not be listed from here, so this name is unverified. A kernel " +
-        "profile that does not exist is not refused at admission - the slots simply never boot.";
+      warnings.kernelProfile = wording.kernelUnverified;
     } else if (!inputs.kernels.includes(kernelProfile)) {
-      warnings.kernelProfile =
-        `No SwiftKernel named ${kernelProfile} is in this namespace. Nothing refuses the pool for it: the slots ` +
-        "fail to boot instead, and the pool reports it as a warming failure rather than as a missing reference.";
+      warnings.kernelProfile = wording.kernelMissing(kernelProfile);
     }
   }
 
   if (gpuProfile && !pickedSandboxGpuProfile(inputs, shape)) {
     warnings.gpuProfile = inputs.gpuProfilesUnverified
-      ? hgxProfileUnverifiedWarning(gpuProfile)
-      : `No SwiftGPUProfile named ${gpuProfile} is in this namespace. A GPU pool whose profile cannot be resolved parks with an empty phase and a 30-second requeue, indefinitely - it never turns terminal on its own.`;
+      ? wording.gpuProfileUnverified(gpuProfile)
+      : wording.gpuProfileMissing(gpuProfile);
   }
 
   for (const [field, name, what] of [
@@ -826,12 +942,9 @@ export function slotShapeWarnings(inputs: SandboxCreateInputs, shape: SlotShapeV
     }
 
     if (inputs.secretsUnverified) {
-      warnings[field] =
-        "The Secrets of this namespace could not be listed from here, so this name is unverified. A Secret that " +
-        `does not exist is not refused at admission - ${what} fails on the slot instead.`;
+      warnings[field] = wording.secretUnverified(what);
     } else if (!inputs.secrets.includes(name)) {
-      warnings[field] =
-        `No Secret named ${name} is in this namespace. Nothing refuses the pool for it: ${what} fails on every slot, so the pool never warms one.`;
+      warnings[field] = wording.secretMissing(name, what);
     }
   }
 
@@ -1483,3 +1596,2020 @@ export const sandboxPoolFooter =
   "the editor is what EDITS a pool afterwards, since no edit path is offered: every field stays mutable and the " +
   "slots that are already warm keep the shape they booted with. minWarm additionally moves through the scale " +
   "subresource, so `kubectl scale` and an HPA change it without touching the object's spec by hand.";
+
+// ===========================================================================
+// The sandbox's own surface (SPEC-0016 slice 2, Dialog A).
+//
+// What creating a SwiftSandbox mechanically IS, and why almost none of it is
+// visible from the schema:
+//
+// - The cold path: namespace launcher RBAC and a per-pod scoped grant, native
+//   GPU allocation behind a finalizer, the scratch disk (a PVC named
+//   `<sandbox>-scratch`, ReadWriteOnce, ALWAYS Block, owner-referenced, gated on
+//   Bound), and a registry resolve. Then, all owned by the sandbox: a runtime
+//   intent ConfigMap, a Pod named exactly `<sandbox>`, and a NetworkPolicy when
+//   `network.mode` is not `none`. NO Service and NO Secret are ever created.
+// - The first observable state is an EMPTY `status.phase`, not `Pending`. That
+//   phase is in the enum, in the metrics labels and in a test, and is written by
+//   no controller (correction 3 owed to SPEC-0008).
+// - **Nothing self-heals.** TERMINAL, and needing a delete-and-recreate: an
+//   invalid pull secret, an image or model resolve failure, a non-zero
+//   materialize exit, a `timeout` breach, a Failed pod. PARKS, forever, as an
+//   empty phase with one False condition: a GPU profile that is missing, out of
+//   capacity or on an unsupported tier (30-second requeue), and a scratch PVC
+//   that is missing or not Bound (3-second requeue). SPEC-0013's "create early,
+//   it heals" sentence must not be borrowed here.
+// - The whole spec except `ttl` is immutable, by a webhook that ships disabled,
+//   so with the webhook off an edit is accepted and does nothing at all: the
+//   launch is built only when the launcher pod is missing.
+// - `spec.scratchDisk: {}` makes the controller dereference a nil pointer. It is
+//   made UNBUILDABLE by the three-way control below rather than validated (S7).
+// - `env[].valueFrom` is schema-complete and behaviourally IGNORED: the merge
+//   takes the literal value only, because a microVM has no downward-API or
+//   Secret path, so a `secretKeyRef` variable reaches the guest EMPTY.
+// - `scratchDisk.blank.volumeMode` is a no-op on three legs: enum-allowed,
+//   webhook-rejected and controller-hardcoded to `Block`.
+//
+// **The checkout.** Setting `spec.poolRef.name` at create time is the ENTIRE
+// client-side protocol: no claim field, no lease, no annotation and no gateway
+// RPC. A warm slot is a Pod, not a custom resource; the claim is a label flip
+// plus a re-parented ownerRef; a miss is never a failure (the sandbox cold-boots
+// instead); and NOTHING upstream checks that a claimant's `image`, `cpu`,
+// `memory` and `rootfsMode` match the pool's, although four schema descriptions
+// say they must - a mismatched image silently runs the workload inside the
+// pool's rootfs. That is why the shape is DERIVED from the picked pool here
+// rather than asked for again (S3).
+// ===========================================================================
+
+/** The verb, on the Sandboxes page's create control, on the OK button and in the failures. */
+export const createSandboxTitle = "Create Sandbox";
+
+/** What the blank branch's own PVC is named after the sandbox: `<name>-scratch`. */
+export const scratchClaimSuffix = "-scratch";
+
+/**
+ * The longest a sandbox's name may be on the blank-scratch branch.
+ *
+ * The claim the controller creates is `<name>-scratch`, and a PVC name is a
+ * DNS-1123 subdomain capped at 253 like every other object name - so a sandbox
+ * named past this budget is ADMITTED and then waits on Binding forever, with
+ * nothing on it saying that the claim it is waiting for could never be created.
+ */
+export const maxSandboxNameLengthWithScratchClaim = maxObjectNameLength - scratchClaimSuffix.length;
+
+/** The tiers `gpuResourceClaim.tier` accepts, in the order the control offers them. */
+export const sandboxGpuTiers: string[] = ["pcie", "hgx-shared", "hgx-full"];
+
+/** `gpuResourceClaim.tier`, which the API server stamps and this form never re-sends. */
+export const defaultSandboxGpuTier = "pcie";
+
+/** What an empty `gpuResourceClaim.requestName` resolves to, shown rather than sent. */
+export const defaultSandboxGpuRequestName = "gpu";
+
+// ---------------------------------------------------------------------------
+// A2: the two modes.
+// ---------------------------------------------------------------------------
+
+/** Cold microVM, or a slot checked out of a warm pool. */
+export type SandboxSource = "new" | "checkout";
+
+/** The modes the radio group offers, in the order it offers them. */
+export const sandboxSources: SandboxSource[] = ["new", "checkout"];
+
+export const sandboxSourceLabels: Record<SandboxSource, string> = {
+  new: "New microVM",
+  checkout: "Check out a warm slot",
+};
+
+/** What choosing each mode means, in one line apiece, under its label. */
+export function sandboxSourceDescription(source: SandboxSource): string {
+  return source === "checkout"
+    ? "Name a SwiftSandboxPool and this sandbox claims one of its pre-booted slots, which is a sub-second start instead of a materialize and a boot. A miss is not a failure: it cold-boots instead."
+    : "The cold path: the OCI rootfs is materialized on the node, a launcher pod is built and the microVM boots. It is what every sandbox does when no pool is named.";
+}
+
+// ---------------------------------------------------------------------------
+// A3: the workload.
+// ---------------------------------------------------------------------------
+
+/** One element of `command` or `args`, as a repeatable row: one row, one argv element. */
+export interface ArgvRow {
+  id: string;
+  value: string;
+}
+
+/** One literal entry of `spec.env`. `valueFrom` is not offered; see the footer. */
+export interface EnvRow {
+  id: string;
+  name: string;
+  value: string;
+}
+
+// ---------------------------------------------------------------------------
+// A5: the scratch disk, as a three-way control.
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the one secondary block device comes from, or that there is none.
+ *
+ * Three-way rather than two checkboxes, because that is what makes
+ * `spec.scratchDisk: {}` - the nil dereference in the reconcile loop -
+ * UNBUILDABLE rather than validated (S7): `none` omits the block entirely, and
+ * neither of the other two can produce an empty one.
+ */
+export type SandboxScratchSource = "none" | "blank" | "existing";
+
+export const sandboxScratchSources: SandboxScratchSource[] = ["none", "blank", "existing"];
+
+export const sandboxScratchSourceLabels: Record<SandboxScratchSource, string> = {
+  none: "None",
+  blank: "Blank disk",
+  existing: "Existing claim",
+};
+
+/** What each of the three does, in one line apiece. */
+export function sandboxScratchSourceDescription(source: SandboxScratchSource): string {
+  switch (source) {
+    case "blank":
+      return "A new, empty, sized claim OWNED by this sandbox and deleted with it, attached as a raw block device. The workload runs mkfs on it.";
+    case "existing":
+      return "An existing PersistentVolumeClaim of this namespace, attached as a raw block device. It is NOT owned by the sandbox and survives it, which is the case for a cache reused across runs.";
+    default:
+      return "No secondary disk. The sandbox writes into its own RAM-backed tmpfs overlay, which is gone when it ends and is limited by the guest's memory.";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A6: the GPU backend.
+// ---------------------------------------------------------------------------
+
+/** The native allocation, the DRA claim, or neither - and never two of them. */
+export type SandboxGpuBackend = "none" | "profile" | "dra";
+
+export const sandboxGpuBackends: SandboxGpuBackend[] = ["none", "profile", "dra"];
+
+export const sandboxGpuBackendLabels: Record<SandboxGpuBackend, string> = {
+  none: "No GPU",
+  profile: "SwiftGPUProfile (native allocation)",
+  dra: "Resource claim (DRA)",
+};
+
+/** What choosing each backend means, in one line apiece. */
+export function sandboxGpuBackendDescription(backend: SandboxGpuBackend): string {
+  switch (backend) {
+    case "profile":
+      return "The SwiftGPU controller allocates the devices at controller time and stamps status.gpu; the launcher pod is then pinned to the node it chose and gpu-init binds those exact PCI addresses.";
+    case "dra":
+      return "The launcher pod carries a ResourceClaim, the kube-scheduler with a DRA driver allocates the device at schedule time, and the KubeSwift DRA driver injects it.";
+    default:
+      return "No GPU, which is what almost every sandbox wants.";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The form's values.
+// ---------------------------------------------------------------------------
+
+/** Every field the Create Sandbox form holds. */
+export interface SandboxFormValues {
+  namespace: string;
+  name: string;
+  /** A2. `checkout` is the one field, `spec.poolRef.name`, that is the whole protocol. */
+  source: SandboxSource;
+  /** `spec.poolRef.name`, a reference into the sandbox's OWN namespace. */
+  pool: string;
+  /** `spec.command`, one row per argv element, so a quoted argument cannot be split. */
+  command: ArgvRow[];
+  /** `spec.args`, appended to the command (or to the image entrypoint when there is none). */
+  args: ArgvRow[];
+  /** `spec.workingDir`, which overrides the image config's working directory. */
+  workingDir: string;
+  /** `spec.env`, literal values only. */
+  env: EnvRow[];
+  /** The shape slice 1 built, shared field for field with the pool form. */
+  shape: SlotShapeValues;
+  /** A5, as a three-way that cannot produce an empty block. */
+  scratchSource: SandboxScratchSource;
+  scratchSize: string;
+  scratchStorageClass: string;
+  scratchClaim: string;
+  /** A6. The profile itself lives in `shape.gpuProfile`, which is a field of both kinds. */
+  gpuBackend: SandboxGpuBackend;
+  gpuClaimName: string;
+  gpuClaimTemplateName: string;
+  gpuRequestName: string;
+  gpuTier: string;
+  /** A7, both Go durations, both validated positive. */
+  timeout: string;
+  ttl: string;
+}
+
+/**
+ * The form the dialog opens with.
+ *
+ * The namespace comes from the page's own filter when it names exactly one, and
+ * is otherwise empty and required (S2) - never the literal `default`.
+ */
+export function defaultSandboxForm(namespace = ""): SandboxFormValues {
+  return {
+    namespace,
+    name: "",
+    source: "new",
+    pool: "",
+    command: [],
+    args: [],
+    workingDir: "",
+    env: [],
+    shape: defaultSlotShape(),
+    scratchSource: "none",
+    scratchSize: "",
+    scratchStorageClass: "",
+    scratchClaim: "",
+    gpuBackend: "none",
+    gpuClaimName: "",
+    gpuClaimTemplateName: "",
+    gpuRequestName: "",
+    gpuTier: "",
+    timeout: "",
+    ttl: "",
+  };
+}
+
+/** The facts one SwiftSandboxPool option carries, and the four the derivation reads. */
+export interface SandboxPoolFacts {
+  name: string;
+  /** `status.phase`, which may be absent: nothing here ever writes `Pending`. */
+  phase?: string;
+  warm?: number;
+  claimed?: number;
+  /** The four the schema says a claimant must match, and that nothing compares. */
+  image?: string;
+  cpu?: number;
+  memory?: string;
+  rootfsMode?: string;
+}
+
+/** One PersistentVolumeClaim of the namespace, as the existing-claim branch reads it. */
+export type SandboxPvcFacts = GuestPvcFacts;
+
+/** What the reads on open found, for the sandbox form specifically. */
+export interface SandboxFormInputs extends SandboxCreateInputs {
+  /** The namespace's SwiftSandboxPools, for the checkout picker and the derivation. */
+  pools: SandboxPoolFacts[];
+  /** True when that read was refused: the derivation cannot happen and the shape is asked for. */
+  poolsUnverified: boolean;
+  /** When the pool list was read, because the derivation is a SNAPSHOT of a mutable object. */
+  poolsReadAt?: string;
+  /** The namespace's PersistentVolumeClaims, for the existing-claim branch (T3). */
+  pvcs: SandboxPvcFacts[];
+  pvcsUnverified: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// The repeatable rows.
+// ---------------------------------------------------------------------------
+
+/** A fresh, empty argv row. */
+export function newArgvRow(id: string): ArgvRow {
+  return { id, value: "" };
+}
+
+/** A fresh, empty environment row. */
+export function newEnvRow(id: string): EnvRow {
+  return { id, name: "", value: "" };
+}
+
+/** Which of the two argv lists a row helper is acting on. */
+export type ArgvList = "command" | "args";
+
+export function addArgvRow(values: SandboxFormValues, list: ArgvList): SandboxFormValues {
+  return { ...values, [list]: [...values[list], newArgvRow(nextRowId(list, values[list]))] };
+}
+
+export function removeArgvRow(values: SandboxFormValues, list: ArgvList, id: string): SandboxFormValues {
+  return { ...values, [list]: values[list].filter((row) => row.id !== id) };
+}
+
+export function updateArgvRow(values: SandboxFormValues, list: ArgvList, id: string, value: string): SandboxFormValues {
+  return { ...values, [list]: values[list].map((row) => (row.id === id ? { ...row, value } : row)) };
+}
+
+export function addEnvRow(values: SandboxFormValues): SandboxFormValues {
+  return { ...values, env: [...values.env, newEnvRow(nextRowId("env", values.env))] };
+}
+
+export function removeEnvRow(values: SandboxFormValues, id: string): SandboxFormValues {
+  return { ...values, env: values.env.filter((row) => row.id !== id) };
+}
+
+export function updateEnvRow(values: SandboxFormValues, id: string, patch: Partial<EnvRow>): SandboxFormValues {
+  return { ...values, env: values.env.map((row) => (row.id === id ? { ...row, ...patch } : row)) };
+}
+
+/**
+ * Moves the form between the two modes, emptying what the mode it leaves owned.
+ *
+ * The same rule as the Create Guest form's boot source, and for the same reason:
+ * the payload builder branches on the mode, so a value left behind by the mode
+ * the user moved away from would be invisible in the stored object and visible
+ * in the form - which is the one place this form must never be.
+ *
+ * What a checkout clears is the four fields whose control it does not render:
+ * the pool decides the network mode, the kernel profile and the node the slot is
+ * already on (O4), and GPU is inexpressible with a pool at all. The image, the
+ * vCPUs and the memory are NOT cleared, because the degraded branch - a pool
+ * list that could not be read - asks for them again.
+ */
+export function switchSandboxSource(values: SandboxFormValues, source: SandboxSource): SandboxFormValues {
+  if (source === values.source) {
+    return values;
+  }
+
+  if (source === "new") {
+    return { ...values, source, pool: "" };
+  }
+
+  return {
+    ...values,
+    source,
+    shape: { ...values.shape, networkMode: "", kernelProfile: "", nodeSelector: [], gpuProfile: "" },
+    gpuBackend: "none",
+    gpuClaimName: "",
+    gpuClaimTemplateName: "",
+    gpuRequestName: "",
+    gpuTier: "",
+  };
+}
+
+/** Moves the scratch disk to another source, emptying the one it leaves. */
+export function setSandboxScratchSource(values: SandboxFormValues, scratchSource: SandboxScratchSource) {
+  return {
+    ...values,
+    scratchSource,
+    scratchSize: scratchSource === "blank" ? values.scratchSize : "",
+    scratchStorageClass: scratchSource === "blank" ? values.scratchStorageClass : "",
+    scratchClaim: scratchSource === "existing" ? values.scratchClaim : "",
+  };
+}
+
+/**
+ * Moves the GPU section to another backend, emptying the one it leaves.
+ *
+ * `gpuProfileRef` and `gpuResourceClaim` are mutually exclusive in upstream's
+ * own schema description and enforced by a webhook that ships disabled, so the
+ * violation is made inexpressible rather than validated - the same shape as the
+ * scratch disk one section above.
+ */
+export function setSandboxGpuBackend(values: SandboxFormValues, gpuBackend: SandboxGpuBackend): SandboxFormValues {
+  return {
+    ...values,
+    gpuBackend,
+    shape: { ...values.shape, gpuProfile: gpuBackend === "profile" ? values.shape.gpuProfile : "" },
+    gpuClaimName: gpuBackend === "dra" ? values.gpuClaimName : "",
+    gpuClaimTemplateName: gpuBackend === "dra" ? values.gpuClaimTemplateName : "",
+    gpuRequestName: gpuBackend === "dra" ? values.gpuRequestName : "",
+    gpuTier: gpuBackend === "dra" ? values.gpuTier : "",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// A1: identity.
+// ---------------------------------------------------------------------------
+
+/** What an empty namespace is refused with. */
+export const sandboxNamespaceRequiredMessage =
+  "A namespace is required: the sandbox, its launcher Pod, its scratch claim, the Secrets it names, the kernel and " +
+  "GPU profiles it points at and the pool it can check a slot out of all live in one, and every one of those " +
+  "references is namespace-local.";
+
+/** What a name past the plain budget is refused with. */
+export function sandboxNameTooLongMessage(length: number): string {
+  return (
+    `A sandbox name is at most ${maxObjectNameLength} characters; this one is ${length}. The name becomes a Pod ` +
+    "name exactly - the launcher Pod is named after the sandbox and after nothing else - and a Pod name is a " +
+    `DNS-1123 subdomain capped at ${maxObjectNameLength}.`
+  );
+}
+
+/** What a name past the blank-scratch budget is refused with, with the arithmetic. */
+export function sandboxNameTooLongForScratchMessage(length: number): string {
+  return (
+    `A sandbox with a blank scratch disk is named at most ${maxSandboxNameLengthWithScratchClaim} characters; this ` +
+    `one is ${length}. The claim the controller creates is <name>${scratchClaimSuffix}, so the budget is ` +
+    `${maxObjectNameLength} minus the ${scratchClaimSuffix.length} of "${scratchClaimSuffix}". Nothing upstream ` +
+    "checks it: the sandbox is admitted, the claim can never be created, and it waits on Binding forever with an " +
+    "empty phase."
+  );
+}
+
+/** What a name that is not a DNS-1123 subdomain is refused with. */
+export const sandboxNamePatternMessage =
+  "A sandbox name is lowercase letters, digits, '-' and '.', starting and ending with a letter or a digit. It " +
+  "becomes the launcher Pod's name exactly, so what a Pod name accepts is what this accepts.";
+
+/** Why a typed sandbox name would be refused, or `undefined` when it is legal. */
+export function sandboxNameError(name: string, scratchSource: SandboxScratchSource = "none"): string | undefined {
+  const trimmed = name.trim();
+
+  if (!trimmed) {
+    return "A name is required: it is what the launcher Pod, the runtime-intent ConfigMap and the NetworkPolicy are all named after, and what the scratch claim is the stem of.";
+  }
+
+  if (scratchSource === "blank" && trimmed.length > maxSandboxNameLengthWithScratchClaim) {
+    return sandboxNameTooLongForScratchMessage(trimmed.length);
+  }
+
+  if (trimmed.length > maxObjectNameLength) {
+    return sandboxNameTooLongMessage(trimmed.length);
+  }
+
+  if (!dnsSubdomainPattern.test(trimmed)) {
+    return sandboxNamePatternMessage;
+  }
+
+  return undefined;
+}
+
+/**
+ * The store collision warning: it warns, and it never blocks (S1, W12).
+ *
+ * A refused read makes the name UNVERIFIABLE rather than free, which is
+ * SPEC-0013's `existingNamesUnverified` rule in a third place.
+ */
+export function sandboxNameWarning(inputs: SandboxFormInputs, values: SandboxFormValues): string | undefined {
+  const name = values.name.trim();
+  const namespace = values.namespace.trim();
+
+  if (!name) {
+    return undefined;
+  }
+
+  if (inputs.existingNames.includes(name)) {
+    return `A SwiftSandbox named ${name} already exists in ${namespace}. The create will be refused, and this form stays open when it is.`;
+  }
+
+  if (inputs.existingNamesUnverified) {
+    return (
+      `The SwiftSandboxes of ${namespace || "this namespace"} could not be listed from here, so whether this name ` +
+      "is already taken is unverified rather than answered. The API server answers it on submit."
+    );
+  }
+
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// A2: the checkout, the pool picker and the derivation (S3, S4, S5).
+// ---------------------------------------------------------------------------
+
+/** One option of the pool picker, with phase, warm and claimed on its label (S4). */
+export interface SandboxPoolChoice {
+  name: string;
+  label: string;
+  facts: SandboxPoolFacts;
+}
+
+/**
+ * What one pool's option says beyond its name.
+ *
+ * A pool with no phase at all is the normal first state of this kind rather
+ * than a fault - a reconcile that errors before the status update writes none,
+ * and nothing ever writes `Pending` - so an absent phase reads as "no phase
+ * yet" and not as a missing value.
+ */
+export function sandboxPoolSummary(pool: SandboxPoolFacts): string {
+  const parts = [pool.phase ? pool.phase : "no phase yet"];
+
+  parts.push(`${pool.warm ?? 0} warm`);
+  parts.push(`${pool.claimed ?? 0} claimed`);
+
+  return parts.join(", ");
+}
+
+/**
+ * Every SwiftSandboxPool of the sandbox's OWN namespace, and none is disabled.
+ *
+ * Upstream's picker is cluster-wide while `poolRef` is a namespace-local
+ * reference, and it shows neither the phase nor the counts its own gateway
+ * already returns. Nothing here is disabled either: a cold or empty pool is a
+ * slower boot, never an error, and blocking the checkout would make a miss into
+ * a failure that upstream does not have.
+ */
+export function sandboxPoolChoices(inputs: SandboxFormInputs): SandboxPoolChoice[] {
+  return inputs.pools.map((pool) => ({
+    name: pool.name,
+    label: `${pool.name} - ${sandboxPoolSummary(pool)}`,
+    facts: pool,
+  }));
+}
+
+/** The pool the form is pointing at, when the read on open returned it. */
+export function pickedSandboxPool(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxPoolFacts | undefined {
+  const name = values.pool.trim();
+
+  return name ? inputs.pools.find((pool) => pool.name === name) : undefined;
+}
+
+/** Where the four "must match" fields came from, and what they are. */
+export interface SandboxDerivedShape {
+  /** `pool` when they were read from the picked pool, `form` when they are asked for. */
+  source: "pool" | "form";
+  image: string;
+  cpu: string;
+  memory: string;
+  rootfsMode: string;
+  /** When the pool list was read, because a pool has no immutability at all. */
+  readAt?: string;
+}
+
+/**
+ * The claimant's shape: read from the picked pool where that is possible, and
+ * asked for where it is not (S3, and the T3 degradation of it).
+ *
+ * Four schema descriptions and the warm-pool documentation say a claimant "must
+ * match" the pool's `image`, `cpu`, `memory` and `rootfsMode`. No webhook - the
+ * pool has none at all - and no controller compares them, so a mismatched image
+ * silently runs the workload inside the pool image's rootfs. Deriving the four
+ * makes the mismatch INEXPRESSIBLE, which is stronger than validating it, and an
+ * operator who wants a different shape wants the other radio option.
+ *
+ * The derivation is a snapshot: nothing on a pool is immutable, so the values
+ * are what the pool held when the list was read, which is why `readAt` travels
+ * with them and the summary says it out loud.
+ */
+export function sandboxDerivedShape(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxDerivedShape {
+  const pool = values.source === "checkout" ? pickedSandboxPool(inputs, values) : undefined;
+
+  if (!pool) {
+    return {
+      source: "form",
+      image: values.shape.image.trim(),
+      cpu: values.shape.cpu.trim() || defaultSlotCpu,
+      memory: values.shape.memory.trim() || defaultSlotMemory,
+      rootfsMode: values.shape.rootfsMode.trim() || defaultRootfsMode,
+    };
+  }
+
+  return {
+    source: "pool",
+    image: pool.image ?? "",
+    cpu: pool.cpu === undefined ? defaultSlotCpu : String(pool.cpu),
+    memory: pool.memory ?? defaultSlotMemory,
+    rootfsMode: pool.rootfsMode ?? defaultRootfsMode,
+    readAt: inputs.poolsReadAt,
+  };
+}
+
+/** Whether the four fields are controls of this form rather than facts read from a pool. */
+export function sandboxShapeIsAsked(inputs: SandboxFormInputs, values: SandboxFormValues): boolean {
+  return sandboxDerivedShape(inputs, values).source === "form";
+}
+
+/** What an empty pool name is refused with, on the branch that needs one. */
+export const sandboxPoolRequiredMessage =
+  "Name the SwiftSandboxPool this sandbox checks a slot out of. spec.poolRef.name defaults to the empty string in " +
+  "the schema, so an empty reference is admitted and then looked up and reported not-found on every reconcile - it " +
+  "is not the same thing as no pool at all.";
+
+/**
+ * What the degraded branch costs, said where the four controls come back.
+ *
+ * A read nobody was allowed to make is not evidence that the shape matches, and
+ * it is not evidence that it does not: the create is not blocked on it, and the
+ * form says what nothing on the cluster will ever say.
+ */
+export function sandboxShapeUnverifiedWarning(name: string): string {
+  return (
+    `The SwiftSandboxPools of this namespace could not be listed from here, so ${name} could not be read and its ` +
+    "image, vCPUs, memory and root filesystem mode had to be asked for instead. Four schema descriptions say a " +
+    "claimant must match the pool on exactly those four, and NOTHING compares them - not a webhook, because the " +
+    "pool has none, and not the controller: a mismatched image silently runs this workload inside the pool image's " +
+    "rootfs."
+  );
+}
+
+/** What a pool the read really answered about, and did not hold, is warned with. */
+export function sandboxPoolMissingWarning(name: string, namespace: string): string {
+  return (
+    `No SwiftSandboxPool named ${name} is in ${namespace || "this namespace"}. Nothing refuses the sandbox for it: ` +
+    "the checkout simply misses and the cold path runs, which is a slower start rather than a failure. The four " +
+    "fields it would have matched had to be asked for instead."
+  );
+}
+
+/**
+ * The command-less checkout warning (S5): it never blocks.
+ *
+ * Only the cold path resolves the image's own entrypoint, so a pooled sandbox
+ * with no command ALWAYS cold-falls-back, whatever the pool is holding. Upstream
+ * warns nowhere at all.
+ */
+export const commandlessCheckoutWarning =
+  "This checkout names no command, so it will always cold-fall-back: only the cold path resolves the image's own " +
+  "entrypoint, and the workload injected into a warm slot is the command and args of this sandbox. The pool's warm " +
+  "slots are not used, the sub-second start is lost, and nothing reports it as anything other than a normal boot. " +
+  "Adding one argv row is what makes the checkout a checkout.";
+
+/**
+ * Why the GPU section is not offered in checkout mode.
+ *
+ * Two webhook-only rules make `poolRef` exclusive with either GPU backend, and
+ * with the webhook off the checkout runs FIRST and the GPU request is silently
+ * ignored - so a sandbox that asked for a GPU and named a pool gets a slot with
+ * no GPU and no error anywhere. Making the pair inexpressible is what stops that
+ * (W12 option dropping, with the fact in the control's place).
+ */
+export const sandboxGpuDroppedInCheckoutReason =
+  "A GPU sandbox always boots cold: a warm pool cannot hold a scarce GPU idle, so upstream declares poolRef " +
+  "mutually exclusive with BOTH GPU backends. Both rules live only in the validating webhook, which ships disabled, " +
+  "and with it off the checkout runs first and the GPU request is silently ignored - a sandbox with no GPU, no " +
+  "error and nothing to read. Choose New microVM to ask for a GPU.";
+
+// ---------------------------------------------------------------------------
+// A7: the two expiries, as Go durations.
+// ---------------------------------------------------------------------------
+
+/** The unit suffixes Go's own duration parser accepts, longest first so `ms` beats `m`. */
+const goDurationUnits: [string, number][] = [
+  ["ns", 1e-6],
+  ["us", 1e-3],
+  ["µs", 1e-3],
+  ["μs", 1e-3],
+  ["ms", 1],
+  ["s", 1000],
+  ["m", 60_000],
+  ["h", 3_600_000],
+];
+
+const goDurationTokenPattern = /(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|μs|ms|s|m|h)/gy;
+
+/**
+ * A Go duration as milliseconds, or `undefined` when it is not one at all.
+ *
+ * Written from Go's own grammar - a sign, then one or more decimal-and-unit
+ * pairs, with a bare `0` as the one value that needs no unit - because neither
+ * `spec.timeout` nor `spec.ttl` carries a schema pattern or a format, and the
+ * rules refusing a non-positive one are webhook-only. A negative value is
+ * returned as a negative number rather than rejected here: the sign is what the
+ * two refusals below are about, and the consequence of each differs.
+ */
+export function parseGoDurationMs(value: string): number | undefined {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const sign = trimmed.startsWith("-") ? -1 : 1;
+  const body = trimmed.replace(/^[+-]/, "");
+
+  if (!body) {
+    return undefined;
+  }
+
+  // Go accepts a bare zero, with or without a unit, and nothing else unitless.
+  if (/^0+(\.0*)?$/.test(body)) {
+    return 0;
+  }
+
+  goDurationTokenPattern.lastIndex = 0;
+
+  let total = 0;
+  let consumed = 0;
+  let match = goDurationTokenPattern.exec(body);
+
+  while (match) {
+    const magnitude = Number(match[1]);
+    const unit = goDurationUnits.find(([suffix]) => suffix === match?.[2]);
+
+    if (!Number.isFinite(magnitude) || !unit) {
+      return undefined;
+    }
+
+    total += magnitude * unit[1];
+    consumed = goDurationTokenPattern.lastIndex;
+    match = goDurationTokenPattern.exec(body);
+  }
+
+  return consumed === body.length && consumed > 0 ? sign * total : undefined;
+}
+
+/** The grammar, as the hint under both duration fields states it. */
+export const goDurationGrammar =
+  "A Go duration: a number and a unit, or several of them run together - 30m, 90s, 1h30m, 500ms. The units are ns, " +
+  "us, ms, s, m and h; there is no day unit, so a day is 24h.";
+
+/** What a value that is not a Go duration at all is refused with. */
+export const goDurationFormatMessage =
+  "This is not a Go duration. Neither field carries a schema pattern or a format, so the API server stores whatever " +
+  "is typed and the controller's own parse is what fails - on every reconcile, with the failure on the controller " +
+  "rather than on this object.";
+
+/** What a non-positive `timeout` really does, which is the reason it is refused. */
+export const timeoutNotPositiveMessage =
+  "A run cap has to be positive. Zero or less is already past startedAt the moment the sandbox starts, so the " +
+  "controller force-terminates it on its first five-second poll and marks it Failed with a deadline reason: the " +
+  "workload never runs. Leave the field empty for no cap at all.";
+
+/** What a non-positive `ttl` really does, which is sharper still. */
+export const ttlNotPositiveMessage =
+  "A retention has to be positive. Zero or less has already elapsed the moment the sandbox turns terminal, so the " +
+  "controller DELETES the SwiftSandbox object itself on its first terminal reconcile - the exit code, the message " +
+  "and the conditions are gone before anyone reads them. Leave the field empty to keep it until it is deleted by " +
+  "hand.";
+
+/** Why a typed `timeout` would be refused, or `undefined` when it is legal. */
+export function sandboxTimeoutError(timeout: string): string | undefined {
+  const value = timeout.trim();
+
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = parseGoDurationMs(value);
+
+  if (parsed === undefined) {
+    return goDurationFormatMessage;
+  }
+
+  return parsed > 0 ? undefined : timeoutNotPositiveMessage;
+}
+
+/** Why a typed `ttl` would be refused, or `undefined` when it is legal. */
+export function sandboxTtlError(ttl: string): string | undefined {
+  const value = ttl.trim();
+
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = parseGoDurationMs(value);
+
+  if (parsed === undefined) {
+    return goDurationFormatMessage;
+  }
+
+  return parsed > 0 ? undefined : ttlNotPositiveMessage;
+}
+
+// ---------------------------------------------------------------------------
+// A3: the workload's own rules.
+// ---------------------------------------------------------------------------
+
+/** The fields one argv row can carry a message on. */
+export type ArgvMessages = { value?: string };
+
+/**
+ * Everything that would make an argv row wrong.
+ *
+ * An empty row is REFUSED rather than dropped, which is the opposite of the node
+ * selector's rule one file section above, and the difference is position: a map
+ * loses nothing when an unfilled row is dropped, while an argv array shifts
+ * every element after it. A row the operator has not filled in is therefore
+ * named and refused, and removing it is one click.
+ */
+export function argvErrors(rows: readonly ArgvRow[], list: ArgvList): ArgvMessages[] {
+  return rows.map((row) => {
+    if (row.value.trim()) {
+      return {};
+    }
+
+    return {
+      value:
+        `An empty ${list === "command" ? "command" : "argument"} row would be an empty argv element, which shifts ` +
+        "every element after it. Type the argument or remove the row - one row is one argument, which is what makes " +
+        "a quoted argument impossible to split by accident.",
+    };
+  });
+}
+
+/** The fields one environment row can carry a message on. */
+export type EnvField = "name" | "value";
+
+export type EnvMessages = Partial<Record<EnvField, string>>;
+
+export const envFieldLabels: Record<EnvField, string> = { name: "Name", value: "Value" };
+
+const envFieldOrder: EnvField[] = ["name", "value"];
+
+/**
+ * Everything that would make an environment row wrong.
+ *
+ * `name` is the schema's own required field. The two refusals beyond it are
+ * about the merge rather than about the schema: the variables are merged over
+ * the image config's own environment as `NAME=value` lines, so a name carrying
+ * whitespace or an `=` corrupts the line it lands in, and two rows with one name
+ * silently keep one of the two.
+ */
+export function envErrors(values: SandboxFormValues): EnvMessages[] {
+  const names = values.env.map((row) => row.name.trim());
+
+  return values.env.map((row, index) => {
+    const messages: EnvMessages = {};
+    const name = row.name.trim();
+
+    if (!name) {
+      messages.name =
+        "An environment variable needs a name: the schema requires it, and a nameless entry is one the API server " +
+        "refuses outright.";
+    } else if (/[\s=]/.test(name)) {
+      messages.name =
+        "An environment variable name carries no whitespace and no '='. The variables are merged over the image " +
+        "config's own environment as NAME=value lines, so either character corrupts the line it lands in.";
+    } else if (names.some((other, otherIndex) => otherIndex < index && other === name)) {
+      messages.name = `Another row already sets ${name}. The merge keeps one of the two and says nothing about the other.`;
+    }
+
+    return messages;
+  });
+}
+
+/** The same merge, said about one microVM rather than about a pool of slots. */
+export const sandboxNodeSelectorMergeFact =
+  `Whatever is set here is MERGED with the required ${kernelNodeLabel}: ${kernelNodeLabelValue} label, which the ` +
+  "controller adds itself: a sandbox only ever runs on a kernel node, and this narrows that set rather than " +
+  "replacing it.";
+
+/** What an absent command means, which is what the schema says and not a missing value. */
+export const imageEntrypointFact =
+  "No command is given, so the image config's own Entrypoint and Cmd run. Any argument rows below are appended to " +
+  "it, exactly as they would be to a command.";
+
+// ---------------------------------------------------------------------------
+// A5: the scratch disk's rules.
+// ---------------------------------------------------------------------------
+
+/** The fields the scratch-disk section can carry a message on. */
+export type SandboxScratchField = "size" | "storageClass" | "claim";
+
+export type SandboxScratchMessages = Partial<Record<SandboxScratchField, string>>;
+
+export const sandboxScratchFieldLabels: Record<SandboxScratchField, string> = {
+  size: "Scratch disk size",
+  storageClass: "Scratch storage class",
+  claim: "Scratch claim",
+};
+
+const sandboxScratchFieldOrder: SandboxScratchField[] = ["size", "storageClass", "claim"];
+
+/** What `volumeMode` is not offered with: the fact that stands in the control's place. */
+export const scratchVolumeModeFact =
+  "The disk is ALWAYS attached as a raw Block device, so no volume mode is asked for. The field is a no-op on " +
+  "three legs at once: the enum allows Filesystem, the webhook rejects it, and the controller hardcodes Block " +
+  "whatever the object says.";
+
+/** Everything that would make the scratch-disk section refuse the create. */
+export function sandboxScratchErrors(values: SandboxFormValues): SandboxScratchMessages {
+  const messages: SandboxScratchMessages = {};
+
+  if (values.scratchSource === "blank") {
+    const size = values.scratchSize.trim();
+
+    if (!size) {
+      messages.size =
+        "A blank scratch disk needs a size, for example 100Gi. It is the one field the schema requires inside the " +
+        "block, and the claim cannot be created without it.";
+    } else {
+      const sizeError = quantityError(size);
+
+      if (sizeError) {
+        messages.size = sizeError;
+      }
+    }
+
+    const storageClass = values.scratchStorageClass.trim();
+
+    if (storageClass && !dnsSubdomainPattern.test(storageClass)) {
+      messages.storageClass =
+        "A StorageClass name is lowercase letters, digits, '-' and '.', starting and ending with a letter or a " +
+        "digit. Empty uses the cluster's default class.";
+    }
+  }
+
+  if (values.scratchSource === "existing" && !values.scratchClaim.trim()) {
+    messages.claim =
+      "Name the PersistentVolumeClaim to attach. scratchDisk.pvcRef.name defaults to the empty string in the " +
+      "schema, so an empty reference is admitted and then looked up and reported not-found forever, with the " +
+      "sandbox parked at an empty phase - it is not the same thing as no scratch disk.";
+  }
+
+  return messages;
+}
+
+/** The claim the existing branch is pointing at, when the read on open returned it. */
+export function pickedScratchClaim(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxPvcFacts | undefined {
+  const name = values.scratchClaim.trim();
+
+  return name ? inputs.pvcs.find((pvc) => pvc.name === name) : undefined;
+}
+
+/** The volume mode a scratch claim has to have, which the description states and nothing enforces. */
+export const scratchClaimVolumeMode = "Block";
+
+/**
+ * Everything worth saying about a scratch disk that would still be accepted.
+ *
+ * The `Filesystem` rule WARNS rather than refusing, and that is deliberate: it
+ * is a schema description enforced nowhere at all - not by a CEL rule, not by
+ * the webhook's own list - so refusing it here would be this form inventing an
+ * admission the cluster does not have. The unreadable-claim branch warns for the
+ * SPEC-0013 reason instead: a read that was refused is not evidence of anything.
+ */
+export function sandboxScratchWarnings(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxScratchMessages {
+  const messages: SandboxScratchMessages = {};
+
+  if (values.scratchSource !== "existing") {
+    return messages;
+  }
+
+  const name = values.scratchClaim.trim();
+
+  if (!name) {
+    return messages;
+  }
+
+  if (inputs.pvcsUnverified) {
+    messages.claim =
+      "The PersistentVolumeClaims of this namespace could not be listed from here, so this name is unverified and " +
+      `so is its volume mode. A scratch claim has to be ${scratchClaimVolumeMode}, and one that is missing or not ` +
+      "Bound parks the sandbox at an empty phase with one False condition, requeued every three seconds, forever.";
+
+    return messages;
+  }
+
+  const claim = pickedScratchClaim(inputs, values);
+
+  if (!claim) {
+    messages.claim =
+      `No PersistentVolumeClaim named ${name} is in this namespace. Nothing refuses the sandbox for it: it is ` +
+      "admitted and then parks at an empty phase with one False condition, requeued every three seconds, until the " +
+      "claim exists and is Bound. It never turns terminal on its own.";
+
+    return messages;
+  }
+
+  if (claim.volumeMode !== undefined && claim.volumeMode !== scratchClaimVolumeMode) {
+    messages.claim =
+      `The claim ${claim.name} is ${claim.volumeMode}, and a scratch disk is attached as a RAW block device - a ` +
+      "Filesystem claim is a directory, and there is no device to hand to the guest. Nothing refuses it: the rule " +
+      "is a schema description with no CEL and no webhook behind it, so the create is not blocked on it.";
+
+    return messages;
+  }
+
+  if (claim.phase !== undefined && claim.phase !== "Bound") {
+    messages.claim =
+      `The claim ${claim.name} is ${claim.phase} rather than Bound. The sandbox is admitted and then parks at an ` +
+      "empty phase with one False condition, requeued every three seconds, until it binds - and never turns " +
+      "terminal on its own if it does not.";
+  }
+
+  return messages;
+}
+
+// ---------------------------------------------------------------------------
+// A6: the GPU's own rules.
+// ---------------------------------------------------------------------------
+
+/** Whether the GPU section is offered at all, which a checkout decides. */
+export function sandboxGpuApplies(values: SandboxFormValues): boolean {
+  return values.source !== "checkout";
+}
+
+/** The fields the GPU section can carry a message on. */
+export type SandboxGpuField = "profile" | "claimName" | "claimTemplateName" | "requestName";
+
+export type SandboxGpuMessages = Partial<Record<SandboxGpuField, string>>;
+
+export const sandboxGpuFieldLabels: Record<SandboxGpuField, string> = {
+  profile: "GPU profile",
+  claimName: "Resource claim",
+  claimTemplateName: "Resource claim template",
+  requestName: "Request name",
+};
+
+const sandboxGpuFieldOrder: SandboxGpuField[] = ["profile", "claimName", "claimTemplateName", "requestName"];
+
+/** A DNS-1123 label, which is what one device request inside a claim is named as. */
+const dnsLabelPattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+
+/**
+ * Everything that would make the GPU section wrong.
+ *
+ * Empty whenever the section is not offered, because a section that is not
+ * rendered cannot block a submit: the reason it was dropped stands in its place,
+ * and the payload emits nothing for it either.
+ *
+ * There is no HGX refusal here, and its absence is the point: an unsupported
+ * tier PARKS a sandbox - an empty phase with one False condition, requeued every
+ * thirty seconds, forever - where it makes a POOL error-backoff with no status
+ * at all. The parks-forever expectation is on the section's own header line
+ * instead, which is where a fact that is not a refusal belongs.
+ */
+export function sandboxGpuErrors(values: SandboxFormValues): SandboxGpuMessages {
+  const messages: SandboxGpuMessages = {};
+
+  if (!sandboxGpuApplies(values) || values.gpuBackend === "none") {
+    return messages;
+  }
+
+  if (values.gpuBackend === "profile") {
+    if (!values.shape.gpuProfile.trim()) {
+      messages.profile =
+        "Name the SwiftGPUProfile this sandbox asks for: it is what says how many GPUs, of which model and in " +
+        "which tier. gpuProfileRef.name defaults to the empty string in the schema, so an empty reference is " +
+        "admitted and then parks the sandbox forever on a profile nobody named.";
+    }
+
+    return messages;
+  }
+
+  const claimName = values.gpuClaimName.trim();
+  const templateName = values.gpuClaimTemplateName.trim();
+
+  if (claimName && templateName) {
+    messages.claimName =
+      "A DRA claim is either a pre-created ResourceClaim or a ResourceClaimTemplate the scheduler mints one from, " +
+      "never both: upstream declares the two mutually exclusive in the schema's own descriptions and enforces it " +
+      "in a webhook that ships disabled.";
+    messages.claimTemplateName = messages.claimName;
+  } else if (!claimName && !templateName) {
+    messages.claimName =
+      "Name a ResourceClaim to share, or a ResourceClaimTemplate for a claim of this sandbox's own. A DRA backend " +
+      "with neither allocates nothing at all.";
+  }
+
+  const requestName = values.gpuRequestName.trim();
+
+  if (requestName && !dnsLabelPattern.test(requestName)) {
+    messages.requestName =
+      "A request name is lowercase letters, digits and '-', starting and ending with a letter or a digit: it names " +
+      `one device request inside the claim, and empty means ${defaultSandboxGpuRequestName}.`;
+  }
+
+  return messages;
+}
+
+/** Everything worth saying about the GPU section that would still be accepted. */
+export function sandboxGpuWarnings(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxGpuMessages {
+  const messages: SandboxGpuMessages = {};
+
+  if (!sandboxGpuApplies(values) || values.gpuBackend !== "profile") {
+    return messages;
+  }
+
+  const shapeWarnings = slotShapeWarnings(inputs, values.shape, sandboxSlotWarningWording);
+
+  if (shapeWarnings.gpuProfile) {
+    messages.profile = shapeWarnings.gpuProfile;
+  }
+
+  return messages;
+}
+
+/** What a GPU costs at create time on this kind: a park, and not a failure. */
+export const sandboxGpuParksFact =
+  "A GPU is allocated before the launcher pod exists, so a profile that is missing, out of capacity or on a tier " +
+  "this cluster cannot serve PARKS the sandbox: an empty phase with one False condition, requeued every thirty " +
+  "seconds, indefinitely. It never turns terminal on its own, and nothing deletes it either.";
+
+/** What choosing a GPU silently does to the kernel, which the schema says and no UI shows. */
+export const sandboxGpuKernelFact =
+  "Asking for a GPU switches the sandbox to the module-capable gpu-sandbox kernel unless a kernel profile is named " +
+  "above, in which case the named one is used and has to carry the NVIDIA modules itself.";
+
+// ---------------------------------------------------------------------------
+// Errors, warnings and the submit verdict.
+// ---------------------------------------------------------------------------
+
+/**
+ * The sandbox's own words for the shared reference warnings.
+ *
+ * Same conditions, different consequence: a name that resolves to nothing keeps
+ * a pool from warming a single slot, and keeps THIS sandbox from ever booting.
+ */
+export const sandboxSlotWarningWording: SlotShapeWarningWording = {
+  memoryLabel: "guest memory",
+  kernelUnverified:
+    "The SwiftKernels of this namespace could not be listed from here, so this name is unverified. A kernel " +
+    "profile that does not exist is not refused at admission - the sandbox is admitted and its launcher never " +
+    "boots.",
+  kernelMissing: (name) =>
+    `No SwiftKernel named ${name} is in this namespace. Nothing refuses the sandbox for it: it is admitted and the ` +
+    "guest never boots, which is reported as a boot failure rather than as a missing reference.",
+  gpuProfileMissing: (name) =>
+    `No SwiftGPUProfile named ${name} is in this namespace. A sandbox whose profile cannot be resolved PARKS - an ` +
+    "empty phase with one False condition, requeued every thirty seconds - indefinitely, and never turns terminal " +
+    "on its own.",
+  gpuProfileUnverified: (name) =>
+    `The SwiftGPUProfiles of this namespace could not be listed from here, so ${name} is unverified: how many GPUs ` +
+    "it asks for, and in which tier, are unknown from here. A profile that cannot be resolved parks the sandbox " +
+    "forever rather than failing it. The create is not blocked on a read that failed.",
+  secretUnverified: (what) =>
+    "The Secrets of this namespace could not be listed from here, so this name is unverified. A Secret that does " +
+    `not exist is not refused at admission - ${what} fails on the launcher instead.`,
+  secretMissing: (name, what) =>
+    `No Secret named ${name} is in this namespace. Nothing refuses the sandbox for it: ${what} fails, which is a ` +
+    "TERMINAL failure - the sandbox goes Failed and never boots, and there is nothing to do but delete it and " +
+    "create it again.",
+};
+
+/** The shape errors that apply to a sandbox, which is fewer than a pool's on a checkout. */
+export function sandboxShapeErrors(inputs: SandboxFormInputs, values: SandboxFormValues): SlotShapeMessages {
+  const errors: SlotShapeMessages = {};
+
+  // Asked for on the cold path, and on the checkout branch where the pool could
+  // not be read; read from the pool otherwise, where there is no control to
+  // carry a message at all.
+  if (sandboxShapeIsAsked(inputs, values)) {
+    const image = slotImageError(values.shape.image, sandboxSlotRefusalWording);
+
+    if (image) {
+      errors.image = image;
+    }
+
+    const cpu = slotCpuError(values.shape.cpu, sandboxSlotRefusalWording);
+
+    if (cpu) {
+      errors.cpu = cpu;
+    }
+
+    const memory = slotMemoryError(values.shape.memory);
+
+    if (memory) {
+      errors.memory = memory;
+    }
+  }
+
+  const mountPath = modelMountPathError(values.shape.modelMountPath, sandboxSlotRefusalWording);
+
+  // Option dropping (W12): the control does not exist until a model image is
+  // named, so the refusal exists only on the branch where it can matter.
+  if (mountPath && values.shape.modelImageRef.trim()) {
+    errors.modelMountPath = mountPath;
+  }
+
+  return errors;
+}
+
+/** The sandbox's own fields, keyed the way their messages are. */
+export type SandboxOwnField = "namespace" | "name" | "pool" | "workingDir" | "timeout" | "ttl";
+
+export type SandboxOwnMessages = Partial<Record<SandboxOwnField, string>>;
+
+export const sandboxFieldLabels: Record<SandboxOwnField, string> = {
+  namespace: "Namespace",
+  name: "Name",
+  pool: "Pool",
+  workingDir: "Working directory",
+  timeout: "Timeout",
+  ttl: "TTL",
+};
+
+/** Everything that would make the sandbox's own flat fields refuse the create. */
+export function sandboxOwnErrors(values: SandboxFormValues): SandboxOwnMessages {
+  const errors: SandboxOwnMessages = {};
+
+  if (!values.namespace.trim()) {
+    errors.namespace = sandboxNamespaceRequiredMessage;
+  }
+
+  const nameError = sandboxNameError(values.name, values.scratchSource);
+
+  if (nameError) {
+    errors.name = nameError;
+  }
+
+  if (values.source === "checkout" && !values.pool.trim()) {
+    errors.pool = sandboxPoolRequiredMessage;
+  }
+
+  const timeoutError = sandboxTimeoutError(values.timeout);
+
+  if (timeoutError) {
+    errors.timeout = timeoutError;
+  }
+
+  const ttlError = sandboxTtlError(values.ttl);
+
+  if (ttlError) {
+    errors.ttl = ttlError;
+  }
+
+  return errors;
+}
+
+/** Everything worth saying about the sandbox's own fields that would still be accepted. */
+export function sandboxOwnWarnings(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxOwnMessages {
+  const warnings: SandboxOwnMessages = {};
+
+  if (values.source !== "checkout") {
+    return warnings;
+  }
+
+  const name = values.pool.trim();
+
+  if (!name) {
+    return warnings;
+  }
+
+  if (inputs.poolsUnverified) {
+    warnings.pool = sandboxShapeUnverifiedWarning(name);
+  } else if (!pickedSandboxPool(inputs, values)) {
+    warnings.pool = sandboxPoolMissingWarning(name, values.namespace.trim());
+  }
+
+  return warnings;
+}
+
+/** One reason the form cannot be submitted, named the way the sentence names it. */
+export interface SandboxBlockingIssue {
+  label: string;
+  message: string;
+}
+
+/**
+ * Every reason the form cannot be submitted, in the reading order of the form.
+ *
+ * A1, then A2, then the workload's rows, then the shape, then the scratch disk,
+ * then the GPU, then the two expiries, then the model's mount path: a sentence
+ * that pointed at the third environment row while the namespace was still empty
+ * would be pointing past the first thing to fix. Every row-shaped reason names
+ * its row, because a form with three arguments and two variables has several
+ * fields called the same thing.
+ */
+export function sandboxBlockingIssues(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxBlockingIssue[] {
+  const issues: SandboxBlockingIssue[] = [];
+  const own = sandboxOwnErrors(values);
+  const shape = sandboxShapeErrors(inputs, values);
+  const scratch = sandboxScratchErrors(values);
+  const gpu = sandboxGpuErrors(values);
+
+  for (const field of ["namespace", "name", "pool"] as const) {
+    const message = own[field];
+
+    if (message) {
+      issues.push({ label: sandboxFieldLabels[field], message });
+    }
+  }
+
+  for (const list of ["command", "args"] as const) {
+    argvErrors(values[list], list).forEach((messages, index) => {
+      if (messages.value) {
+        issues.push({ label: `${list === "command" ? "Command" : "Argument"} ${index + 1}`, message: messages.value });
+      }
+    });
+  }
+
+  envErrors(values).forEach((messages, index) => {
+    for (const field of envFieldOrder) {
+      const message = messages[field];
+
+      if (message) {
+        issues.push({ label: `Variable ${index + 1} ${envFieldLabels[field].toLowerCase()}`, message });
+      }
+    }
+  });
+
+  for (const field of slotShapeFieldOrder) {
+    const message = shape[field];
+
+    if (message && field !== "modelMountPath") {
+      issues.push({ label: slotShapeFieldLabels[field], message });
+    }
+  }
+
+  nodeSelectorErrors(values.shape, sandboxSlotRefusalWording).forEach((messages, index) => {
+    for (const field of nodeSelectorFieldOrder) {
+      const message = messages[field];
+
+      if (message) {
+        issues.push({ label: `Node selector ${index + 1} ${nodeSelectorFieldLabels[field].toLowerCase()}`, message });
+      }
+    }
+  });
+
+  for (const field of sandboxScratchFieldOrder) {
+    const message = scratch[field];
+
+    if (message) {
+      issues.push({ label: sandboxScratchFieldLabels[field], message });
+    }
+  }
+
+  for (const field of sandboxGpuFieldOrder) {
+    const message = gpu[field];
+
+    if (message) {
+      issues.push({ label: sandboxGpuFieldLabels[field], message });
+    }
+  }
+
+  for (const field of ["timeout", "ttl"] as const) {
+    const message = own[field];
+
+    if (message) {
+      issues.push({ label: sandboxFieldLabels[field], message });
+    }
+  }
+
+  if (shape.modelMountPath) {
+    issues.push({ label: slotShapeFieldLabels.modelMountPath, message: shape.modelMountPath });
+  }
+
+  return issues;
+}
+
+/**
+ * The sentence next to a disabled OK button, or `undefined` when it is enabled.
+ *
+ * W4 on a submit button: a mute grey button is a dead control, so the reason is
+ * next to it as well as at the field it belongs to.
+ */
+export function sandboxSubmitBlockReason(inputs: SandboxFormInputs, values: SandboxFormValues): string | undefined {
+  const [first] = sandboxBlockingIssues(inputs, values);
+
+  return first ? `${first.label}: ${first.message}` : undefined;
+}
+
+/** Whether the collapsed scratch-disk section holds an error, so it opens itself. */
+export function sandboxScratchSectionHasError(values: SandboxFormValues): boolean {
+  return Object.keys(sandboxScratchErrors(values)).length > 0;
+}
+
+/** The same question for the GPU section. */
+export function sandboxGpuSectionHasError(values: SandboxFormValues): boolean {
+  return Object.keys(sandboxGpuErrors(values)).length > 0;
+}
+
+/** The same question for the model section, whose one refusal is a relative mount path. */
+export function sandboxModelSectionHasError(inputs: SandboxFormInputs, values: SandboxFormValues): boolean {
+  return Boolean(sandboxShapeErrors(inputs, values).modelMountPath);
+}
+
+// ---------------------------------------------------------------------------
+// The payload.
+// ---------------------------------------------------------------------------
+
+/**
+ * The sandbox spec this form sends.
+ *
+ * `memory` is optional HERE and required in the model, for the reason the pool's
+ * payload type says: the schema marks it required and defaulted at once, and the
+ * API server applies structural-schema defaults BEFORE it validates `required`.
+ */
+export type SandboxCreateSpec = Omit<SwiftSandboxSpec, "memory"> & { memory?: Quantity };
+
+/** One argv list as the array the CRD declares, or `undefined` when no row carries one. */
+export function argvPayload(rows: readonly ArgvRow[]): string[] | undefined {
+  const values = rows.map((row) => row.value.trim()).filter((value) => value !== "");
+
+  return values.length > 0 ? values : undefined;
+}
+
+/** The environment as the CRD declares it: literal values only, and never an empty name. */
+export function envPayload(values: SandboxFormValues): SwiftSandboxEnvVar[] | undefined {
+  const rows = values.env
+    .filter((row) => row.name.trim() !== "")
+    .map((row) => {
+      const entry: SwiftSandboxEnvVar = { name: row.name.trim() };
+
+      // An empty value is a real environment variable - it is set, and it is
+      // empty - so it is sent as one rather than dropped.
+      if (row.value !== "") {
+        entry.value = row.value;
+      }
+
+      return entry;
+    });
+
+  return rows.length > 0 ? rows : undefined;
+}
+
+/**
+ * The scratch disk, or `undefined`, and never `{}`.
+ *
+ * The empty block is the sharpest webhook-off consequence in this domain - the
+ * controller dereferences a nil pointer on it - and the three-way control is
+ * what makes it unbuildable. This function is the second half of that guarantee:
+ * a branch that carries nothing produces no block at all, so no combination of
+ * values can put an empty object on the wire (S7).
+ */
+export function scratchDiskPayload(values: SandboxFormValues): SwiftSandboxScratchDisk | undefined {
+  if (values.scratchSource === "blank") {
+    const size = values.scratchSize.trim();
+
+    if (!size) {
+      return undefined;
+    }
+
+    const storageClassName = values.scratchStorageClass.trim();
+
+    // `volumeMode` is never sent: it is hardcoded to Block by the controller
+    // whatever the object says, so sending it would be re-sending a value this
+    // form does not own.
+    return { blank: storageClassName ? { size, storageClassName } : { size } };
+  }
+
+  if (values.scratchSource === "existing") {
+    const name = values.scratchClaim.trim();
+
+    return name ? { pvcRef: { name } } : undefined;
+  }
+
+  return undefined;
+}
+
+/**
+ * The GPU block, which is at most one of the two backends and never both.
+ *
+ * The guard is consulted rather than the control, the SPEC-0013 rule: a checkout
+ * turns the whole section off without touching the values it holds, so the
+ * answer has to be "what will be sent" and not "what the radio says".
+ */
+export function sandboxGpuPayload(
+  values: SandboxFormValues,
+): Pick<SandboxCreateSpec, "gpuProfileRef" | "gpuResourceClaim"> {
+  if (!sandboxGpuApplies(values)) {
+    return {};
+  }
+
+  if (values.gpuBackend === "profile") {
+    const profile = values.shape.gpuProfile.trim();
+
+    return profile ? { gpuProfileRef: { name: profile } } : {};
+  }
+
+  if (values.gpuBackend !== "dra") {
+    return {};
+  }
+
+  const claimName = values.gpuClaimName.trim();
+  const templateName = values.gpuClaimTemplateName.trim();
+
+  if (!claimName && !templateName) {
+    return {};
+  }
+
+  const claim: SwiftSandboxGpuResourceClaim = {};
+  const requestName = values.gpuRequestName.trim();
+  const tier = values.gpuTier.trim();
+
+  // Exactly one, which is what upstream declares and what its disabled webhook
+  // enforces. The shared claim wins on a form that somehow holds both, and the
+  // submit is blocked on that state anyway.
+  if (claimName) {
+    claim.resourceClaimName = claimName;
+  } else {
+    claim.resourceClaimTemplateName = templateName;
+  }
+
+  if (requestName) {
+    claim.requestName = requestName;
+  }
+
+  if (tier && tier !== defaultSandboxGpuTier) {
+    claim.tier = tier;
+  }
+
+  // `hugepages` is not offered at all; the footer names it with its reason.
+  return { gpuResourceClaim: claim };
+}
+
+/**
+ * The object the create sends: the shape, the workload, the disk, the GPU and
+ * the two expiries, with exactly the keys the form set (G7, S9).
+ *
+ * Two rules, one of them with one deliberate exception:
+ *
+ * - **No empty-name reference is ever emitted**, on any of the six blocks that
+ *   carry one (`poolRef`, `kernelProfileRef`, `gpuProfileRef`,
+ *   `verifyKeySecretRef`, `model`, `scratchDisk.pvcRef`). Five of the six
+ *   default their `name` to the empty string in the schema, so an empty block is
+ *   a reference the controller then looks up and reports not-found forever.
+ * - **A value the API server stamps is not re-sent** - `cpu`, `memory`,
+ *   `rootfsMode`, `network.mode`, `model.mountPath` and `gpuResourceClaim.tier`
+ *   - EXCEPT on the derived branch of a checkout, where the four "must match"
+ *   fields are sent from the pool even when they happen to equal the schema's
+ *   own defaults. They are not this operator's choice and not the schema's
+ *   value there: they are a reading of another object at a point in time, and
+ *   what makes the claim auditable afterwards is that the stored sandbox says
+ *   so rather than carrying a default that looks identical.
+ */
+export function sandboxCreatePayload(
+  inputs: SandboxFormInputs,
+  values: SandboxFormValues,
+): { spec: SandboxCreateSpec } {
+  const spec: SandboxCreateSpec = { ...slotShapePayload(values.shape) };
+  const derived = sandboxDerivedShape(inputs, values);
+
+  if (values.source === "checkout") {
+    const pool = values.pool.trim();
+
+    if (pool) {
+      spec.poolRef = { name: pool };
+    }
+
+    if (derived.source === "pool") {
+      const cpu = warmCount(derived.cpu);
+
+      if (derived.image) {
+        spec.image = derived.image;
+      }
+
+      if (cpu !== undefined) {
+        spec.cpu = cpu;
+      }
+
+      spec.memory = derived.memory;
+      spec.rootfsMode = derived.rootfsMode;
+    }
+  }
+
+  const command = argvPayload(values.command);
+  const args = argvPayload(values.args);
+  const workingDir = values.workingDir.trim();
+  const env = envPayload(values);
+  const scratchDisk = scratchDiskPayload(values);
+  const timeout = values.timeout.trim();
+  const ttl = values.ttl.trim();
+
+  if (command) {
+    spec.command = command;
+  }
+
+  if (args) {
+    spec.args = args;
+  }
+
+  if (workingDir) {
+    spec.workingDir = workingDir;
+  }
+
+  if (env) {
+    spec.env = env;
+  }
+
+  if (scratchDisk) {
+    spec.scratchDisk = scratchDisk;
+  }
+
+  if (timeout) {
+    spec.timeout = timeout;
+  }
+
+  if (ttl) {
+    spec.ttl = ttl;
+  }
+
+  // The shape's own GPU key is replaced rather than trusted, because the mode
+  // and the backend both decide it and neither of them is the control that
+  // wrote `shape.gpuProfile`.
+  delete spec.gpuProfileRef;
+  Object.assign(spec, sandboxGpuPayload(values));
+
+  return { spec };
+}
+
+// ---------------------------------------------------------------------------
+// The header lines of the four collapsed sections (DESIGN.md section 12).
+//
+// Short, with the long form of each fact left to the summary, which is the
+// grammar every shipped form of this repository uses. Each one is readable
+// whether its section is open or shut, which is what makes the section
+// collapsible at all.
+// ---------------------------------------------------------------------------
+
+/**
+ * The line the scratch-disk section carries, open or shut.
+ *
+ * Short, and deliberately not a summary of what is inside it: the three radio
+ * descriptions and the always-Block fact are one scroll below, and the
+ * screenshot pass caught this line saying both of those things again in the
+ * same screen - the duplication SPEC-0013 slice 3 removed from the GPU section,
+ * made a second time. The long form of each fact lives in the summary.
+ */
+export function sandboxScratchSectionHint(values: SandboxFormValues): string {
+  if (values.scratchSource === "blank") {
+    const size = values.scratchSize.trim();
+    // A size that is being refused is not quoted back as if it were one: "a new
+    // 0 claim" reads as a fact about the object rather than as the value under
+    // the red line below it.
+    const sized = size && !quantityError(size) ? `${size} ` : "";
+
+    return `A new ${sized}claim named ${values.name.trim() || "<name>"}${scratchClaimSuffix}, created with this sandbox and deleted with it.`;
+  }
+
+  if (values.scratchSource === "existing") {
+    const claim = values.scratchClaim.trim();
+
+    return `${claim || "An existing claim"}, which outlives this sandbox rather than being owned by it. The sandbox parks until it is Bound.`;
+  }
+
+  return "None. The workload has only the guest's own RAM to write into, and whatever it writes is gone when the sandbox ends.";
+}
+
+/** The line the GPU section carries, open or shut. */
+export function sandboxGpuSectionLine(values: SandboxFormValues): string {
+  if (values.gpuBackend === "profile") {
+    const profile = values.shape.gpuProfile.trim();
+
+    return `${profile || "A SwiftGPUProfile"}, allocated before the launcher pod exists. A profile that cannot be served parks this sandbox forever rather than failing it.`;
+  }
+
+  if (values.gpuBackend === "dra") {
+    return "A DRA resource claim, allocated by the scheduler. A claim that cannot be satisfied leaves the pod unschedulable rather than failing the sandbox.";
+  }
+
+  return "None. A GPU is passed through whole, and a sandbox that asks for one boots cold and parks until the devices are free.";
+}
+
+/** The line the registry and verification section carries, open or shut. */
+export function sandboxRegistrySectionLine(shape: SlotShapeValues): string {
+  const parts: string[] = [];
+
+  if (shape.imagePullSecret.trim()) {
+    parts.push(`Pulled with ${shape.imagePullSecret.trim()}`);
+  }
+
+  if (shape.verifyKeySecret.trim()) {
+    parts.push(`cosign-verified against ${shape.verifyKeySecret.trim()}`);
+  }
+
+  if (parts.length === 0) {
+    return "None. A public image and no signature check.";
+  }
+
+  const [first, ...rest] = parts;
+  const head = first.charAt(0).toUpperCase() + first.slice(1);
+
+  return `${[head, ...rest].join(", ")}. A failed verification is TERMINAL: the sandbox never boots.`;
+}
+
+/** The line the model section carries, open or shut. */
+export function sandboxModelSectionLine(shape: SlotShapeValues): string {
+  const imageRef = shape.modelImageRef.trim();
+
+  if (!imageRef) {
+    return "None. Nothing is preloaded, and a workload that needs weights pulls or mounts them itself.";
+  }
+
+  // Short, for the reason the scratch section's line is: how the model gets
+  // there is on the field itself and in the summary, one scroll apart, and
+  // saying it here as well put the same sentence twice in one screen.
+  return `${imageRef}, mounted at ${shape.modelMountPath.trim() || defaultModelMountPath}. A model that cannot be resolved is TERMINAL.`;
+}
+
+// ---------------------------------------------------------------------------
+// The write summary (W1, W12).
+// ---------------------------------------------------------------------------
+
+/** The facts the live write summary is built from. The component owns the JSX. */
+export interface SandboxCreateSummaryFacts {
+  write: string;
+  notes: string[];
+  warnings: string[];
+}
+
+/** What the create makes, which is the whole of what this write sets in motion. */
+export function sandboxCreatesFact(values: SandboxFormValues): string {
+  const name = values.name.trim() || "<name>";
+  const created = ["a runtime-intent ConfigMap", `a Pod named exactly ${name}`];
+
+  if ((values.shape.networkMode.trim() || defaultNetworkMode) !== "none") {
+    created.push("a NetworkPolicy");
+  }
+
+  if (values.scratchSource === "blank") {
+    created.push(`a claim named ${name}${scratchClaimSuffix}`);
+  }
+
+  return (
+    `The controller creates ${created.join(", ")}, all owned by this sandbox. No Service and no Secret are EVER ` +
+    "created for a sandbox, whatever it asks for."
+  );
+}
+
+/** What a checkout does, which is not what a miss makes it. */
+export const sandboxCheckoutFact =
+  "A checkout claims one of the pool's pre-booted slots if a warm one is free, and cold-boots if none is - which " +
+  "is a slower start and NOT a failure. The claimed slot's pod is named after the POOL rather than after this " +
+  "sandbox, and status.podRef is the only place it is ever visible.";
+
+/** Where the four derived fields came from, and when, since a pool is mutable. */
+export function sandboxDerivationFact(derived: SandboxDerivedShape, pool: string): string {
+  return (
+    `The image, vCPUs, memory and root filesystem mode are read from ${pool} as it stood ` +
+    `${derived.readAt ? `at ${derived.readAt}` : "when this dialog opened"} and are sent from it. Nothing on a pool ` +
+    "is immutable, so this is a snapshot: if the pool is edited afterwards, the slots that are already warm keep " +
+    "the shape they booted with and this sandbox keeps the shape recorded here."
+  );
+}
+
+/** The phase honesty of this kind, which is correction 3 owed to SPEC-0008. */
+export const sandboxFirstPhaseFact =
+  "The first state you see is an EMPTY phase, not Pending: that value is in the enum, in the metrics labels and in " +
+  "a test, and is written by no controller at all. A sandbox with no phase is a normal first state rather than a " +
+  "fault.";
+
+/** What parks, and never turns terminal on its own. */
+export const sandboxParksFact =
+  "Nothing here self-heals. What PARKS, as an empty phase with one False condition, indefinitely: a GPU profile " +
+  "that is missing, out of capacity or on an unsupported tier (requeued every thirty seconds), and a scratch claim " +
+  "that is missing or not Bound (every three seconds). A parked sandbox waits forever and nothing deletes it.";
+
+/** What is terminal, and what the only remedy is. */
+export const sandboxTerminalFact =
+  "What is TERMINAL, and needs a delete and a re-create rather than a wait: an invalid pull secret, an image or a " +
+  "model that cannot be resolved, a non-zero materialize exit, a timeout breach, and a Failed pod. There is no " +
+  "retry and no self-heal on any of them.";
+
+/** What `ttl` does to the object being created, which is the sentence this form exists to say. */
+export function sandboxTtlFact(values: SandboxFormValues): string {
+  const ttl = values.ttl.trim();
+
+  if (!ttl) {
+    return "No TTL is set, so this SwiftSandbox is kept until someone deletes it - the exit code, the message and the conditions stay readable for as long as that.";
+  }
+
+  return (
+    `Once this sandbox has been terminal - Completed or Failed - for ${ttl}, the controller DELETES the ` +
+    "SwiftSandbox object itself, not just its pod: it disappears from this list, and its exit code, message and " +
+    "conditions go with it."
+  );
+}
+
+/** What a `timeout` does, which deletes a pod rather than an object. */
+export function sandboxTimeoutFact(values: SandboxFormValues): string {
+  const timeout = values.timeout.trim();
+
+  if (!timeout) {
+    return "No timeout is set, so there is no run cap at all: a workload that never ends keeps its microVM alive until something else stops it.";
+  }
+
+  return `Past startedAt plus ${timeout} the controller force-terminates the launcher or the claimed slot and marks this sandbox Failed with a deadline reason. The object itself stays behind, which is what makes it different from the TTL.`;
+}
+
+/** What the workload actually is, in the one line a reader needs before pressing OK. */
+export function sandboxWorkloadFact(values: SandboxFormValues): string {
+  const command = argvPayload(values.command);
+  const args = argvPayload(values.args);
+  const parts: string[] = [];
+
+  parts.push(
+    command
+      ? `The workload is ${command.join(" ")}${args ? ` ${args.join(" ")}` : ""}, one argv element per row - nothing is split on whitespace.`
+      : `No command is given, so the image's own entrypoint runs${args ? `, with ${args.join(" ")} appended to it` : ""}.`,
+  );
+
+  const workingDir = values.workingDir.trim();
+
+  if (workingDir) {
+    parts.push(`It runs in ${workingDir}, which overrides the image config's own working directory.`);
+  }
+
+  const env = envPayload(values);
+
+  if (env) {
+    parts.push(
+      `${env.length} environment ${env.length === 1 ? "variable is" : "variables are"} merged over the image config's own environment, as literal values.`,
+    );
+  }
+
+  return parts.join(" ");
+}
+
+/** What the scratch disk is, and what happens to it, which differs by branch. */
+export function sandboxScratchFact(values: SandboxFormValues): string | undefined {
+  if (values.scratchSource === "blank") {
+    const size = values.scratchSize.trim();
+    const storageClass = values.scratchStorageClass.trim();
+
+    return (
+      `A ${size || "sized"} claim named ${values.name.trim() || "<name>"}${scratchClaimSuffix} is created, owned by ` +
+      `this sandbox and DELETED with it, from ${storageClass ? `the ${storageClass} storage class` : "the cluster's default storage class"}. ` +
+      "It is attached as a raw block device, so the workload runs mkfs on it, and the sandbox parks until it binds."
+    );
+  }
+
+  if (values.scratchSource === "existing") {
+    return (
+      `The claim ${values.scratchClaim.trim() || "<claim>"} is attached as a raw block device. It is NOT owned by ` +
+      "the sandbox and survives it, which is the case for a cache reused across runs, and the sandbox parks at an " +
+      "empty phase until it exists and is Bound."
+    );
+  }
+
+  return undefined;
+}
+
+/** What a native GPU profile costs at create time, and what it does to the kernel. */
+export function sandboxGpuFact(values: SandboxFormValues): string | undefined {
+  if (!sandboxGpuApplies(values) || values.gpuBackend === "none") {
+    return undefined;
+  }
+
+  const backend =
+    values.gpuBackend === "profile"
+      ? `The SwiftGPU controller allocates from ${values.shape.gpuProfile.trim() || "the named profile"} before the launcher pod exists and pins the pod to the node it chose.`
+      : "The kube-scheduler allocates the device through the DRA claim and the KubeSwift driver injects it into the guest.";
+
+  return `${backend} ${sandboxGpuParksFact} ${sandboxGpuKernelFact}`;
+}
+
+/** What the verification key really does, which is terminal rather than a retry. */
+export function sandboxVerifyFact(values: SandboxFormValues): string {
+  return (
+    `The rootfs is cosign-verified against the key in ${values.shape.verifyKeySecret.trim()} before it is ` +
+    "materialized, and the digest is re-pinned to the verified one, so a tag that moves between the verification " +
+    "and the pull cannot be pulled. A missing or invalid signature fails the materialize step, which is TERMINAL: " +
+    "the sandbox goes Failed and never boots. It needs a TLS registry."
+  );
+}
+
+/** What the model preload buys, and where the workload finds it. */
+export function sandboxModelFact(values: SandboxFormValues): string {
+  const mountPath = values.shape.modelMountPath.trim() || defaultModelMountPath;
+
+  return (
+    `The model ${values.shape.modelImageRef.trim()} is mounted read-only at ${mountPath} over virtio-fs, ` +
+    "materialized once per node and shared from the host page cache, so the weights are resident before the " +
+    "workload runs. A model image that cannot be resolved is terminal."
+  );
+}
+
+/**
+ * The live write summary: the one create line, then the facts that are true of
+ * this sandbox in this state (W1, rebuilt on every change).
+ *
+ * The order is the order things happen: what it is, what it runs, what the
+ * create makes, what it costs, and then what the object will and will not tell
+ * anyone afterwards - which is the half nothing on the cluster ever says.
+ */
+export function sandboxCreateSummary(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxCreateSummaryFacts {
+  const namespace = values.namespace.trim() || "<namespace>";
+  const name = values.name.trim() || "<name>";
+  const derived = sandboxDerivedShape(inputs, values);
+  const notes: string[] = [];
+  const warnings: string[] = [];
+
+  if (derived.image) {
+    notes.push(
+      `This sandbox boots ${derived.image} as its root filesystem, delivered as ${derived.rootfsMode}, with ${derived.cpu} vCPU and ${derived.memory} of RAM.`,
+    );
+  }
+
+  if (values.source === "checkout") {
+    notes.push(sandboxCheckoutFact);
+
+    if (derived.source === "pool") {
+      notes.push(sandboxDerivationFact(derived, values.pool.trim()));
+    }
+  }
+
+  notes.push(sandboxWorkloadFact(values));
+  notes.push(sandboxCreatesFact(values));
+
+  const scratch = sandboxScratchFact(values);
+
+  if (scratch) {
+    notes.push(scratch);
+  }
+
+  const gpu = sandboxGpuFact(values);
+
+  if (gpu) {
+    notes.push(gpu);
+  }
+
+  if (values.shape.verifyKeySecret.trim()) {
+    notes.push(sandboxVerifyFact(values));
+  }
+
+  if (values.shape.modelImageRef.trim()) {
+    notes.push(sandboxModelFact(values));
+  }
+
+  if (nodeSelectorPayload(values.shape)) {
+    notes.push(nodeSelectorMergeFact);
+  }
+
+  notes.push(sandboxFirstPhaseFact);
+  notes.push(sandboxParksFact);
+  notes.push(sandboxTerminalFact);
+  notes.push(sandboxTimeoutFact(values));
+  notes.push(sandboxTtlFact(values));
+  notes.push(sandboxImmutabilityBoundary.sandbox);
+
+  const collision = sandboxNameWarning(inputs, values);
+
+  if (collision) {
+    warnings.push(collision);
+  }
+
+  if (values.source === "checkout" && !argvPayload(values.command)) {
+    warnings.push(commandlessCheckoutWarning);
+  }
+
+  // The sharpest sentences are stated twice on purpose, at the field and here:
+  // the summary is what a user reads before pressing OK, and on a form this
+  // tall it sits below the fold of the dialog's own scroll area.
+  const own = sandboxOwnWarnings(inputs, values);
+
+  if (own.pool) {
+    warnings.push(own.pool);
+  }
+
+  const scratchWarning = sandboxScratchWarnings(inputs, values).claim;
+
+  if (scratchWarning) {
+    warnings.push(scratchWarning);
+  }
+
+  const shapeWarnings = slotShapeWarnings(inputs, values.shape, sandboxSlotWarningWording);
+
+  for (const field of slotShapeFieldOrder) {
+    const warning = shapeWarnings[field];
+
+    // The GPU profile's own warning is dropped with the section it belongs to,
+    // for the reason the payload drops the reference: a checkout sends no GPU.
+    if (warning && (field !== "gpuProfile" || sandboxGpuApplies(values))) {
+      warnings.push(warning);
+    }
+  }
+
+  return { write: `Create SwiftSandbox ${namespace}/${name}`, notes, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// The outcome (W9).
+// ---------------------------------------------------------------------------
+
+/** What a create that succeeded is acknowledged with: the fact, never a prediction. */
+export function sandboxCreateSuccessMessage(namespace: string, name: string): string {
+  return `SwiftSandbox ${namespace}/${name} created`;
+}
+
+/** What a failed create was trying to write, for the sentence it is prefixed with. */
+export interface SandboxCreateFailureContext {
+  namespace: string;
+  name: string;
+}
+
+/**
+ * The actionable sentence alone, for the three failures this dialog can predict.
+ *
+ * **403 is the expected failure on a well-run cluster**, since upstream's own
+ * RBAC presets grant read only on both sandbox kinds - so W9's prefix names the
+ * verb, the plural and the namespace, and the host's own toast carries the API
+ * server's words underneath it.
+ */
+export function sandboxCreateFailurePrefix(
+  code: number | undefined,
+  context: SandboxCreateFailureContext,
+): string | undefined {
+  if (code === conflictStatusCode) {
+    return `A SwiftSandbox named ${context.name} already exists in the namespace ${context.namespace}. Change the name and try again.`;
+  }
+
+  if (code === notFoundStatusCode) {
+    return `Nothing here accepted the create: the namespace ${context.namespace} or the SwiftSandbox CRD is gone.`;
+  }
+
+  if (code === forbiddenStatusCode) {
+    return writeFailurePrefix(code, { verb: "create", resource: "swiftsandboxes", namespace: context.namespace });
+  }
+
+  return undefined;
+}
+
+/** One actionable sentence prefixed to what the API server said, never replacing it (W9). */
+export function sandboxCreateFailureMessage(
+  failure: ApiFailureFacts,
+  context: SandboxCreateFailureContext,
+): string | undefined {
+  const prefix = sandboxCreateFailurePrefix(failure.code, context);
+
+  if (!failure.message) {
+    return prefix;
+  }
+
+  return prefix ? `${prefix} ${failure.message}` : failure.message;
+}
+
+/**
+ * What this form does NOT author, said rather than left to be discovered (A10).
+ *
+ * Three leaves, each with the reason it is absent rather than a bare list: two
+ * of them are no-ops the schema still declares, and the third is sixteen leaves
+ * of boilerplate that the controller reads and then ignores.
+ */
+export const sandboxCreateFooter =
+  "Three things this form deliberately does not author, each reachable in Freelens' own YAML editor. " +
+  "env[].valueFrom is schema-complete and behaviourally IGNORED: the merge takes the literal value only, because a " +
+  "microVM has no downward-API and no Secret path, so a secretKeyRef variable reaches the guest empty. " +
+  "scratchDisk.blank.volumeMode is a no-op on three legs - the enum allows Filesystem, the webhook rejects it, and " +
+  "the controller hardcodes Block - so the disk is ALWAYS Block and no control asks about it. " +
+  "gpuResourceClaim.hugepages sizes the GPU memory hugepage backing and belongs with the cluster's own hugepage " +
+  "configuration rather than with a create form. Editing a sandbox afterwards is the YAML editor's job too, and " +
+  "only ttl actually changes anything.";

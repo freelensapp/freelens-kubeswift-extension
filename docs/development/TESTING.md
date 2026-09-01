@@ -78,7 +78,8 @@ VMs), driven through a real Freelens by Playwright's Electron API.
 SPEC-0013, SPEC-0014, SPEC-0015, SPEC-0016): a handful of cases patch `spec.runPolicy`, delete a
 launcher pod, delete a guest, create a SwiftSnapshot, create a SwiftRestore,
 create a SwiftMigration and create SwiftGuests, SwiftGuestClasses,
-SwiftKernels, SwiftImages and SwiftSeedProfiles from those pages' own create
+SwiftKernels, SwiftImages, SwiftSeedProfiles, SwiftGuestPools,
+SwiftSandboxPools and SwiftSandboxes from those pages' own create
 buttons, for real, against dedicated
 fixtures nothing else reads (`160-swiftguest-actions.yaml`,
 `170-swiftrestore-actions.yaml`, `180-swiftmigration-actions.yaml`,
@@ -215,6 +216,44 @@ else they need is reused as it stands: the two Secrets of
 `125-sandbox-references.yaml`, the kernel of `30-swiftkernels.yaml` and both
 GPU profiles of `110-swiftgpuprofiles.yaml`, whose `hgx-shared` tier is what
 the refusal is measured against.
+
+The SPEC-0016 slice-2 cases add the Create Sandbox form, and with it the one
+thing this milestone set out to answer: whether a CRD-native client can check a
+warm slot out at all. It can, and one field is the whole protocol - a create
+carrying `spec.poolRef.name` is admitted and read back with exactly that field -
+so the case that proves it also proves the derivation beside it. Three of the six
+write and read back key-exact: a cold sandbox with its whole workload (a command
+row, two argument rows, a working directory and two environment rows), a blank
+scratch disk and a model, asserting both the keys the form sent and the ones the
+API server stamped into them - `cpu`, `memory`, `rootfsMode`, `model.mountPath`
+and, above all, the `scratchDisk.blank.volumeMode: Block` whose control does not
+exist, because the disk is Block whatever any client says; a checkout against
+`e2e-sandbox-pool`, asserting `poolRef`, the four derived fields, the option text
+that carries the pool's phase and both counts, and the absence of the image and
+vCPU inputs the cold path renders; and a command-less checkout against
+`e2e-sandbox-pool-cold`, which warns that it will always cold-fall-back - only
+the cold path resolves the image's entrypoint - and submits anyway. That third
+one is where the derivation is proved rather than asserted: the cold pool carries
+`cpu: 2`, `1Gi` and `virtiofs`, three values the API server would never stamp, so
+a readback that shows them can only have read them from the pool. The other three
+assert what the form refuses and what it cannot express: the scratch size of
+zero, the relative model mount path and the two non-positive durations, each with
+its own consequence as the reason and with the collapsed section that opens
+itself and cannot be shut while it holds the refusal; the GPU exclusivities,
+where the DRA one-of is a refusal naming both fields and the pool pair is
+inexpressible - a checkout has no GPU section at all, only the reason it is gone;
+and the `AlreadyExists` reopen, which submits a taken name past the warning and
+finds the whole form intact afterwards, five fields deep, with `kubectl` proving
+that no second object was written. That last case waits for the dialog to
+**detach** before waiting for it to come back, and then asserts that it computes
+`opacity: 1` and carries no `leave` class - because a reopen fired inside the
+host's own 100ms leave animation leaves the dialog permanently transparent over a
+page it still intercepts every click on, which is what every create dialog of
+this repository was doing and no `inputValue()` assert could ever have caught
+(SPEC-0016's notes carry the mechanism and the measurement). Their fixtures are the slice-2 half of
+`210-sandbox-create.yaml`: the cold pool, whose status is deliberately never
+injected because a pool nothing has reconciled is what the picker has to render,
+and the sandbox whose name is taken, which carries no status for the same reason.
 
 The pre-review pass (layer 4) stays read-only by construction and by assert,
 because it runs against the demo cluster a human reviewer is about to walk

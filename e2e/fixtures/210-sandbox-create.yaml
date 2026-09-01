@@ -1,6 +1,6 @@
-# Subjects of the M6 sandbox create cases (SPEC-0016). Slice 1 adds one object;
-# slice 2 adds the cold pool the checkout cases render against and the sandbox
-# whose name is taken.
+# Subjects of the M6 sandbox create cases (SPEC-0016). Slice 1 added the pool
+# whose name is taken; slice 2 adds the cold pool the checkout cases render
+# against and the sandbox whose name is taken.
 #
 # `e2e/scripts/cluster-up.sh` is idempotent and re-applies this file, and the
 # pools the cases create are named after the wall clock, so a second run against
@@ -19,6 +19,59 @@ apiVersion: sandbox.kubeswift.io/v1alpha1
 kind: SwiftSandboxPool
 metadata:
   name: e2e-sandbox-pool-create-taken
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox:taken
+  memory: 512Mi
+---
+# The cold pool the checkout cases are measured against.
+#
+# NO status is injected for it anywhere, which is the whole point: a pool nothing
+# has reconciled reports no phase and no counts, so the Create Sandbox form's
+# pool picker has a real option to render as "no phase yet, 0 warm, 0 claimed"
+# and the command-less checkout has a pool it will really miss on. `minWarm: 0`
+# makes that structural rather than incidental - a floor of zero warms nothing at
+# all until something scales it up.
+#
+# Its slot shape is deliberately NOT the schema's defaults: cpu 2, 1Gi and
+# virtiofs are three values the API server would never stamp, so a sandbox that
+# checks a slot out of this pool proves that the four "must match" fields were
+# read from the pool and SENT from it rather than defaulted into place. That is
+# the one thing an E2E can prove about the derivation, and it needs a pool whose
+# shape is distinguishable from a default.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandboxPool
+metadata:
+  name: e2e-sandbox-pool-cold
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold
+  cpu: 2
+  memory: 1Gi
+  rootfsMode: virtiofs
+  minWarm: 0
+---
+# The sandbox whose name is taken, for the collision warning and for the
+# AlreadyExists reopen.
+#
+# The Create Sandbox form reads the namespace's SwiftSandboxes and warns - never
+# blocks - when the typed name is one of them, because the read behind that
+# warning can be stale and only the API server can answer. Submitting past the
+# warning is what produces the 409 the dialog reopens on, with the form intact,
+# and the case asserts through kubectl that no second object was written.
+#
+# It carries no status on purpose: a sandbox nothing has reconciled is exactly
+# what every sandbox this form creates looks like on a cluster with no
+# controller, and it is also what a REAL cluster shows first (an empty phase,
+# never Pending).
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandbox
+metadata:
+  name: e2e-sandbox-create-taken
   namespace: kubeswift-e2e
   labels:
     app.kubernetes.io/part-of: freelens-kubeswift-e2e

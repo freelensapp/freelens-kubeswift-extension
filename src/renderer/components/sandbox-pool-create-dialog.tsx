@@ -84,7 +84,14 @@ import {
 import type { ObjectPickerFacts } from "./create-dialog";
 import type { GuestGpuProfileFacts } from "./guest-create";
 import type { PickerFacts } from "./guest-create-dialog";
-import type { NodeSelectorRow, SandboxCreateInputs, SandboxPoolFormValues, SlotShapeValues } from "./sandbox-create";
+import type {
+  NodeSelectorMessages,
+  NodeSelectorRow,
+  SandboxCreateInputs,
+  SandboxPoolFormValues,
+  SlotShapeMessages,
+  SlotShapeValues,
+} from "./sandbox-create";
 
 const { observer } = MobxReact;
 
@@ -392,21 +399,74 @@ const PoolNameField = observer(({ model }: { model: SandboxPoolDialogModel }) =>
 // B2: the slot shape, which slice 2's form renders against its own model.
 // ---------------------------------------------------------------------------
 
+/**
+ * What each control of the shape SAYS, per kind.
+ *
+ * The controls, their validation, their T3 degradations and their payload are
+ * one implementation shared by both forms; the sentences around them are not,
+ * because the subject of every one of them is a warm slot on a pool and the
+ * object being created on a sandbox. The DEFAULT is the pool's, which is where
+ * these controls were written (slice 1), and slice 2's form passes its own.
+ */
+export interface SlotShapeWording {
+  imageHint: string;
+  cpuHint: string;
+  memoryLabel: string;
+  memoryHint: string;
+  rootfsHint: string;
+  networkHint: string;
+  kernelHint: string;
+  nodeSelectorHint: string;
+  pullSecretHint: string;
+  verifyKeyHint: string;
+  modelImageHint: string;
+}
+
+/** The pool's own words, which are the ones slice 1 shipped. */
+export const poolSlotShapeWording: SlotShapeWording = {
+  imageHint:
+    "The OCI image every warm slot boots as its root filesystem. A digest reference (repo@sha256:...) pins exactly what is warmed; a claiming SwiftSandbox has to request the same one.",
+  cpuHint: `How many vCPUs each warm slot gets. Empty is ${defaultSlotCpu}, which the API server stamps, so nothing is sent for it.`,
+  memoryLabel: "Memory per slot",
+  memoryHint: `Held PER SLOT, so a pool of N slots holds N times it idle. ${quantityGrammar} Empty is ${defaultSlotMemory}, which the API server stamps.`,
+  rootfsHint: `How the OCI rootfs reaches each slot: block is a read-only ext4 disk, virtiofs the unpacked tree. Empty is ${defaultRootfsMode}, which the API server stamps. A claiming SwiftSandbox must request the same mode.`,
+  networkHint: `The slot's networking posture. Empty is ${defaultNetworkMode}, which the API server stamps; none is the only mode that gets no NetworkPolicy at all.`,
+  kernelHint:
+    "The SwiftKernel each slot boots. Empty means the well-known sandbox kernel, which is what the controller falls back to.",
+  nodeSelectorHint: nodeSelectorMergeFact,
+  pullSecretHint: "A docker-registry Secret of this namespace, for pulling the image from a private registry.",
+  verifyKeyHint:
+    "A Secret holding a cosign public key under cosign.pub. EVERY warm slot verifies the image against it before materializing, so the pool never warms an unverified rootfs. It needs a TLS registry.",
+  modelImageHint:
+    "An OCI image whose filesystem holds the weights, preloaded read-only into every slot over virtio-fs and materialized once per node. Every claiming SwiftSandbox inherits it.",
+};
+
 /** The image every slot boots, and the one field of the shape the schema requires. */
-export const SlotImageField = observer(({ model }: { model: SandboxShapeOwner }) => (
-  <Field
-    label="Image"
-    hint="The OCI image every warm slot boots as its root filesystem. A digest reference (repo@sha256:...) pins exactly what is warmed; a claiming SwiftSandbox has to request the same one."
-    error={slotShapeErrors(sandboxCreateInputs(model), model.values.shape).image}
-  >
-    <Input
-      value={model.values.shape.image}
-      placeholder="ghcr.io/example/sandbox:warm"
-      data-testid="sandbox-create-image"
-      onChange={(value: string) => updateSandboxShape(model, { image: value })}
-    />
-  </Field>
-));
+export const SlotImageField = observer(
+  ({
+    model,
+    wording = poolSlotShapeWording,
+    error,
+  }: {
+    model: SandboxShapeOwner;
+    wording?: SlotShapeWording;
+    /** The embedding form's own refusal, when its consequence is not a pool's. */
+    error?: string;
+  }) => (
+    <Field
+      label="Image"
+      hint={wording.imageHint}
+      error={error ?? slotShapeErrors(sandboxCreateInputs(model), model.values.shape).image}
+    >
+      <Input
+        value={model.values.shape.image}
+        placeholder="ghcr.io/example/sandbox:warm"
+        data-testid="sandbox-create-image"
+        onChange={(value: string) => updateSandboxShape(model, { image: value })}
+      />
+    </Field>
+  ),
+);
 
 /**
  * The sizing and placement of one slot.
@@ -416,113 +476,120 @@ export const SlotImageField = observer(({ model }: { model: SandboxShapeOwner })
  * server fills them in before it validates, and re-sending them would be this
  * form claiming to own a decision it did not make.
  */
-export const SlotShapeFields = observer(({ model }: { model: SandboxShapeOwner }) => {
-  const inputs = sandboxCreateInputs(model);
-  const shape = model.values.shape;
-  const errors = slotShapeErrors(inputs, shape);
-  const warnings = slotShapeWarnings(inputs, shape);
+export const SlotShapeFields = observer(
+  ({
+    model,
+    wording = poolSlotShapeWording,
+    errors: errorOverrides,
+    warnings: warningOverrides,
+    nodeSelectorMessages,
+  }: {
+    model: SandboxShapeOwner;
+    wording?: SlotShapeWording;
+    /** The embedding form's own refusals and warnings, when the consequences are not a pool's. */
+    errors?: SlotShapeMessages;
+    warnings?: SlotShapeMessages;
+    nodeSelectorMessages?: NodeSelectorMessages[];
+  }) => {
+    const inputs = sandboxCreateInputs(model);
+    const shape = model.values.shape;
+    const errors = errorOverrides ?? slotShapeErrors(inputs, shape);
+    const warnings = warningOverrides ?? slotShapeWarnings(inputs, shape);
 
-  return (
-    <>
-      <Field
-        label="vCPUs"
-        hint={`How many vCPUs each warm slot gets. Empty is ${defaultSlotCpu}, which the API server stamps, so nothing is sent for it.`}
-        error={errors.cpu}
-      >
-        <Input
-          value={shape.cpu}
-          placeholder={`${defaultSlotCpu} (the schema's default)`}
-          data-testid="sandbox-create-cpu"
-          onChange={(value: string) => updateSandboxShape(model, { cpu: value })}
+    return (
+      <>
+        <Field label="vCPUs" hint={wording.cpuHint} error={errors.cpu}>
+          <Input
+            value={shape.cpu}
+            placeholder={`${defaultSlotCpu} (the schema's default)`}
+            data-testid="sandbox-create-cpu"
+            onChange={(value: string) => updateSandboxShape(model, { cpu: value })}
+          />
+        </Field>
+
+        <QuantityField
+          label={wording.memoryLabel}
+          hint={wording.memoryHint}
+          placeholder={`${defaultSlotMemory} (the schema's default)`}
+          testId="sandbox-create-memory"
+          value={shape.memory}
+          error={errors.memory}
+          warning={warnings.memory}
+          onChange={(value: string) => updateSandboxShape(model, { memory: value })}
         />
-      </Field>
 
-      <QuantityField
-        label="Memory per slot"
-        hint={`Held PER SLOT, so a pool of N slots holds N times it idle. ${quantityGrammar} Empty is ${defaultSlotMemory}, which the API server stamps.`}
-        placeholder={`${defaultSlotMemory} (the schema's default)`}
-        testId="sandbox-create-memory"
-        value={shape.memory}
-        error={errors.memory}
-        warning={warnings.memory}
-        onChange={(value: string) => updateSandboxShape(model, { memory: value })}
-      />
+        <Field label="Root filesystem" hint={wording.rootfsHint}>
+          <Select
+            id="sandbox-create-rootfs-mode"
+            themeName="light"
+            menuClass={styles.selectMenu}
+            isClearable
+            placeholder={`${defaultRootfsMode} (the schema's default)`}
+            value={shape.rootfsMode || null}
+            options={sandboxRootfsModes.map((mode) => ({ value: mode, label: mode }))}
+            onChange={(option: { value: string } | null) =>
+              updateSandboxShape(model, { rootfsMode: option?.value ?? "" })
+            }
+          />
+        </Field>
 
-      <Field
-        label="Root filesystem"
-        hint={`How the OCI rootfs reaches each slot: block is a read-only ext4 disk, virtiofs the unpacked tree. Empty is ${defaultRootfsMode}, which the API server stamps. A claiming SwiftSandbox must request the same mode.`}
-      >
-        <Select
-          id="sandbox-create-rootfs-mode"
-          themeName="light"
-          menuClass={styles.selectMenu}
-          isClearable
-          placeholder={`${defaultRootfsMode} (the schema's default)`}
-          value={shape.rootfsMode || null}
-          options={sandboxRootfsModes.map((mode) => ({ value: mode, label: mode }))}
-          onChange={(option: { value: string } | null) =>
-            updateSandboxShape(model, { rootfsMode: option?.value ?? "" })
-          }
+        <Field label="Network" hint={wording.networkHint}>
+          <Select
+            id="sandbox-create-network-mode"
+            themeName="light"
+            menuClass={styles.selectMenu}
+            isClearable
+            placeholder={`${defaultNetworkMode} (the schema's default)`}
+            value={shape.networkMode || null}
+            options={sandboxNetworkModes.map((mode) => ({ value: mode, label: mode }))}
+            onChange={(option: { value: string } | null) =>
+              updateSandboxShape(model, { networkMode: option?.value ?? "" })
+            }
+          />
+        </Field>
+
+        <ObjectPickerField
+          id="sandbox-create-kernel-profile"
+          inputTestId="sandbox-create-kernel-profile-input"
+          label="Kernel profile"
+          hint={wording.kernelHint}
+          unverifiedHint="The SwiftKernels of this namespace could not be listed, so the name is not verified."
+          placeholder="the well-known sandbox kernel"
+          value={shape.kernelProfile}
+          facts={model.kernels}
+          warning={warnings.kernelProfile}
+          onChange={(value: string) => updateSandboxShape(model, { kernelProfile: value })}
         />
-      </Field>
 
-      <Field
-        label="Network"
-        hint={`The slot's networking posture. Empty is ${defaultNetworkMode}, which the API server stamps; none is the only mode that gets no NetworkPolicy at all.`}
-      >
-        <Select
-          id="sandbox-create-network-mode"
-          themeName="light"
-          menuClass={styles.selectMenu}
-          isClearable
-          placeholder={`${defaultNetworkMode} (the schema's default)`}
-          value={shape.networkMode || null}
-          options={sandboxNetworkModes.map((mode) => ({ value: mode, label: mode }))}
-          onChange={(option: { value: string } | null) =>
-            updateSandboxShape(model, { networkMode: option?.value ?? "" })
-          }
-        />
-      </Field>
-
-      <ObjectPickerField
-        id="sandbox-create-kernel-profile"
-        inputTestId="sandbox-create-kernel-profile-input"
-        label="Kernel profile"
-        hint="The SwiftKernel each slot boots. Empty means the well-known sandbox kernel, which is what the controller falls back to."
-        unverifiedHint="The SwiftKernels of this namespace could not be listed, so the name is not verified."
-        placeholder="the well-known sandbox kernel"
-        value={shape.kernelProfile}
-        facts={model.kernels}
-        warning={warnings.kernelProfile}
-        onChange={(value: string) => updateSandboxShape(model, { kernelProfile: value })}
-      />
-
-      <NodeSelectorSection model={model} />
-    </>
-  );
-});
+        <NodeSelectorSection model={model} hint={wording.nodeSelectorHint} messages={nodeSelectorMessages} />
+      </>
+    );
+  },
+);
 
 /** The node selector, merged by the controller with the kernel-node label it adds itself. */
-const NodeSelectorSection = observer(({ model }: { model: SandboxShapeOwner }) => {
-  const errors = nodeSelectorErrors(model.values.shape);
+const NodeSelectorSection = observer(
+  ({ model, hint, messages }: { model: SandboxShapeOwner; hint: string; messages?: NodeSelectorMessages[] }) => {
+    const errors = messages ?? nodeSelectorErrors(model.values.shape);
 
-  return (
-    <div className={styles.field} data-testid="sandbox-create-node-selector">
-      <div className={styles.label}>Node selector</div>
-      <div className={styles.hint}>{nodeSelectorMergeFact}</div>
+    return (
+      <div className={styles.field} data-testid="sandbox-create-node-selector">
+        <div className={styles.label}>Node selector</div>
+        <div className={styles.hint}>{hint}</div>
 
-      {model.values.shape.nodeSelector.map((row, index) => (
-        <NodeSelectorFields key={row.id} model={model} row={row} index={index} messages={errors[index] ?? {}} />
-      ))}
+        {model.values.shape.nodeSelector.map((row, index) => (
+          <NodeSelectorFields key={row.id} model={model} row={row} index={index} messages={errors[index] ?? {}} />
+        ))}
 
-      <AddRowButton
-        label="Add a node label"
-        onAdd={() => applySandboxShape(model, addNodeSelectorRow(model.values.shape))}
-        testId="sandbox-create-add-node-selector"
-      />
-    </div>
-  );
-});
+        <AddRowButton
+          label="Add a node label"
+          onAdd={() => applySandboxShape(model, addNodeSelectorRow(model.values.shape))}
+          testId="sandbox-create-add-node-selector"
+        />
+      </div>
+    );
+  },
+);
 
 /** One label of the node selector: a key and a value, both of them a Kubernetes label's. */
 const NodeSelectorFields = observer(
@@ -623,31 +690,30 @@ const WarmBufferFields = observer(({ model }: { model: SandboxPoolDialogModel })
 // ---------------------------------------------------------------------------
 
 /**
- * The GPU profile, and the one refusal upstream reports nowhere at all.
+ * The GPU profile picker, with its T3 degradation, shared by both forms.
  *
- * The pool schema has no DRA backend, so there is one control here rather than
- * the Create Guest form's two-way choice: `gpuResourceClaim` simply does not
- * exist on a SwiftSandboxPool.
+ * The SECTION around it is not shared and deliberately so: a pool's is this
+ * picker alone, because the pool schema has no DRA backend at all, while a
+ * sandbox's is a three-way backend control with a DRA branch that a checkout
+ * removes entirely. What would drift at the next field this CRD gains is the
+ * picker, and there is exactly one of it.
+ *
+ * The messages are handed in rather than computed here, because the two kinds
+ * disagree about them: an HGX-tier profile is a refusal on a pool, whose
+ * controller rejects the tier on a path that writes no status at all, and a
+ * fact on a sandbox, which parks on it instead.
  */
-export const SlotGpuSection = observer(({ model }: { model: SandboxShapeOwner }) => {
-  const inputs = sandboxCreateInputs(model);
-  const shape = model.values.shape;
-  const errors = slotShapeErrors(inputs, shape);
-  const warnings = slotShapeWarnings(inputs, shape);
-  const choices = sandboxGpuProfileChoices(inputs);
-  const hint =
-    "A SwiftGPUProfile of this namespace. It is the request itself - how many GPUs, of which model, in which tier - because a profile has no status at all and nothing ever writes back to it.";
+export const SlotGpuProfileField = observer(
+  ({ model, error, warning }: { model: SandboxShapeOwner; error?: string; warning?: string }) => {
+    const inputs = sandboxCreateInputs(model);
+    const shape = model.values.shape;
+    const choices = sandboxGpuProfileChoices(inputs);
+    const hint =
+      "A SwiftGPUProfile of this namespace. It is the request itself - how many GPUs, of which model, in which tier - because a profile has no status at all and nothing ever writes back to it.";
 
-  return (
-    <CollapsibleSection
-      title="GPU"
-      hint={sandboxGpuSectionHint(inputs, shape)}
-      open={model.gpuOpen || slotGpuSectionHasError(inputs, shape)}
-      onToggle={() => toggleSandboxSection(model, "gpuOpen")}
-      testId="sandbox-create-gpu-section"
-    >
-      {gpuPickerIsUsable(model.gpuProfiles, shape.gpuProfile) ? (
-        <Field label="GPU profile" hint={hint} error={errors.gpuProfile} warning={warnings.gpuProfile}>
+    if (gpuPickerIsUsable(model.gpuProfiles, shape.gpuProfile)) {
+      return (
+        <Field label="GPU profile" hint={hint} error={error} warning={warning}>
           <Select
             id="sandbox-create-gpu-profile"
             themeName="light"
@@ -661,37 +727,174 @@ export const SlotGpuSection = observer(({ model }: { model: SandboxShapeOwner })
             }
           />
         </Field>
-      ) : (
-        <Field
-          label="GPU profile"
-          hint={
-            model.gpuProfiles.state === "unavailable"
-              ? "The SwiftGPUProfiles of this namespace could not be listed, so a name typed here is not verified - and neither is its tier."
-              : model.gpuProfiles.state === "ready"
-                ? `${hint} This namespace holds no SwiftGPUProfile yet, so the name has to be typed.`
-                : hint
-          }
-          error={errors.gpuProfile}
-          warning={warnings.gpuProfile}
-        >
-          <Input
-            value={shape.gpuProfile}
-            placeholder="the name of a SwiftGPUProfile"
-            data-testid="sandbox-create-gpu-profile-input"
-            onChange={(value: string) => updateSandboxShape(model, { gpuProfile: value })}
-          />
-        </Field>
-      )}
+      );
+    }
+
+    return (
+      <Field
+        label="GPU profile"
+        hint={
+          model.gpuProfiles.state === "unavailable"
+            ? "The SwiftGPUProfiles of this namespace could not be listed, so a name typed here is not verified - and neither is its tier."
+            : model.gpuProfiles.state === "ready"
+              ? `${hint} This namespace holds no SwiftGPUProfile yet, so the name has to be typed.`
+              : hint
+        }
+        error={error}
+        warning={warning}
+      >
+        <Input
+          value={shape.gpuProfile}
+          placeholder="the name of a SwiftGPUProfile"
+          data-testid="sandbox-create-gpu-profile-input"
+          onChange={(value: string) => updateSandboxShape(model, { gpuProfile: value })}
+        />
+      </Field>
+    );
+  },
+);
+
+/**
+ * The GPU profile, and the one refusal upstream reports nowhere at all.
+ *
+ * The pool schema has no DRA backend, so there is one control here rather than
+ * the Create Sandbox form's three-way choice: `gpuResourceClaim` simply does not
+ * exist on a SwiftSandboxPool.
+ */
+export const SlotGpuSection = observer(({ model }: { model: SandboxShapeOwner }) => {
+  const inputs = sandboxCreateInputs(model);
+  const shape = model.values.shape;
+  const errors = slotShapeErrors(inputs, shape);
+  const warnings = slotShapeWarnings(inputs, shape);
+
+  return (
+    <CollapsibleSection
+      title="GPU"
+      hint={sandboxGpuSectionHint(inputs, shape)}
+      open={model.gpuOpen || slotGpuSectionHasError(inputs, shape)}
+      onToggle={() => toggleSandboxSection(model, "gpuOpen")}
+      testId="sandbox-create-gpu-section"
+    >
+      <SlotGpuProfileField model={model} error={errors.gpuProfile} warning={warnings.gpuProfile} />
     </CollapsibleSection>
   );
 });
+
+/** The registry credentials, shared by both forms and grouped differently by each. */
+export const SlotPullSecretField = observer(
+  ({
+    model,
+    wording = poolSlotShapeWording,
+    warning,
+  }: {
+    model: SandboxShapeOwner;
+    wording?: SlotShapeWording;
+    /** The embedding form's own warning, when its consequence is not a pool's. */
+    warning?: string;
+  }) => (
+    <ObjectPickerField
+      id="sandbox-create-pull-secret"
+      inputTestId="sandbox-create-pull-secret-input"
+      label="Pull secret"
+      hint={wording.pullSecretHint}
+      unverifiedHint="The Secrets of this namespace could not be listed, so the name is not verified."
+      placeholder="None"
+      value={model.values.shape.imagePullSecret}
+      facts={model.secrets}
+      warning={warning ?? slotShapeWarnings(sandboxCreateInputs(model), model.values.shape).imagePullSecret}
+      onChange={(value: string) => updateSandboxShape(model, { imagePullSecret: value })}
+    />
+  ),
+);
+
+/** The cosign key the rootfs is verified against before it is materialized. */
+export const SlotVerifyKeyField = observer(
+  ({
+    model,
+    wording = poolSlotShapeWording,
+    warning,
+  }: {
+    model: SandboxShapeOwner;
+    wording?: SlotShapeWording;
+    warning?: string;
+  }) => (
+    <ObjectPickerField
+      id="sandbox-create-verify-key"
+      inputTestId="sandbox-create-verify-key-input"
+      label="Verification key"
+      hint={wording.verifyKeyHint}
+      unverifiedHint="The Secrets of this namespace could not be listed, so the name is not verified."
+      placeholder="None"
+      value={model.values.shape.verifyKeySecret}
+      facts={model.secrets}
+      warning={warning ?? slotShapeWarnings(sandboxCreateInputs(model), model.values.shape).verifyKeySecret}
+      onChange={(value: string) => updateSandboxShape(model, { verifyKeySecret: value })}
+    />
+  ),
+);
+
+/**
+ * The model image and its mount path, which is one control until an image is
+ * named and one sentence until then (W12 option dropping).
+ */
+export const SlotModelFields = observer(
+  ({
+    model,
+    wording = poolSlotShapeWording,
+    mountPathError,
+  }: {
+    model: SandboxShapeOwner;
+    wording?: SlotShapeWording;
+    mountPathError?: string;
+  }) => {
+    const shape = model.values.shape;
+    const errors = slotShapeErrors(sandboxCreateInputs(model), shape);
+
+    return (
+      <>
+        <Field label="Model image" hint={wording.modelImageHint} error={errors.modelImageRef}>
+          <Input
+            value={shape.modelImageRef}
+            placeholder="ghcr.io/example/model@sha256:..."
+            data-testid="sandbox-create-model-image"
+            onChange={(value: string) => updateSandboxShape(model, { modelImageRef: value })}
+          />
+        </Field>
+
+        {/* Option dropping (W12): the model block exists only with an imageRef, so
+            a mount path with no image is a value that could never be sent. The
+            fact stands in the control's place rather than the control standing
+            there collecting something that is thrown away. */}
+        {shape.modelImageRef.trim() ? (
+          <Field
+            label="Model mount path"
+            hint={`Where the weights are mounted inside the guest. Empty is ${defaultModelMountPath}, which the API server stamps.`}
+            error={mountPathError ?? errors.modelMountPath}
+          >
+            <Input
+              value={shape.modelMountPath}
+              placeholder={`${defaultModelMountPath} (the schema's default)`}
+              data-testid="sandbox-create-model-mount-path"
+              onChange={(value: string) => updateSandboxShape(model, { modelMountPath: value })}
+            />
+          </Field>
+        ) : (
+          <Field label="Model mount path">
+            <div className={styles.hint} data-testid="sandbox-create-model-mount-path-dropped">
+              A mount path only exists once a model image is named: the model block is emitted only with an imageRef, so
+              nothing would carry it.
+            </div>
+          </Field>
+        )}
+      </>
+    );
+  },
+);
 
 /** The registry credentials, the signature check every slot performs, and the model preload. */
 export const SlotRegistrySection = observer(({ model }: { model: SandboxShapeOwner }) => {
   const inputs = sandboxCreateInputs(model);
   const shape = model.values.shape;
-  const errors = slotShapeErrors(inputs, shape);
-  const warnings = slotShapeWarnings(inputs, shape);
 
   return (
     <CollapsibleSection
@@ -701,70 +904,9 @@ export const SlotRegistrySection = observer(({ model }: { model: SandboxShapeOwn
       onToggle={() => toggleSandboxSection(model, "registryOpen")}
       testId="sandbox-create-registry-section"
     >
-      <ObjectPickerField
-        id="sandbox-create-pull-secret"
-        inputTestId="sandbox-create-pull-secret-input"
-        label="Pull secret"
-        hint="A docker-registry Secret of this namespace, for pulling the image from a private registry."
-        unverifiedHint="The Secrets of this namespace could not be listed, so the name is not verified."
-        placeholder="None"
-        value={shape.imagePullSecret}
-        facts={model.secrets}
-        warning={warnings.imagePullSecret}
-        onChange={(value: string) => updateSandboxShape(model, { imagePullSecret: value })}
-      />
-
-      <ObjectPickerField
-        id="sandbox-create-verify-key"
-        inputTestId="sandbox-create-verify-key-input"
-        label="Verification key"
-        hint="A Secret holding a cosign public key under cosign.pub. EVERY warm slot verifies the image against it before materializing, so the pool never warms an unverified rootfs. It needs a TLS registry."
-        unverifiedHint="The Secrets of this namespace could not be listed, so the name is not verified."
-        placeholder="None"
-        value={shape.verifyKeySecret}
-        facts={model.secrets}
-        warning={warnings.verifyKeySecret}
-        onChange={(value: string) => updateSandboxShape(model, { verifyKeySecret: value })}
-      />
-
-      <Field
-        label="Model image"
-        hint="An OCI image whose filesystem holds the weights, preloaded read-only into every slot over virtio-fs and materialized once per node. Every claiming SwiftSandbox inherits it."
-        error={errors.modelImageRef}
-      >
-        <Input
-          value={shape.modelImageRef}
-          placeholder="ghcr.io/example/model@sha256:..."
-          data-testid="sandbox-create-model-image"
-          onChange={(value: string) => updateSandboxShape(model, { modelImageRef: value })}
-        />
-      </Field>
-
-      {/* Option dropping (W12): the model block exists only with an imageRef, so
-          a mount path with no image is a value that could never be sent. The
-          fact stands in the control's place rather than the control standing
-          there collecting something that is thrown away. */}
-      {shape.modelImageRef.trim() ? (
-        <Field
-          label="Model mount path"
-          hint={`Where the weights are mounted inside the guest. Empty is ${defaultModelMountPath}, which the API server stamps.`}
-          error={errors.modelMountPath}
-        >
-          <Input
-            value={shape.modelMountPath}
-            placeholder={`${defaultModelMountPath} (the schema's default)`}
-            data-testid="sandbox-create-model-mount-path"
-            onChange={(value: string) => updateSandboxShape(model, { modelMountPath: value })}
-          />
-        </Field>
-      ) : (
-        <Field label="Model mount path">
-          <div className={styles.hint} data-testid="sandbox-create-model-mount-path-dropped">
-            A mount path only exists once a model image is named: the model block is emitted only with an imageRef, so
-            nothing would carry it.
-          </div>
-        </Field>
-      )}
+      <SlotPullSecretField model={model} />
+      <SlotVerifyKeyField model={model} />
+      <SlotModelFields model={model} />
     </CollapsibleSection>
   );
 });

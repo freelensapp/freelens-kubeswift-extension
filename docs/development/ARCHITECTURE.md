@@ -51,8 +51,8 @@ src/
                              # (full schema, not only rendered fields)
   renderer/pages/            # Cluster pages (list views); the Guests, Guest
                              # Pools, Guest Classes, Kernels, Images, Seed
-                             # Profiles and Sandbox Pools pages also carry a
-                             # create entry point, through the host's own
+                             # Profiles, Sandbox Pools and Sandboxes pages also
+                             # carry a create entry point, through the host's own
                              # addRemoveButtons
   renderer/details/          # Detail panels (kubeObjectDetailItems)
   renderer/menus/            # Write actions (kubeObjectMenuItems): one file
@@ -83,13 +83,16 @@ src/
                              # image-create-dialog.tsx,
                              # seedprofile-create-dialog.tsx,
                              # pool-create-dialog.tsx,
-                             # sandbox-pool-create-dialog.tsx) and the form
+                             # sandbox-pool-create-dialog.tsx,
+                             # sandbox-create-dialog.tsx) and the form
                              # grammar they share (create-dialog.tsx and its
                              # module: the labelled field, the write summary,
                              # the collapsible section, the quantity field, the
                              # object picker with its T3 degradation, the
-                             # multi-line document field and the key-in-object
-                             # selector that can never emit an empty name)
+                             # multi-line document field, the key-in-object
+                             # selector that can never emit an empty name, and
+                             # the delay a 409 reopen waits out so the host's
+                             # own leave animation cannot swallow it)
   renderer/icons/            # Original SVG icons (never copied)
   common/                    # Code shared between main and renderer
 ```
@@ -110,18 +113,27 @@ those sections without any of them knowing what a pool is. The rule this
 serves is that there is exactly ONE implementation of each SwiftGuest
 section: a second copy would drift at the next field added to the CRD.
 
-A second pair of forms shares one section. The Create Sandbox Pool
-dialog (SPEC-0016 slice 1) renders the slot shape - the image, the
-sizing and placement, the GPU profile and the registry, verification and
-model block - as components that take a **shape owner** (the values,
+A second pair of forms shares its FIELDS. The Create Sandbox Pool
+dialog (SPEC-0016 slice 1) and the Create Sandbox dialog (slice 2) both
+render the slot shape - the image, the sizing and placement, the GPU
+profile picker, the registry credentials, the verification key and the
+model block - from components that take a **shape owner** (the values,
 whose only requirements are a `namespace` and a `shape`, the picker
-facts, the two collapsed sections' open state and one `onValuesChanged`
-hook) rather than the pool dialog's own model, so slice 2's Create
-Sandbox form renders exactly those components against a model of its
-own and derives their values from a picked pool. The rule is the same
-one the guest pair serves: there is exactly ONE implementation of each
-sandbox section, because a second copy would drift at the next field the
-sandbox CRDs gain.
+facts, the collapsed sections' open state and one `onValuesChanged`
+hook) rather than either dialog's own model. What is shared is the
+field, not the section: the two forms group the same fields
+differently - registry and model are one collapsed section on a pool and
+two on a sandbox - and a sandbox's GPU section is a three-way backend
+control with a DRA branch that a checkout removes entirely, so
+`SlotGpuSection` and `SlotRegistrySection` stay the pool's while
+`SlotGpuProfileField`, `SlotPullSecretField`, `SlotVerifyKeyField`,
+`SlotModelFields`, `SlotImageField` and `SlotShapeFields` serve both.
+The sentences around those controls differ, so each takes a `wording`
+argument whose default is the pool's; the rules, the T3 degradations and
+the payload do not, and there is exactly ONE implementation of each,
+because a second copy would drift at the next field the sandbox CRDs
+gain. The Create Sandbox form additionally derives four of those values
+from a picked SwiftSandboxPool rather than asking for them.
 
 Pattern rules (KubeObject statics, no instance methods, host-provided
 globals, SCSS modules) are in [AGENTS.md](../../AGENTS.md).

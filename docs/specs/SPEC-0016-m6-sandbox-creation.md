@@ -583,10 +583,261 @@ different from, the text above:
   picker are used unchanged, and the key-in-object selector is not needed
   by this form.
 
+### Create Sandbox as implemented (2026-09-01)
+
+Slice 2, as planned, and the last implementation slice of M6. The machinery
+is the SPEC-0011/0013 one unchanged for the eighth time: the W12 create
+pattern, the MobX model outside React, the observable `okButtonProps`, the
+catch-never-rethrow submit with the 409 reopen, `store.create`, the host's
+own `addRemoveButtons`, and the shared `create-dialog` primitives - which
+needed no new CONTROL, for the third slice running, and one addition that is
+not a control at all: `dialogReopenDelay`, the constant the 409 reopen waits
+out, whose reason is the finding below.
+
+**The typed models needed nothing at all**, for the sixth time:
+`swiftsandbox-v1alpha1.ts` already declared all forty-four leaves from the
+CRD schema, including `SwiftSandboxScratchDisk`,
+`SwiftSandboxGpuResourceClaim`, `SwiftSandboxEnvVar` and the
+`SwiftSandboxVerifyKeySecretRef` whose `name` is genuinely required. The
+schema was re-read at `v0.13.12` while this form was written and matched
+the model field for field; the only thing this PR adds to the domain is the
+sandbox half of the pure module.
+
+**What the E2E proves about the checkout, and what it cannot.** The whole
+client-side protocol is one field, and a case proves it end to end: a create
+carrying `spec.poolRef.name` is admitted, read back with exactly that field,
+and carries the four "must match" values read from the pool. The proof needed
+a pool whose shape is NOT the schema's defaults, which is why
+`e2e-sandbox-pool-cold` carries `cpu: 2`, `1Gi` and `virtiofs` - three values
+the API server would never stamp, so a readback that shows them can only have
+got them from the pool. What no E2E here can prove, and what stays manual:
+the claim itself, the label flip, the ownerRef re-parenting, the
+cold-fallback event, and the counts moving as a slot is consumed and
+replenished. No controller runs in this cluster, so every sandbox it creates
+stays phaseless - which is, unusually, exactly what a real cluster shows
+first.
+
+These are the places the implementation is more specific than, or different
+from, the text above:
+
+- **The two forms share their FIELDS, not their sections.** Slice 1 exported
+  `SlotImageField`, `SlotShapeFields`, `SlotGpuSection` and
+  `SlotRegistrySection`, and slice 2 was expected to render all four. Two of
+  them could not be: this spec's own A8 and A9 are **two** collapsed sections
+  where B5 is one, and A6 is a three-way backend control with a DRA branch
+  that a checkout removes entirely, where B4 is a profile picker alone. So
+  the picker and the three registry controls were extracted -
+  `SlotGpuProfileField`, `SlotPullSecretField`, `SlotVerifyKeyField`,
+  `SlotModelFields` - and the two section wrappers stay the pool's. The rule
+  is unchanged and is better served: there is exactly one implementation of
+  each control, its validation, its T3 degradation and its payload, which is
+  what would drift at the next field these CRDs gain; a section wrapper is
+  four lines of grouping and the two kinds genuinely group differently.
+- **There is still no `embedding` callback, and what the components take is a
+  `wording`.** Slice 1 left the SPEC-0015 callback out and said slice 2 would
+  add it "if its derivation needs more than a transformation of
+  `values.shape`". It does not: the derivation is exactly that. What the two
+  forms disagree about inside the shared controls is the SENTENCES - every
+  one of them has a warm slot as its subject on a pool and the object being
+  created on a sandbox - so `SlotShapeWording` is a record of those
+  sentences, with `poolSlotShapeWording` as the default, and slice 1's
+  rendering is byte-identical. `slotShapeWarnings` takes the same treatment
+  for the same reason, through `SlotShapeWarningWording`.
+- **The sandbox does NOT inherit the pool's HGX refusal, and that is the
+  sharpest divergence in this slice.** B4 refuses an HGX-tier profile because
+  a pool's controller rejects the tier on a path that returns before the
+  status update, so the pool reports nothing at all, forever. A sandbox on an
+  unsupported tier does something different: it **parks**, as an empty phase
+  with one False condition and a thirty-second requeue, which A6 asks to be
+  stated on the header line rather than refused. `sandboxShapeErrors`
+  therefore calls the individual rule functions (`slotImageError`,
+  `slotCpuError`, `slotMemoryError`, `modelMountPathError`) rather than
+  `slotShapeErrors`, which is the pool's aggregation and keeps its rule
+  untouched. A unit case asserts both halves side by side.
+- **The derived shape IS sent even when it equals a schema default**, which
+  is the one deliberate exception to slice 1's "one rule for every stamped
+  value". On the cold path the rule is unchanged. On the derived branch the
+  four values are neither this operator's choice nor the schema's: they are a
+  reading of another object at a point in time, and what makes the claim
+  auditable afterwards is that the stored sandbox records what was compared,
+  rather than carrying a default that looks identical to it. The pool has no
+  immutability, so a sandbox that omitted `memory` because the pool happened
+  to say `512Mi` would be indistinguishable from one that never looked.
+- **The name has two caps and two messages**: 253 normally, and 245 on the
+  blank-scratch branch, where the claim is `<name>-scratch`. The refusal
+  carries the arithmetic and the consequence - a sandbox past the budget is
+  admitted and then waits on Binding forever - and a unit case pins both
+  boundaries and asserts that the same name is legal without the branch,
+  which is what makes the cap a consequence of a choice rather than a
+  preference.
+- **An empty argv row is REFUSED, where an empty node-selector row is
+  dropped.** The two rules look inconsistent and are not: a map loses nothing
+  when an unfilled row is dropped, while an argv array shifts every element
+  after it, so the row is named and refused and removing it is one click.
+- **The environment rows gained three rules the spec does not enumerate**:
+  the name is required (the schema's own), it carries no whitespace and no
+  `=` (the variables are merged over the image config's environment as
+  `NAME=value` lines, so either character corrupts the line it lands in), and
+  two rows cannot share a name (the merge keeps one and says nothing). An
+  empty VALUE is not an error and is sent as one: a variable that is set and
+  empty is a real variable.
+- **`workingDir` gets no rule at all**, only a hint. A relative working
+  directory is resolved against the image's own, which this form cannot read,
+  and refusing or warning about it would be inventing behaviour the recon
+  could not confirm - the limit W11 puts on this whole exercise.
+- **A checkout drops the network mode, the kernel profile and the node
+  selector as well as A4's four fields**, and `switchSandboxSource` clears
+  them. O4's answer is that the documented match set is the four only, and
+  not asking for the other three cannot produce a wrong object; the YAML
+  editor is the escape hatch. What the switch does NOT clear is the image,
+  the vCPUs and the memory, because the degraded branch asks for exactly
+  those three again.
+- **The degraded branch asks for the four and nothing more.** When the pool
+  list read is refused the picker becomes a text input and the image, vCPUs,
+  memory and root filesystem come back as controls, with a warning that names
+  what nothing on the cluster will check. It does not bring back the kernel
+  profile or the network mode: one failed read is not a reason to ask for
+  fields the object does not need.
+- **The degraded branch has unit coverage only, deliberately.** Making the
+  pool list read fail on the E2E cluster would mean revoking a permission from
+  the kubeconfig the whole suite shares, which would break every other case;
+  the branch is a pure function of `poolsUnverified` and is covered by six unit
+  cases, including that the image comes back as a refusal there and that the
+  warning names what nothing on the cluster will check. This is the same
+  treatment every T3 degradation in this repository has.
+- **A8 can never hold an error, so it has no self-opening predicate.** The
+  pull secret and the verification key have warnings and no refusals - a name
+  that resolves to nothing is a terminal failure at materialize time, not an
+  admission error - so the registry section opens only when the user opens
+  it. A5, A6 and A9 each have one.
+- **`gpuResourceClaim.requestName` and `.tier` are offered**, and
+  `hugepages` is not. That is what scope's twenty-six leaves means in
+  practice, and `tier` follows the effective-values rule: the control exists,
+  and `pcie` is never re-sent.
+- **The 80px create-button clearance is repeated a fourth time**, in the
+  Sandboxes stylesheet, with the comment naming the other three. The
+  SPEC-0015 argument is unchanged.
+- **The pool read's timestamp is part of the model**, because the derivation
+  is a snapshot of an object nothing makes immutable. It is shown under the
+  four facts and again in the summary, in the sentence that says what a later
+  edit of the pool does and does not do to this sandbox.
+- **A7 is rendered before A5 rather than between A6 and A8.** The section
+  table's reading order puts the two expiries between the GPU section and the
+  registry one, which would leave two always-visible text inputs sitting
+  between two collapsed sections and break the four-section tail in half. The
+  form reads identity, source, what it runs, what it runs in, how it ENDS,
+  and then the collapsed tail - which is the same narrative and keeps every
+  collapsed section adjacent, the way every shipped form of this repository
+  ends. Nothing else moved.
+- **The write summary states the timeout and the TTL as two separate
+  facts**, always, whether they are set or not. They are the two ways a
+  sandbox ends and they are routinely confused: one deletes a pod and leaves
+  the object, the other deletes the object itself. Saying nothing when the
+  field is empty would drop the sentence exactly when the operator has not
+  thought about it.
+
+**What the screenshot pass caught**, both themes, 42 shots in
+`e2e-artifacts/spec-0016-slice-2/` (gitignored):
+
+- **The 409 reopen was leaving the dialog at `opacity: 0`, forever, on every
+  create dialog this repository ships** - and this is the finding of the
+  slice. The mechanism is in `@freelensapp/animate` (Freelens 1.10.3): when
+  its `enter` prop goes false it adds a `leave` class and schedules a
+  `setTimeout(leaveDuration)` that clears `isVisible`, `enter` and `leave`
+  together, and its effect's own cleanup CANCELS that timeout when `enter`
+  goes true again. The W12 reopen is `setTimeout(() =>
+  ConfirmDialog.open(params), 0)`, which always lands inside that 100ms
+  window, so the reopened dialog keeps BOTH classes and
+  `.opacity-scale.leave` wins the cascade: a form nobody can see, over a page
+  nobody can click, because it still intercepts every pointer event.
+  Measured on the E2E cluster in both themes, at one second and again at five
+  seconds after the reopen, and then measured again on the **shipped Take
+  Snapshot dialog**, which reproduces it identically. Nobody caught it before
+  because every E2E assertion on a reopen reads `inputValue()`, and an
+  `opacity: 0` element answers that perfectly.
+  - **Fixed here** by `dialogReopenDelay` (250ms, in `create-dialog.tsx` with
+    the mechanism and the measurement next to it), and the E2E case now waits
+    for the dialog to DETACH before waiting for it to come back, then asserts
+    that it carries no `leave` class and computes `opacity: 1`. That assert is
+    what stops the fix regressing, and it is what the follow-up copies.
+  - **The other seven create dialogs still carry it**, because their `reopen`
+    closures are their own. Moving them onto the same constant is a small
+    follow-up with one assert each, not something a form PR should smuggle in;
+    the `Animate` bug itself goes on the upstream-Freelens list next to the
+    kebab-unmount finding and the hardcoded white box.
+- **The scratch-disk section's header line was saying, in the same screen,
+  what its three radio descriptions and its always-Block fact say one scroll
+  below.** That is the duplication SPEC-0013 slice 3 removed from the GPU
+  section, made a second time. The three header lines are now short - what the
+  disk IS and what happens to it - and the always-Block fact stands alone
+  where the control would have been.
+- **Five shared REFUSALS were telling a sandbox operator what a pool would
+  do**, which is the same class of defect one level deeper than the warnings:
+  the image was required because "every warm slot boots" it, a padded
+  reference was excused because "the pool has no admission webhook", a zero
+  vCPU count ended "a pool of them warms nothing", a malformed node-selector
+  key said "the pool stores whatever is typed", and a relative model mount
+  path said "there is no pool webhook" and produced "a slot". They are one
+  `SlotShapeRefusalWording` record now, with the pool's as the default so
+  slice 1 is byte-identical, and a unit property asserts that no sandbox
+  message contains the word "pool" while the pool's still do - which is what
+  keeps the two from being swapped back.
+- **The pull secret's warning was reaching the sandbox form in the POOL's
+  words** ("the pool never warms one"), because `SlotPullSecretField`
+  computed it itself instead of taking it. It takes it now, like the
+  verification key beside it.
+- **SPEC-0014's shared zero-quantity refusal was talking about a class and
+  its guests** ("so a class with a zero here is stored happily and produces
+  guests that cannot start") on a form about neither, which slice 1's pool
+  form already did and nobody had seen rendered. It is one sentence in
+  `guestclass-create.ts`, every reference to it is by constant rather than by
+  text, and the neutral form is true of all five forms that render it, so it
+  is fixed here rather than left: "a zero here is stored happily and produces
+  an object nothing can start".
+- **The scratch section's header line was quoting a size that was being
+  refused**, so a typed `0` read as "A new 0 claim named ...". It quotes the
+  size only when the size is a quantity; the red line under the field is what
+  says the rest.
+- **Three header lines were repeating, in the same screen, what the controls
+  under them already said**: the scratch section's (its three radio
+  descriptions and the always-Block fact), the model section's (how the model
+  is mounted) and the verification key's (when the check happens). All three
+  are short now, and the mechanism lives on the field and in the summary,
+  which is the grammar SPEC-0015 settled. None of this was caught by a test,
+  which is what the screenshot pass is for.
+
+### Open items after slice 2
+
+- **O1 is still open and is still not observable from here.** Every rule this
+  form makes is inline whatever the cluster's webhook setting is; what O1
+  decides is only whether a refused create was refused by us or by the API
+  server, and it needs a live cluster to answer.
+- **O2 is settled as far as static recon can settle it**, and the form now
+  says so in three places: the summary's first-state sentence, the E2E
+  readback that asserts an empty phase, and correction 3 to SPEC-0008. One
+  live sandbox still closes it.
+- **O3 is unchanged and both sections stay offered in checkout mode.** The
+  recon settles the GPU case only, and the form claims nothing about `model`
+  or `scratchDisk` on a checkout. If the answer turns out to be "ignored"
+  they become option-dropped, with the fact in their place, which is a
+  one-function change here.
+- **O4 is settled for this form's purposes**: the documented match set is
+  `image`, `cpu`, `memory` and `rootfsMode`, so the checkout asks for none of
+  `network.mode`, `kernelProfileRef` and `nodeSelector` and sends none of
+  them. Not asking cannot produce a wrong object; the YAML editor covers the
+  case where a claim ever needs more.
+- **O5 stayed resolved.** The shared primitives were consumed exactly as they
+  stand: the quantity field, the T3 object picker and the collapsible section
+  are used unchanged, and the key-in-object selector is not needed by this
+  form either.
+
 ### Corrections owed to SPEC-0008, in scope for this spec's PRs
 
-Three. The upstream-side drift this recon found - twelve schema and doc
-items plus six UI defects, all argued above - is candidate upstream feedback.
+Three, **all three made in the slice-2 PR** (2026-09-01) and recorded in
+SPEC-0008's own Notes under "Corrections from SPEC-0016", with each
+corrected sentence marked in place with that date. The upstream-side drift
+this recon found - twelve schema and doc items plus six UI defects, all
+argued above - is candidate upstream feedback.
 
 1. **`RootfsReady` is declared in Go and written by nothing.** The
    carrier of a materialize failure is `GuestRunning: False` with a

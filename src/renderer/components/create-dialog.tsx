@@ -42,6 +42,30 @@ export interface WriteSummaryFacts {
   warnings: string[];
 }
 
+/**
+ * How long to wait before reopening a dialog the host has just closed, which is
+ * what W12's `AlreadyExists` path does (SPEC-0016 slice 2).
+ *
+ * It is a fix rather than a tolerance, and the mechanism is in
+ * `@freelensapp/animate` (Freelens 1.10.3, `animate.tsx`): when its `enter` prop
+ * goes false it adds a `leave` class and schedules a `setTimeout(leaveDuration)`
+ * that clears `isVisible`, `enter` and `leave` together - and its effect's own
+ * cleanup CANCELS that timeout when `enter` goes true again. A dialog reopened
+ * inside that window therefore keeps BOTH classes, and `.opacity-scale.leave`
+ * wins the cascade: `opacity: 0`, permanently, on an element that still
+ * intercepts every click on the page underneath it. Measured on this
+ * repository's own E2E cluster in both themes, at one and at five seconds after
+ * the reopen, on this dialog AND on the shipped Take Snapshot one.
+ *
+ * `leaveDuration` defaults to 100ms
+ * (`default-leave-duration.injectable.ts`), and the `Dialog` passes no override,
+ * so 250ms clears the window with room for a slow frame. The other seven create
+ * dialogs of this repository still reopen at zero and still carry the defect;
+ * moving them onto this constant is the follow-up SPEC-0016's notes name, and
+ * the `Animate` bug itself goes on the upstream-Freelens list.
+ */
+export const dialogReopenDelay = 250;
+
 export interface FieldProps {
   label: string;
   hint?: string;

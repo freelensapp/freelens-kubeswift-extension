@@ -659,8 +659,11 @@ did. The two judgement calls in the classifier table (`Completed` as success,
     pass has something to catch), `model`, `scratchDisk`, `gpu` with
     `nodeName: __NODE_NAME__`, `startedAt`, and four `True` conditions. The
     failed one gets phase `Failed`, a non-zero `exitCode`, `terminalAt`, a
-    `message`, and a `RootfsReady: False` condition carrying the text the
-    Status column must show. The pooled one gets phase `Completed`,
+    `message`, and a `GuestRunning: False` condition with a materialize-failed
+    reason carrying the text the Status column must show (**corrected
+    2026-09-01**, see "Corrections from SPEC-0016" in the Notes: it was
+    `RootfsReady: False`, a condition type that is declared in Go and written by
+    nothing). The pooled one gets phase `Completed`,
     `exitCode: 0`, `startedAt`/`terminalAt` (so the derived Duration is
     exercised) and its slot `podRef`. The ready pool gets phase `Ready`,
     `warmReplicas: 2`, `claimedReplicas: 1`, `rootfs`, `imageEnv`, `selector`,
@@ -697,8 +700,10 @@ did. The two judgement calls in the classifier table (`Completed` as success,
 - **Manual verification**: fixture-based rendering needs none. What stays
   manual-only (TESTING.md) is a real KVM-backed cluster with the sandbox
   SwiftKernel installed: that a sandbox actually transitions
-  `Pending → Materializing → Running → Completed` with the phases and messages
-  the classifier maps; that the launcher pod's logs opened from the drawer are
+  `(no phase) → Materializing → Running → Completed` with the phases and
+  messages the classifier maps (**corrected 2026-09-01**, see "Corrections from
+  SPEC-0016" in the Notes: the first observable state is an empty phase, and
+  `Pending` is written by no controller for either kind); that the launcher pod's logs opened from the drawer are
   the ones the operator needed (in particular that the `sandbox-materialize`
   init container is reachable in the same tab); that a warm-pool checkout shows
   the claimed slot's pod in the Launcher Pod row; and that a `spec.timeout`
@@ -807,8 +812,9 @@ because the model types them:
 6. **Which rung each sandbox fixture exercises.** `e2e-sandbox-running` writes
    no `status.message`, so its Status column is the newest condition's message
    (rung 3); `e2e-sandbox-failed` writes one, so its column is that summary
-   (rung 1) while its `RootfsReady: False` condition carries the detail behind
-   it; `e2e-sandbox-pooled` writes neither, so its column falls back to the
+   (rung 1) while its `GuestRunning: False` condition carries the detail behind
+   it (**corrected 2026-09-01** from `RootfsReady: False`, see "Corrections from
+   SPEC-0016" below); `e2e-sandbox-pooled` writes neither, so its column falls back to the
    classifier's explanation (rung 4). Rung 2 — a problem outranking a more
    recent success — is unit-tested only: it needs two conditions in a specific
    temporal order, which is a shape a static fixture cannot make more convincing
@@ -990,9 +996,11 @@ Per PROCESS.md's upstream drift watch, at the start of the milestone:
   `rootfsMode: virtiofs`, `verifyKeySecretRef`, `scratchDisk`,
   `imagePullSecret` and honoured `workingDir` on the cold path, and another
   added the GPU story (`gpuResourceClaim` and `gpuProfileRef` on the sandbox,
-  `gpuProfileRef` on the pool) together with `model` preload on both kinds. The
-  same release retired the gateway's dedicated `SandboxService` in favour of
-  the generic Explorer, which is why kubeswift-ui has no sandbox route today.
+  `gpuProfileRef` on the pool) together with `model` preload on both kinds. This
+  spec originally added that the same release "retired the gateway's dedicated
+  `SandboxService` in favour of the generic Explorer, which is why kubeswift-ui
+  has no sandbox route today"; that sentence is **wrong on both halves and is
+  corrected 2026-09-01** - see "Corrections from SPEC-0016" in the Notes.
 
 ### Schema facts that drive the design
 
@@ -1146,3 +1154,45 @@ formatter.
 `status.rootfs.sizeBytes` on both kinds is an int64 **byte** count, so it goes
 through `formatBytes`. There is no MiB field in either schema, so
 `formatMebibytes` (SPEC-0007) is not needed here.
+
+### Corrections from SPEC-0016 (2026-09-01)
+
+SPEC-0016's recon of the two sandbox CRDs, their webhook and their controllers
+found three things this spec states that are not true. They are corrected in
+place above, each marked with this date, and recorded here with what replaced
+them. They are the corrections
+[SPEC-0016](SPEC-0016-m6-sandbox-creation.md) lists as owed to this spec under
+"Corrections owed to SPEC-0008, in scope for this spec's PRs", and they landed
+in that spec's second implementation PR.
+
+1. **`RootfsReady` is declared in Go and written by nothing.** The carrier of a
+   materialize failure is `GuestRunning: False` with a materialize-failed reason
+   beside `status.message`. The `e2e-sandbox-failed` status patch leaned on
+   `RootfsReady: False` to carry the detail behind its summary, which taught a
+   condition type no cluster produces. The patch now writes
+   `GuestRunning: False` with reason `MaterializeFailed`, and `lib.sh` pins both
+   by readback so the fixture cannot drift back. **No code changed**:
+   `sandboxMessage` deliberately hardcodes no condition type, orders by
+   transition time and by "not True", and is exactly as correct against the new
+   fixture as against the old one - which is why this is a fixture and
+   documentation fix and not a bug. The condition types in "Docs versus schema
+   discrepancies" item 5 stay listed as documentation rather than API, which is
+   the same finding one level up.
+2. **The gateway's `SandboxService` was not retired, and kubeswift-ui does have
+   sandbox screens.** `proto/kubeswift/v1/sandbox.proto` still declares the
+   service, with a sixteen-field create message and an eleven-field create-pool
+   message, and **nothing implements it in Go or wires a client in Angular** -
+   dead code rather than a retirement. Nor does the second half hold: both
+   sandbox kinds are in the gateway's Explorer catalog, and the upstream UI has
+   two create wizards, two drawers and two terminals for them. What is true is
+   that there is no dedicated `/sandbox` route, which is what the recon behind
+   this spec actually saw.
+3. **`Pending` is never written for either kind.** The phase is in the enum, in
+   the metrics labels and in a test, and no controller writes it: the first
+   observable state of a sandbox is an **empty** `status.phase`, and a pool that
+   errors before its status update gets no phase either. The manual-check
+   sentence promising `Pending → Materializing → Running → Completed` therefore
+   starts one step earlier, at no phase at all. **The classifiers keep their
+   `Pending` rows**: the enum still declares the value, and removing a row
+   because today's controller does not write it would be a guess about
+   tomorrow's. What changes is what this spec promises a tester will see.
