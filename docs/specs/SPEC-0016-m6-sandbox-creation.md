@@ -1,8 +1,12 @@
 # SPEC-0016: Create forms for SwiftSandbox and SwiftSandboxPool (M6)
 
-- **Status:** Approved (Roberto, 2026-08-31, in chat: the completion of
-  M6 was delegated in conversation; drafted and reviewed under that
-  delegation)
+- **Status:** Implemented (PR #101 the Create Sandbox Pool form, PR #102
+  the Create Sandbox form with the warm-slot checkout, PR #103 the
+  409-reopen fix across every create dialog; CI green on main after each.
+  Verified waits for the M6 milestone review and for the manual KVM
+  checks listed under Tests. Approved by Roberto on 2026-08-31, in chat:
+  the completion of M6 was delegated in conversation; drafted, reviewed
+  and implemented under that delegation)
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md), the
   "Sandbox / SandboxPool creation" row)
 - **KubeSwift version reviewed:** `v0.13.12` (`724b5ef`). Both sandbox

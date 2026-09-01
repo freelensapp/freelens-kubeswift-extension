@@ -250,7 +250,10 @@ that no second object was written. That last case waits for the dialog to
 host's own 100ms leave animation leaves the dialog permanently transparent over a
 page it still intercepts every click on, which is what every create dialog of
 this repository was doing and no `inputValue()` assert could ever have caught
-(SPEC-0016's notes carry the mechanism and the measurement). Their fixtures are the slice-2 half of
+(SPEC-0016's notes carry the mechanism and the measurement). Since the
+follow-up that landed the same day (PR #103) that assert is one helper,
+`expectReopenedDialogVisible`, shared with the Take Snapshot reopen case, and
+every create dialog reopens through the same `dialogReopenDelay`. Their fixtures are the slice-2 half of
 `210-sandbox-create.yaml`: the cold pool, whose status is deliberately never
 injected because a pool nothing has reconciled is what the picker has to render,
 and the sandbox whose name is taken, which carries no status for the same reason.
