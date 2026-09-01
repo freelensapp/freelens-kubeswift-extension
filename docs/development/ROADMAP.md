@@ -120,8 +120,8 @@ here when it is written.
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| VM serial console | — | Planned (feasibility: via launcher pod, no gateway) |
-| Sandbox exec, and the workload console tail | — | Planned (feasibility study required; lead recorded in [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md)) |
+| VM serial console | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Spec in PR |
+| Sandbox workload console tail (the interactive in-guest shell is excluded: it needs the gateway's vsock frame protocol, which is upstream's AGPL wire format, see SPEC-0017) | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Spec in PR |
 
 ### Cross-cutting
 
