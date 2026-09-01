@@ -138,13 +138,13 @@ async function openCreateGuestDialog(frame: Frame): Promise<void> {
 }
 
 /**
- * Opens (or shuts) one of the Create Guest form's collapsed sections.
+ * Opens (or shuts) one collapsed section of any create form.
  *
  * The header is the section's own first child button - the disclosure the
  * `CollapsibleSection` primitive renders - and it is a real button so the
  * section is reachable by keyboard as well as by this.
  */
-async function openGuestSection(frame: Frame, testId: string): Promise<void> {
+async function openFormSection(frame: Frame, testId: string): Promise<void> {
   await frame.locator(`[data-testid="${testId}"] > button`).first().click();
 }
 
@@ -342,6 +342,27 @@ async function useSeedReference(frame: Frame, document: string, origin: "secret"
     state: "visible",
     timeout: 60_000,
   });
+}
+
+/** The SwiftSandboxPools the cluster holds, by name: the only way to see a create that did not happen. */
+function sandboxPoolNames(): string[] {
+  const { stdout } = cluster.kubectlE2E("get", "swiftsandboxpools.sandbox.kubeswift.io", "--output", "name");
+
+  return stdout ? stdout.split("\n").sort() : [];
+}
+
+/**
+ * Opens the Create Sandbox Pool dialog from the page's own control, and waits
+ * for its reads to answer.
+ *
+ * The kernel-profile picker is a text input until the namespace's SwiftKernels
+ * come back, so waiting for the select is waiting for the read rather than
+ * racing it - the idiom every create opener of this suite uses.
+ */
+async function openCreateSandboxPoolDialog(frame: Frame): Promise<void> {
+  await pageCreateControl(frame).click();
+  await frame.waitForSelector('[data-testid="swiftsandboxpool-create-form"]', { state: "visible", timeout: 60_000 });
+  await frame.waitForSelector(".Select:has(#sandbox-create-kernel-profile)", { state: "visible", timeout: 60_000 });
 }
 
 /** The digest the image cases pin by: a well-formed sha256 that names nothing. */
@@ -3432,7 +3453,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
 
       // Section 8: one image-backed disk and one blank one.
-      await openGuestSection(frame, "guest-create-data-disks-section");
+      await openFormSection(frame, "guest-create-data-disks-section");
       await frame.locator('[data-testid="guest-create-add-disk"]').click();
       await frame.locator('[data-testid="guest-create-disk-0-name"]').fill("extra");
       await pickCreateOption(frame, "guest-create-disk-0-image", "e2e-ubuntu-2404");
@@ -3443,7 +3464,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await frame.locator('[data-testid="guest-create-disk-1-size"]').fill("20Gi");
 
       // Section 9: two exposed ports and one additional interface.
-      await openGuestSection(frame, "guest-create-network-section");
+      await openFormSection(frame, "guest-create-network-section");
       await frame.locator('[data-testid="guest-create-add-port"]').click();
       await frame.locator('[data-testid="guest-create-port-0-port"]').fill("80");
       await frame.locator('[data-testid="guest-create-port-0-name"]').fill("http");
@@ -3460,7 +3481,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await frame.locator('[data-testid="guest-create-nic-0-primary"] .Checkbox').click();
 
       // Section 10: the native GPU backend.
-      await openGuestSection(frame, "guest-create-gpu-section");
+      await openFormSection(frame, "guest-create-gpu-section");
       await gpuBackendRadio(frame, "profile").click();
       await pickCreateOption(frame, "guest-create-gpu-profile", "e2e-gpu-profile-pcie");
 
@@ -3537,7 +3558,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await pickCreateOption(frame, "guest-create-class", "e2e-small");
       await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
 
-      await openGuestSection(frame, "guest-create-network-section");
+      await openFormSection(frame, "guest-create-network-section");
       await frame.locator('[data-testid="guest-create-add-port"]').click();
       await frame.locator('[data-testid="guest-create-port-0-port"]').fill("80");
       await frame.locator('[data-testid="guest-create-add-port"]').click();
@@ -3553,9 +3574,9 @@ describe("KubeSwift views against the fixture cluster", () => {
       // it: a submit blocked on a field nobody can see is the dead control W4
       // forbids. Shut again afterwards, because the moment the error is fixed
       // the section really does close - which is the other half of the rule.
-      await openGuestSection(frame, "guest-create-network-section");
+      await openFormSection(frame, "guest-create-network-section");
       expect(await frame.locator('[data-testid="guest-create-port-0-port"]').count()).toBe(1);
-      await openGuestSection(frame, "guest-create-network-section");
+      await openFormSection(frame, "guest-create-network-section");
 
       await frame.locator('[data-testid="guest-create-port-0-name"]').fill("http");
       await frame.locator('[data-testid="guest-create-port-1-name"]').fill("https");
@@ -3605,7 +3626,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await pickCreateOption(frame, "guest-create-class", "e2e-small");
       await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
 
-      await openGuestSection(frame, "guest-create-data-disks-section");
+      await openFormSection(frame, "guest-create-data-disks-section");
       await frame.locator('[data-testid="guest-create-add-disk"]').click();
 
       // An image row is attached as a raw disk anyway, so the checkbox is not
@@ -4476,7 +4497,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await pickCreateOption(frame, "guest-create-run-policy", "Always");
 
       // The per-replica storage, which is the whole stateful-pool feature.
-      await openGuestSection(frame, "pool-create-storage-section");
+      await openFormSection(frame, "pool-create-storage-section");
       await frame.locator('[data-testid="pool-create-add-claim"]').click();
       await frame.locator('[data-testid="pool-create-claim-0-name"]').fill("state");
       await frame.locator('[data-testid="pool-create-claim-0-size"]').fill("10Gi");
@@ -4489,7 +4510,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       );
 
       // One Service in front of every replica.
-      await openGuestSection(frame, "pool-create-service-section");
+      await openFormSection(frame, "pool-create-service-section");
       await frame.locator('[data-testid="pool-create-service-enabled"] .Checkbox').click();
       await frame.locator('[data-testid="pool-create-add-service-port"]').click();
       await frame.locator('[data-testid="pool-create-service-port-0-port"]').fill("80");
@@ -4580,7 +4601,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await pickCreateOption(frame, "guest-create-class", "e2e-small");
       await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
 
-      await openGuestSection(frame, "guest-create-network-section");
+      await openFormSection(frame, "guest-create-network-section");
       await frame.locator('[data-testid="guest-create-add-interface"]').click();
       await frame.locator('[data-testid="guest-create-nic-0-name"]').fill("net1");
       await frame.locator('[data-testid="guest-create-nic-0-mac"]').fill("52:54:00:12:34:56");
@@ -4633,7 +4654,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await pickCreateOption(frame, "guest-create-node", node);
 
       // Spread, so the summary can say the two halves contradict each other.
-      await openGuestSection(frame, "pool-create-spread-section");
+      await openFormSection(frame, "pool-create-spread-section");
       await spreadRadio(frame, "spread").click();
 
       const dialog = await cluster.confirmDialogText(frame);
@@ -4680,12 +4701,12 @@ describe("KubeSwift views against the fixture cluster", () => {
 
       // A per-replica port first, so the case proves the control is dropped
       // rather than merely never offered.
-      await openGuestSection(frame, "guest-create-network-section");
+      await openFormSection(frame, "guest-create-network-section");
       await frame.locator('[data-testid="guest-create-add-port"]').click();
       await frame.locator('[data-testid="guest-create-port-0-port"]').fill("9090");
       expect(await frame.locator('[data-testid="guest-create-ports-dropped"]').count()).toBe(0);
 
-      await openGuestSection(frame, "pool-create-service-section");
+      await openFormSection(frame, "pool-create-service-section");
       await frame.locator('[data-testid="pool-create-service-enabled"] .Checkbox').click();
       await frame.locator('[data-testid="pool-create-add-service-port"]').click();
       await frame.locator('[data-testid="pool-create-service-port-0-port"]').fill("8080");
@@ -4732,7 +4753,7 @@ describe("KubeSwift views against the fixture cluster", () => {
       await pickCreateOption(frame, "guest-create-class", "e2e-small");
       await pickCreateOption(frame, "guest-create-image", "e2e-ubuntu-2404");
 
-      await openGuestSection(frame, "pool-create-rollout-section");
+      await openFormSection(frame, "pool-create-rollout-section");
       await frame.locator('[data-testid="pool-create-max-unavailable"]').fill("0");
 
       const refused = await cluster.confirmDialogText(frame);
@@ -4796,6 +4817,241 @@ describe("KubeSwift views against the fixture cluster", () => {
       await cluster.cancelDialog(frame);
 
       expect(poolNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "creates a sandbox pool from the page's own create button, and reads back what the server stamped",
+    async () => {
+      // SPEC-0016 slice 1. Two things are proved here that no unit test can:
+      // that a create which never mentions `memory` is ADMITTED although the
+      // schema calls it required - the API server applies structural-schema
+      // defaults before it validates `required` - and that every value this
+      // form deliberately does not send comes back stamped anyway.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-sbxpool");
+
+      await openCreateSandboxPoolDialog(frame);
+      await frame.locator('[data-testid="sandbox-pool-create-name"]').fill(name);
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+      await frame.locator('[data-testid="sandbox-pool-create-min-warm"]').fill("2");
+      await frame.locator('[data-testid="sandbox-pool-create-max-warm"]').fill("4");
+      await pickCreateOption(frame, "sandbox-create-kernel-profile", "e2e-kernel-6-12");
+
+      await frame.locator('[data-testid="sandbox-create-add-node-selector"]').click();
+      await frame.locator('[data-testid="sandbox-create-node-selector-0-key"]').fill("disk");
+      await frame.locator('[data-testid="sandbox-create-node-selector-0-value"]').fill("nvme");
+
+      // The collapsed tail, whose three fields are what every claiming sandbox
+      // inherits.
+      await openFormSection(frame, "sandbox-create-registry-section");
+      await pickCreateOption(frame, "sandbox-create-pull-secret", "e2e-sandbox-registry");
+      await pickCreateOption(frame, "sandbox-create-verify-key", "e2e-sandbox-cosign");
+      await frame
+        .locator('[data-testid="sandbox-create-model-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/model:v1");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftSandboxPool kubeswift-e2e/${name}`);
+      // What warms, what it is called, and what it costs.
+      expect(dialog).toContain("2 warm slots are asked for");
+      expect(dialog).toContain("a runtime-intent ConfigMap");
+      expect(dialog).toContain("a deny-ingress NetworkPolicy");
+      expect(dialog).toContain(`${name}-slot-`);
+      expect(dialog).toContain("2 x 512Mi = 1Gi");
+      // The four facts nothing on the cluster will ever tell an operator.
+      expect(dialog).toContain("no phase at all, and then Warming");
+      expect(dialog).toContain("NOT a conserved total");
+      expect(dialog).toContain("keep the shape they booted with");
+      expect(dialog).toContain("spec.poolRef");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSandboxPool kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftsandboxpools.sandbox.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "cpu",
+        "image",
+        "imagePullSecret",
+        "kernelProfileRef",
+        "maxWarm",
+        "memory",
+        "minWarm",
+        "model",
+        "nodeSelector",
+        "rootfsMode",
+        "verifyKeySecretRef",
+      ]);
+
+      // What the form sent.
+      expect(spec.image).toBe("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+      expect(spec.minWarm).toBe(2);
+      expect(spec.maxWarm).toBe(4);
+      expect(spec.kernelProfileRef).toEqual({ name: "e2e-kernel-6-12" });
+      expect(spec.nodeSelector).toEqual({ disk: "nvme" });
+      expect(spec.imagePullSecret).toBe("e2e-sandbox-registry");
+      expect(spec.verifyKeySecretRef).toEqual({ name: "e2e-sandbox-cosign" });
+      expect(spec.model.imageRef).toBe("ghcr.io/freelensapp/kubeswift-e2e/model:v1");
+
+      // What the API server stamped, which the form never sends: `memory` above
+      // all, because it is required AND defaulted and this create omitted it.
+      expect(spec.memory).toBe("512Mi");
+      expect(spec.cpu).toBe(1);
+      expect(spec.rootfsMode).toBe("block");
+      expect(spec.model.mountPath).toBe("/model");
+      // And what it does NOT stamp: `network.mode` has a default INSIDE a
+      // `network` block, so an absent block stays absent - which is the proof
+      // that the form sent no network at all.
+      expect(spec.network).toBeUndefined();
+
+      // No controller runs here, so the pool warms nothing - which is what
+      // makes the readback a proof of what the form sent.
+      expect(cluster.kubectlField("swiftsandboxpools.sandbox.kubeswift.io", name, "{.status.phase}")).toBe("");
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses a warm cap below the floor, and releases it when either count moves",
+    async () => {
+      // B3. The controller folds a cap below the floor to the larger of the
+      // two, its own comment saying that bounds are the webhook's job - and
+      // there is no webhook for a pool at all, so the number typed here would
+      // simply not be the number that caps anything.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+
+      const before = sandboxPoolNames();
+
+      await openCreateSandboxPoolDialog(frame);
+      await frame.locator('[data-testid="sandbox-pool-create-name"]').fill("e2e-sandbox-pool-fold");
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+      await frame.locator('[data-testid="sandbox-pool-create-min-warm"]').fill("3");
+      await frame.locator('[data-testid="sandbox-pool-create-max-warm"]').fill("2");
+
+      const refused = await cluster.confirmDialogText(frame);
+
+      expect(refused).toContain("Create Sandbox Pool is disabled - Maximum warm slots:");
+      expect(refused).toContain("A cap of 2 is below this pool's floor of 3");
+      expect(refused).toContain("silently folded to the larger of the two");
+      expect(refused).toContain("no webhook for a pool at all");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // Released by the cap, and refused again when it goes back under.
+      await frame.locator('[data-testid="sandbox-pool-create-max-warm"]').fill("3");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await frame.locator('[data-testid="sandbox-pool-create-max-warm"]').fill("2");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // And released by the other one, which is the half a one-sided rule would
+      // have got wrong.
+      await frame.locator('[data-testid="sandbox-pool-create-min-warm"]').fill("2");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(sandboxPoolNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses an HGX GPU profile with the reason upstream never reports, and accepts the pcie one",
+    async () => {
+      // B4 and S11. Upstream rejects the tier when the first slot is allocated,
+      // on a path that returns before the status update: the pool never reaches
+      // Degraded, never gets a message, and error-backoffs forever with an
+      // empty phase. This is the only place that is ever said.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+
+      const before = sandboxPoolNames();
+
+      await openCreateSandboxPoolDialog(frame);
+      await frame.locator('[data-testid="sandbox-pool-create-name"]').fill("e2e-sandbox-pool-hgx");
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+
+      await openFormSection(frame, "sandbox-create-gpu-section");
+      await pickCreateOption(frame, "sandbox-create-gpu-profile", "e2e-gpu-profile-hgx");
+
+      const refused = await cluster.confirmDialogText(frame);
+
+      expect(refused).toContain("Create Sandbox Pool is disabled - GPU profile:");
+      expect(refused).toContain("a pool cannot warm a slot on an HGX tier");
+      expect(refused).toContain("BEFORE the status update");
+      expect(refused).toContain("never reaches Degraded");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // A collapsed section that holds an error opens itself and stays open:
+      // a submit blocked on a field nobody can see is the dead control W4
+      // forbids, so the header click cannot shut it while the refusal stands.
+      await openFormSection(frame, "sandbox-create-gpu-section");
+      expect(await frame.locator(".Select:has(#sandbox-create-gpu-profile)").count()).toBe(1);
+
+      await pickCreateOption(frame, "sandbox-create-gpu-profile", "e2e-gpu-profile-pcie");
+
+      const accepted = await cluster.confirmDialogText(frame);
+
+      expect(accepted).not.toContain("Create Sandbox Pool is disabled");
+      expect(accepted).toContain("warm GPU pool");
+      expect(accepted).toContain("keep the floor at or below N");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(sandboxPoolNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that a sandbox pool name is taken, and writes nothing when the dialog is cancelled",
+    async () => {
+      // S1 and the cancel path in one case, because they are the same fact from
+      // two sides: the collision is a warning rather than a block - the read
+      // behind it can be stale, and only the API server can answer - and a
+      // dialog that is dismissed has written nothing at all, which only
+      // kubectl can prove.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+
+      const before = sandboxPoolNames();
+
+      await openCreateSandboxPoolDialog(frame);
+      await frame.locator('[data-testid="sandbox-pool-create-name"]').fill("e2e-sandbox-pool-create-taken");
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+
+      const warned = await cluster.confirmDialogText(frame);
+
+      expect(warned).toContain(
+        "A SwiftSandboxPool named e2e-sandbox-pool-create-taken already exists in kubeswift-e2e",
+      );
+      expect(warned).toContain("this form stays open when it is");
+      expect(warned).not.toContain("Create Sandbox Pool is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // A free name is not warned about at all.
+      await frame.locator('[data-testid="sandbox-pool-create-name"]').fill("e2e-sandbox-pool-free");
+      expect(await cluster.confirmDialogText(frame)).not.toContain("already exists in kubeswift-e2e");
+
+      await cluster.cancelDialog(frame);
+
+      expect(sandboxPoolNames()).toEqual(before);
     },
     TIMEOUT,
   );

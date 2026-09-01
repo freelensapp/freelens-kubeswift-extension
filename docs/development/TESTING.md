@@ -75,7 +75,7 @@ VMs), driven through a real Freelens by Playwright's Electron API.
   one detail panel per CRD.
 
 **Since M6 the suite also writes** (SPEC-0010, SPEC-0011, SPEC-0012,
-SPEC-0013, SPEC-0014, SPEC-0015): a handful of cases patch `spec.runPolicy`, delete a
+SPEC-0013, SPEC-0014, SPEC-0015, SPEC-0016): a handful of cases patch `spec.runPolicy`, delete a
 launcher pod, delete a guest, create a SwiftSnapshot, create a SwiftRestore,
 create a SwiftMigration and create SwiftGuests, SwiftGuestClasses,
 SwiftKernels, SwiftImages and SwiftSeedProfiles from those pages' own create
@@ -83,7 +83,8 @@ buttons, for real, against dedicated
 fixtures nothing else reads (`160-swiftguest-actions.yaml`,
 `170-swiftrestore-actions.yaml`, `180-swiftmigration-actions.yaml`,
 `190-swiftguest-create.yaml`, `195-swiftguest-create-volumes.yaml`,
-`200-create-form-references.yaml`). They
+`200-create-form-references.yaml`, `205-swiftguestpool-create.yaml`,
+`210-sandbox-create.yaml`). They
 assert the UI **and** read the result back with `kubectl`, because the point of
 a write case is that the cluster changed. What they must never assert is what a
 controller would do next: no reconciler runs here, so a stopped guest never
@@ -190,6 +191,30 @@ that already holds the replica name `e2e-pool-taken-1` warned about with its
 index and not blocked. Their fixture is `205-swiftguestpool-create.yaml`: that
 one guest, and a storage class behind a provisioner that does not exist, so
 nothing is ever provisioned and nothing has to be cleaned up.
+
+The SPEC-0016 slice-1 cases add the Create Sandbox Pool form, and the first of
+them proves something on the API server that no unit test can: a create that
+never mentions `memory` is **admitted**, although the CRD lists it as required,
+because structural-schema defaults are applied before `required` is validated -
+so the readback carries the `512Mi`, the `cpu: 1` and the `rootfsMode: block`
+the form deliberately never sends, plus the `mountPath: /model` stamped inside
+the model block it does. `spec.network` is asserted **absent** in the same
+breath, because `network.mode`'s default lives inside a block this form omits,
+which is what makes the absence a proof of what was sent rather than an
+accident. The other three assert what the form refuses and warns: the warm cap
+below the floor, refused with the silent fold as its reason and released the
+moment either count moves; the HGX-tier GPU profile, refused with the reason
+upstream reports nowhere at all, with the collapsed section that opens itself
+and cannot be shut while it holds the refusal; and the name a pool already
+holds, warned about and never blocked, with `kubectl` proving that a cancelled
+dialog wrote nothing at all. Their fixture is `210-sandbox-create.yaml`, whose
+one object is the pool whose name is taken - no status is injected for it,
+because a pool nothing has reconciled is exactly what this form creates on a
+cluster with no controller, and nothing is registered in `lib.sh`. Everything
+else they need is reused as it stands: the two Secrets of
+`125-sandbox-references.yaml`, the kernel of `30-swiftkernels.yaml` and both
+GPU profiles of `110-swiftgpuprofiles.yaml`, whose `hgx-shared` tier is what
+the refusal is measured against.
 
 The pre-review pass (layer 4) stays read-only by construction and by assert,
 because it runs against the demo cluster a human reviewer is about to walk

@@ -50,9 +50,10 @@ src/
                              # KubeObjectStore, typed Spec/Status interfaces
                              # (full schema, not only rendered fields)
   renderer/pages/            # Cluster pages (list views); the Guests, Guest
-                             # Pools, Guest Classes, Kernels, Images and Seed
-                             # Profiles pages also carry a create entry point,
-                             # through the host's own addRemoveButtons
+                             # Pools, Guest Classes, Kernels, Images, Seed
+                             # Profiles and Sandbox Pools pages also carry a
+                             # create entry point, through the host's own
+                             # addRemoveButtons
   renderer/details/          # Detail panels (kubeObjectDetailItems)
   renderer/menus/            # Write actions (kubeObjectMenuItems): one file
                              # per verb, rendered by the host in both the list
@@ -64,7 +65,10 @@ src/
                              # restore-create.ts, migration-create.ts,
                              # guest-create.ts, guestclass-create.ts,
                              # kernel-create.ts, image-create.ts,
-                             # seedprofile-create.ts, pool-create.ts), the
+                             # seedprofile-create.ts, pool-create.ts,
+                             # sandbox-create.ts - one module for BOTH sandbox
+                             # kinds, since every SwiftSandboxPool field except
+                             # the two warm counts is a SwiftSandbox field), the
                              # storage vocabulary
                              # two create forms share (kube-storage.ts: the
                              # access/volume mode pair, the CRDs' CEL rule and
@@ -78,7 +82,8 @@ src/
                              # kernel-create-dialog.tsx,
                              # image-create-dialog.tsx,
                              # seedprofile-create-dialog.tsx,
-                             # pool-create-dialog.tsx) and the form
+                             # pool-create-dialog.tsx,
+                             # sandbox-pool-create-dialog.tsx) and the form
                              # grammar they share (create-dialog.tsx and its
                              # module: the labelled field, the write summary,
                              # the collapsible section, the quantity field, the
@@ -104,6 +109,19 @@ ports control replaced by a fact, a derived clone target node) reach
 those sections without any of them knowing what a pool is. The rule this
 serves is that there is exactly ONE implementation of each SwiftGuest
 section: a second copy would drift at the next field added to the CRD.
+
+A second pair of forms shares one section. The Create Sandbox Pool
+dialog (SPEC-0016 slice 1) renders the slot shape - the image, the
+sizing and placement, the GPU profile and the registry, verification and
+model block - as components that take a **shape owner** (the values,
+whose only requirements are a `namespace` and a `shape`, the picker
+facts, the two collapsed sections' open state and one `onValuesChanged`
+hook) rather than the pool dialog's own model, so slice 2's Create
+Sandbox form renders exactly those components against a model of its
+own and derives their values from a picked pool. The rule is the same
+one the guest pair serves: there is exactly ONE implementation of each
+sandbox section, because a second copy would drift at the next field the
+sandbox CRDs gain.
 
 Pattern rules (KubeObject statics, no instance methods, host-provided
 globals, SCSS modules) are in [AGENTS.md](../../AGENTS.md).

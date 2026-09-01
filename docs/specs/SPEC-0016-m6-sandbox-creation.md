@@ -452,6 +452,137 @@ are defined by SPEC-0014, which landed first (O5, resolved).
 
 Filled during implementation when reality diverges from the plan.
 
+### Create Sandbox Pool as implemented (2026-09-01)
+
+Slice 1, as planned, on the SPEC-0011/0013 machinery unchanged for the
+seventh time: the W12 create pattern, the MobX model outside React, the
+observable `okButtonProps`, the catch-never-rethrow submit with the 409
+reopen, `store.create`, the host's own `addRemoveButtons`, and the shared
+`create-dialog` primitives - which needed **no addition and no change**,
+as they did not for SPEC-0015.
+
+**The typed models needed nothing at all**, for the fifth time:
+`swiftsandboxpool-v1alpha1.ts` already declared all fourteen leaves,
+including the `verifyKeySecretRef` this spec expected to have to type
+from the sandbox's (it carries its own `{ name: string }`, and the
+sandbox's `SwiftSandboxVerifyKeySecretRef` is the same shape by
+coincidence rather than by sharing - neither was touched). What the PR
+adds to the domain is what the spec asked for: the schema defaults as
+constants and the immutability boundary as one exported fact,
+`sandboxImmutabilityBoundary`, whose `pool` half is a summary line and
+whose `sandbox` half is there for slice 2.
+
+**Two facts about the API server were proved on the E2E cluster before
+they were asserted**, because the spec asked for the first one and the
+second one fell out of it:
+
+1. **A create that never mentions `memory` is admitted**, although the
+   CRD lists it as required: structural-schema defaults are applied
+   before `required` is validated, so the stored object carries `512Mi`.
+   The same probe showed `cpu: 1`, `minWarm: 1` and `rootfsMode: block`
+   stamped from the schema. No deviation follows: the form omits all of
+   them.
+2. **`spec.network` stays absent entirely.** `network.mode`'s default
+   lives INSIDE the `network` block, so an object that omits the block
+   gets no `mode` at all - unlike `model.mountPath`, which IS stamped
+   into a `model` block that carries an `imageRef`. The tests section
+   above says "`network.mode` as the schema defaults them"; the E2E case
+   therefore asserts `spec.network` **undefined**, which is the stronger
+   assertion of the two, since it is also the proof that the form sent no
+   network block.
+
+These are the places the implementation is more specific than, or
+different from, the text above:
+
+- **The slot-shape sections take a shape owner, and there is no
+  `embedding` callback.** SPEC-0015's extraction is reused in shape but
+  not in full: the components take a `SandboxShapeOwner` - values with a
+  `namespace` and a `shape`, the picker facts, the two collapsed
+  sections' open state and one `onValuesChanged` hook - which both this
+  form's values and slice 2's satisfy structurally. The optional
+  divergence callback the guest pair needed is NOT added, because slice 1
+  has no divergence to route through one; slice 2 adds it if its
+  derivation needs more than a transformation of `values.shape`.
+- **One rule for every stamped value, rather than two.** A value is
+  omitted from the payload when the field is empty AND when the operator
+  typed exactly the value the schema defaults to: the stored object is
+  the same either way, and one rule is testable where "empty means
+  omitted, typed means sent" would have made `cpu: 1` a key the form
+  sometimes writes and sometimes does not.
+- **`maxWarm` is the exception, and `0` is sent when it is typed.** It
+  has no schema default at all, so an explicit `0` is not a re-sent
+  default: it is the schema's own no-cap sentinel, chosen by the
+  operator, and the readback matches what the summary said. Both zeroes
+  are explained on their own field, as B3 requires.
+- **The image field carries two rules the spec does not name**: it is
+  required (the schema's own) and it refuses whitespace. Neither is a
+  webhook rule - there is no webhook - and the second is the kernel
+  form's padded-reference argument in a new place: a reference that
+  reaches the pull with a leading space is a registry lookup that fails,
+  on every node, about a name nobody typed.
+- **The node selector gained per-row rules the spec does not
+  enumerate**: a value with no key is refused (a map has no such entry,
+  so the value would simply not be sent), a duplicate key is refused (the
+  second row would silently replace the first), and a malformed label key
+  or value is refused with what it really produces - a `nodeSelector` is
+  a plain map in this schema, so nothing refuses it here, and what fails
+  is the launcher Pod the controller builds, on every reconcile. An
+  entirely empty row is not an error; it is dropped from the payload.
+- **The model mount path is option-dropped rather than validated.** The
+  control is not rendered until a model image is named, since the `model`
+  block is emitted only with an `imageRef` and a lone mount path could
+  never be sent; the sentence stands in the control's place (W12). The
+  relative-path refusal therefore exists only on the branch where it can
+  matter.
+- **The two collapsed sections' open predicates are keyed on the shape,
+  not on the pool** (`slotGpuSectionHasError`,
+  `slotRegistrySectionHasError`), for the same reason the sections are:
+  slice 2 calls them unchanged.
+- **The pool gets a footer although it authors all fourteen fields.**
+  Scope says nothing is left to the YAML editor here, which is true and
+  is exactly why the footer says something else: the editor is what
+  **edits** a pool, since no edit path is offered, and `minWarm`
+  additionally moves through the `scale` subresource without anyone
+  touching the spec by hand. A footer that said "nothing is missing"
+  would have been the only line of this form that taught nothing.
+- **`GuestGpuProfileFacts` and `gpuProfileSummary` are reused from
+  `guest-create.ts`** rather than re-declared. It is the same CRD, read
+  the same way, and a second reading of one object is the drift this
+  repository removes elsewhere.
+- **The name budget is 242 and the arithmetic is in the refusal**:
+  `253 - len("-slot-") - 5`, with the boundary pinned at 242 and 243 in
+  the unit suite. The refusal names the slot pod's shape and the fact
+  that nothing upstream checks any of it.
+- **The E2E "cancel writes nothing" case is folded into the collision
+  one.** The spec lists them as two bullets; they are the same fact from
+  two sides - the warning never blocks, and the dialog that is dismissed
+  wrote nothing - and one case asserts both with `kubectl` as the
+  authority.
+- **The suite's section opener is renamed `openFormSection`.** It was
+  `openGuestSection` and is generic; it now serves two forms.
+- **The 80px create-button clearance is repeated a third time**, in the
+  Sandbox Pools stylesheet, with the comment saying where the other two
+  are. The SPEC-0015 argument is unchanged: the value is measured against
+  the host's own button, and a shared partial for three declarations is
+  indirection without a reader.
+- **The registry section's header line is capitalized**, which came out
+  of the screenshot pass rather than the plan: it read as a sentence
+  fragment, and the fix is that each of its three clauses now begins with
+  a word of prose rather than with a value, so whichever comes first can
+  be capitalized without corrupting an image reference.
+
+### Open items after slice 1
+
+- **O1 is untouched and unaffected for the pool.** There is no webhook
+  for SwiftSandboxPool at all, so every refusal this form makes is ours
+  whatever the cluster's webhook setting is. It still decides the sandbox
+  half, in slice 2.
+- **O2, O3 and O4 are sandbox-side** and are untouched by this slice.
+- **O5 was already resolved at approval time**, and the shared primitives
+  were consumed exactly as it says: the quantity field and the T3 object
+  picker are used unchanged, and the key-in-object selector is not needed
+  by this form.
+
 ### Corrections owed to SPEC-0008, in scope for this spec's PRs
 
 Three. The upstream-side drift this recon found - twelve schema and doc

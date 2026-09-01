@@ -1,0 +1,27 @@
+# Subjects of the M6 sandbox create cases (SPEC-0016). Slice 1 adds one object;
+# slice 2 adds the cold pool the checkout cases render against and the sandbox
+# whose name is taken.
+#
+# `e2e/scripts/cluster-up.sh` is idempotent and re-applies this file, and the
+# pools the cases create are named after the wall clock, so a second run against
+# a kept cluster does not collide with what the first one wrote.
+#
+# The pool whose name is taken. The Create Sandbox Pool form reads the
+# namespace's SwiftSandboxPools and warns - never blocks - when the typed name is
+# one of them, because the read behind that warning can be stale and only the API
+# server can answer. It carries no status on purpose: no status is injected for
+# it anywhere, and a pool nothing has reconciled is exactly what every pool this
+# form creates looks like on a cluster with no controller.
+#
+# Its slot shape is deliberately minimal - the two required fields and nothing
+# else - so that nothing here can be mistaken for a shape the form suggested.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftSandboxPool
+metadata:
+  name: e2e-sandbox-pool-create-taken
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  image: ghcr.io/freelensapp/kubeswift-e2e/sandbox:taken
+  memory: 512Mi

@@ -93,7 +93,7 @@ means (each item needs its own spec before implementation):
 | Create SwiftGuestPool (form) | [SPEC-0015](../specs/SPEC-0015-m6-create-guest-pool-form.md) | Done |
 | Snapshot now / restore dialogs | [SPEC-0011](../specs/SPEC-0011-m6-snapshot-restore-dialogs.md) | Done |
 | Start migration dialog | [SPEC-0012](../specs/SPEC-0012-m6-start-migration-dialog.md) | Done |
-| Sandbox / SandboxPool creation | [SPEC-0016](../specs/SPEC-0016-m6-sandbox-creation.md) | Spec in PR |
+| Sandbox / SandboxPool creation | [SPEC-0016](../specs/SPEC-0016-m6-sandbox-creation.md) | In PR |
 
 M6 is where the extension starts writing. Everything through M5 reads, so the
 first row carries more than its own feature: SPEC-0010 sets the ground rules
