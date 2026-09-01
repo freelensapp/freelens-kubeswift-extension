@@ -570,6 +570,10 @@ DESIGN.md section 6's four states, plus what is specific here.
   - Tab titles, including the checkout's pod suffix.
   - Every conditional tooltip sentence: the Windows one, the blank-console
     one, the cold-versus-checkout pair, the exit-code marker.
+- **Unit** (`menus/action-icon.test.tsx`, added by the M7 milestone
+  review): the dimming class on a refused action in the drawer toolbar,
+  absent on an offered one and absent in the row kebab, and the host
+  idiom the toolbar still needs (interactive, tooltip, ligature).
 - **Integration**: unchanged.
 - **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`), per slice. The honest
   split, stated once: **no KubeSwift controller runs in the E2E cluster
@@ -590,6 +594,13 @@ DESIGN.md section 6's four states, plus what is specific here.
     guest-keyed socket path; the item is **disabled with its reason** on
     a stopped fixture and on one whose status names no pod; and the
     reason is present in both the kebab and the drawer toolbar.
+  - *M7 milestone review*: the disabled console in the drawer toolbar is
+    also **visibly dimmed** - the icon's own computed opacity below 1 and
+    the product with the item's at or below 0.4 - next to an enabled
+    neighbour at 1, while in the kebab the item is dimmed and its icon is
+    not, which is how "the host's greying, not doubled" is asserted. The
+    same pair is asserted on the SPEC-0010 Start-on-a-running-guest case,
+    since the mechanism is shared by all seven actions.
   - *Slice 2*: the Workload Console item on `e2e-sandbox-running` types
     a `tail -n +1 -F` command naming the sandbox's own launcher pod and
     the pod-keyed path; on `e2e-sandbox-pooled` it names
@@ -915,3 +926,71 @@ on - that a checked-out slot's tail stays empty until the workload ends
 and then arrives whole - is still a reading of `action.rs` rather than an
 observation. If it turns out to be wrong, the sentence is wrong on a
 screen. O1, O2, O3 and O7 are untouched.
+
+### M7 milestone review (2026-09-01)
+
+Roberto reviewed the milestone with both console actions shipped, and
+answered the three questions the slices had left open. All three are
+recorded here because two of them close an item and the third changed
+code in this PR.
+
+**No confirmation dialog: confirmed.** The reasoning of "The
+confirmation, and why there is none (W1)" stands as written - W1 governs
+the writes the extension performs, these actions perform none, and the
+command line typed into a terminal the user can read, edit and re-run
+before its output arrives is a stronger disclosure than a modal
+describing it would be. Nothing to change.
+
+**Tooltip length: left to the reviewing agent, and kept as implemented.**
+The console tooltips are long because they carry the mechanism and not
+just the verdict (K3, K8, K9). They stay that way: the drawer's own
+Serial Console and Workload Console rows already carry the short form,
+which is where a user who never hovers anything reads it, so the tooltip
+is the place that can afford the full sentence rather than the place that
+has to be brief.
+
+**A disabled action must LOOK disabled, and this was fixed across all
+seven actions.** Ruled not acceptable that an action refused by its guard
+should be indistinguishable, at a glance, from one that is offered. The
+fix is cross-cutting rather than console-specific - it belongs to every
+action registered since SPEC-0010 - and is in this PR: one shared
+component, `menus/action-icon.tsx`, renders the icon of all seven items
+and puts a dimming class on it when the guard refused AND the surface is
+the drawer toolbar. DESIGN.md W4 now states the rule; SPEC-0010's notes
+point here.
+
+Two host facts were measured on this repository's own artifacts while
+implementing it, and one of them corrects an assumption the review
+itself started from:
+
+- **Freelens does not leave a disabled toolbar item undimmed.**
+  `menu.scss`'s `.MenuItem.disabled` sets `opacity: 0.5` and it applies
+  in BOTH surfaces: in `e2e-artifacts/spec-0017-slice-1/`, the disabled
+  Start and Serial Console icons of the drawer toolbar measure
+  `rgb(162, 208, 205)` against enabled ones at `rgb(255, 255, 255)` on
+  the same title bar, which is exactly half. The finding is therefore
+  about DEGREE, not about a missing affordance: what the kebab gets from
+  that rule is a greyed icon and a greyed LABEL, while the toolbar hides
+  the label, and half opacity on that background reads as a slightly
+  different shade of the same icon. There is no upstream-Freelens
+  feedback item here - the host's rule is reasonable, it is the toolbar's
+  hidden label that makes it insufficient for us.
+- **The host `Icon`'s `disabled` prop is the wrong vehicle.** `icon.scss`
+  answers it with `opacity: 0.5; color: inherit !important`, and in the
+  drawer title bar `color: inherit` discards `--drawerTitleText`
+  (`#ffffff` in both shipped themes) in favour of the `MenuItem`'s
+  `--textColorPrimary` (`#8e9297` dark, `#555555` light). It would
+  recolour the icon differently per theme on a background that does not
+  change, and in the kebab it would dim an icon that is already dimmed.
+  Rejected for the colour, not for the opacity - which is the half the
+  extension's own class keeps.
+
+So the class is opacity only (`opacity: 0.6`, multiplying with the host's
+0.5 to 0.3 of an enabled icon), it is applied only where `toolbar` is
+true, and the kebab is left exactly as the host renders it. The E2E cases
+assert the computed values rather than the class name, in the SPEC-0010
+Start-on-a-running-guest case and in the disabled-console case above: the
+icon's own opacity below 1 in the toolbar, the product at or below 0.4,
+an enabled neighbour at 1 in both surfaces, and - in the kebab - the
+item dimmed with its icon untouched, which is what "not dimmed twice"
+means as an assertion.

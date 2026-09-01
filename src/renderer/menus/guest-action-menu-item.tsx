@@ -18,7 +18,8 @@
 //   `<KubeObjectMenu object={item} />` from `renderItemMenu` and the details
 //   view renders it with `toolbar={true}`, so the component gets exactly
 //   `{ object, toolbar }` and uses the host idiom - `<Icon interactive={toolbar}
-//   tooltip={...} />` plus a `<span className="title">` the toolbar layout hides.
+//   tooltip={...} />`, through `ActionIcon`, plus a `<span className="title">`
+//   the toolbar layout hides.
 // - `MenuItem`'s `disabled` prop does NOT block its `onClick`: it adds a class
 //   and sets `tabIndex: -1`, and what actually stops the click is the
 //   stylesheet's `.MenuItem.disabled { pointer-events: none }`. A guard that
@@ -30,13 +31,14 @@ import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { withErrorPage } from "../components/error-page";
+import { ActionIcon } from "./action-icon";
 
 import type { ActionDialogFacts, ActionGuard, GuestActionFacts } from "../components/guest-actions";
 
 const { observer } = MobxReact;
 
 const {
-  Component: { ConfirmDialog, Icon, MenuItem, Notifications },
+  Component: { ConfirmDialog, MenuItem, Notifications },
 } = Renderer;
 
 /** What the host passes a `kubeObjectMenuItems` component, and nothing else. */
@@ -171,10 +173,12 @@ export const GuestActionMenuItem = observer((props: GuestActionMenuItemProps) =>
     // tooltip, which the toolbar renders; the item's native `title` attribute,
     // which survives the `pointer-events: none` of a disabled item and is what
     // the pre-review pass reads without opening a menu; and, durably, the
-    // drawer's Condition row explanation.
+    // drawer's Condition row explanation. `ActionIcon` adds the fourth, which
+    // needs no hover and no reading at all: a refused action is visibly dimmer
+    // than the ones next to it (M7 milestone review).
     return (
       <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid={testId} title={tooltip}>
-        <Icon material={icon} interactive={toolbar} tooltip={tooltip} tooltipOverrideDisabled />
+        <ActionIcon material={icon} toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
         <span className="title">{title}</span>
       </MenuItem>
     );

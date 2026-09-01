@@ -38,6 +38,7 @@ import {
   migrateTitle,
   openMigrateDialog,
 } from "../components/migration-create-dialog";
+import { ActionIcon } from "./action-icon";
 import { liveGuest } from "./guest-action-menu-item";
 
 import type { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
@@ -51,7 +52,7 @@ import type { GuestMenuItemProps } from "./guest-action-menu-item";
 const { observer } = MobxReact;
 
 const {
-  Component: { Icon, MenuItem },
+  Component: { MenuItem },
 } = Renderer;
 
 export interface SwiftGuestMigrateMenuItemProps extends GuestMenuItemProps {
@@ -144,7 +145,7 @@ export const SwiftGuestMigrateMenuItem = observer((props: SwiftGuestMigrateMenuI
       <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid="swiftguest-migrate-action" title={tooltip}>
         {/* Upstream's own icon for this verb, and a Material ligature name
             rather than their asset (ARCHITECTURE.md's licensing boundary). */}
-        <Icon material="swap_horiz" interactive={toolbar} tooltip={tooltip} tooltipOverrideDisabled />
+        <ActionIcon material="swap_horiz" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
         <span className="title">{migrateTitle}</span>
       </MenuItem>
     );

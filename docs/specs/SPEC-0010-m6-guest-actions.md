@@ -1101,6 +1101,11 @@ org is the **combination**.
 Filled during implementation when reality diverges from the plan. The recon that
 produced this spec follows the implementation notes.
 
+**Start and Stop now dim their icon in the drawer toolbar when their guard
+refuses**, as does every action registered since (M7 milestone review,
+2026-09-01). The fix is cross-cutting, so it is recorded once: in SPEC-0017's
+"M7 milestone review" note and in DESIGN.md W4.
+
 ### Feasibility gates: the verdicts (2026-08-29)
 
 All seven were run before the implementation was finished, as throwaway

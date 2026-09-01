@@ -38,13 +38,14 @@ import {
   openRestoreDialog,
   restoreTitle,
 } from "../components/restore-create-dialog";
+import { ActionIcon } from "./action-icon";
 
 import type { ExistingGuestFacts, RestoreSnapshotFacts } from "../components/restore-create";
 
 const { observer } = MobxReact;
 
 const {
-  Component: { Icon, MenuItem },
+  Component: { MenuItem },
 } = Renderer;
 
 export interface SwiftSnapshotRestoreMenuItemProps {
@@ -157,7 +158,12 @@ export const SwiftSnapshotRestoreMenuItem = observer((props: SwiftSnapshotRestor
         data-testid="swiftsnapshot-restore-action"
         title={tooltip}
       >
-        <Icon material="settings_backup_restore" interactive={toolbar} tooltip={tooltip} tooltipOverrideDisabled />
+        <ActionIcon
+          material="settings_backup_restore"
+          toolbar={toolbar}
+          tooltip={tooltip}
+          disabled={!verdict.enabled}
+        />
         <span className="title">{restoreTitle}</span>
       </MenuItem>
     );

@@ -564,6 +564,21 @@ export interface ActionMenuItem {
   /** The item's own tooltip text: the verb, or the verb and the guard's reason. */
   title: string | null;
   disabled: boolean;
+  /**
+   * The computed opacity of the item element itself: the host's own answer to a
+   * disabled action (`.MenuItem.disabled { opacity: 0.5 }`, menu.scss), which
+   * applies in BOTH surfaces and greys the icon and the label together.
+   */
+  itemOpacity: number;
+  /**
+   * The computed opacity of the `Icon` INSIDE it, which is this extension's own
+   * (`menus/action-icon.module.scss`, M7 milestone review) and is applied only
+   * in the drawer toolbar. The two multiply, so what the eye sees is
+   * `itemOpacity * iconOpacity`; separating them is what lets a case say "the
+   * toolbar icon is dimmer" and "the kebab was left exactly as the host renders
+   * it" without either assertion depending on the host's chosen 0.5.
+   */
+  iconOpacity: number;
 }
 
 /**
@@ -578,6 +593,11 @@ export interface ActionMenuItem {
  * every test id after the kind it registered the item on: the guest actions
  * (SPEC-0010, SPEC-0011) and the SwiftSnapshot Restore action (SPEC-0011) share
  * one menu with the host's own items and with nothing else.
+ *
+ * The two opacities are read here rather than in a helper of their own because
+ * the M7 milestone review made "does a disabled action LOOK disabled" a
+ * property of the same item every case already reads: a class name says which
+ * rules were asked for, and only the computed value says what the user sees.
  */
 export async function actionMenuItems(frame: Frame, root: string, prefix = "swiftguest-"): Promise<ActionMenuItem[]> {
   const selector = `${root} .MenuItem[data-testid^="${prefix}"]`;
@@ -590,11 +610,17 @@ export async function actionMenuItems(frame: Frame, root: string, prefix = "swif
   await frame.waitForSelector(selector, { state: "attached", timeout: ELEMENT_TIMEOUT }).catch(() => {});
 
   return frame.$$eval(selector, (elements) =>
-    elements.map((element) => ({
-      testId: element.getAttribute("data-testid"),
-      title: element.getAttribute("title"),
-      disabled: element.classList.contains("disabled"),
-    })),
+    elements.map((element) => {
+      const icon = element.querySelector(".Icon");
+
+      return {
+        testId: element.getAttribute("data-testid"),
+        title: element.getAttribute("title"),
+        disabled: element.classList.contains("disabled"),
+        itemOpacity: Number(getComputedStyle(element).opacity),
+        iconOpacity: icon ? Number(getComputedStyle(icon).opacity) : Number.NaN,
+      };
+    }),
   );
 }
 

@@ -399,6 +399,25 @@ reachable in both surfaces: the item's own tooltip attribute (a disabled
 for it - SPEC-0010 spike S7), and the drawer's Condition row explanation,
 which is where a user who never hovers anything finds it.
 
+**A disabled toolbar icon is visibly dimmed** (decision of 2026-09-01, M7
+milestone review, applied to all seven actions registered since
+SPEC-0010). The host's `.MenuItem.disabled` puts `opacity: 0.5` on the
+whole item in both surfaces, which in the row kebab greys the icon AND
+its label and is the right answer there; in the drawer toolbar the label
+is hidden, half opacity on that title bar reads as a slightly different
+shade, and the reason then reaches the user only through the `title`
+attribute and the drawer's explanation row - neither of which is visible
+until someone goes looking. So the extension dims the icon itself on that
+surface, through the one shared class in `menus/action-icon.module.scss`,
+and the kebab is left exactly as the host renders it (dimming it twice
+would leave an icon darker than its own words). Opacity only, no colour:
+the drawer title bar is one of the surfaces the host hardcodes, and its
+`--drawerTitleText` is white in both themes. The host `Icon`'s own
+`disabled` prop is NOT the vehicle - its stylesheet answers it with
+`color: inherit !important`, which would trade that white for
+`--textColorPrimary` and so recolour the icon differently per theme on a
+background that does not change.
+
 **W5. One registration, both surfaces.** Actions are
 `kubeObjectMenuItems`. The host renders the same registration in the list
 row kebab and in the detail drawer's toolbar, so one component satisfies

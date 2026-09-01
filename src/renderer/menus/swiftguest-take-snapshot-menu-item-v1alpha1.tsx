@@ -30,6 +30,7 @@ import {
   openTakeSnapshotDialog,
   takeSnapshotTitle,
 } from "../components/snapshot-create-dialog";
+import { ActionIcon } from "./action-icon";
 import { liveGuest } from "./guest-action-menu-item";
 
 import type { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
@@ -39,7 +40,7 @@ import type { GuestMenuItemProps } from "./guest-action-menu-item";
 const { observer } = MobxReact;
 
 const {
-  Component: { Icon, MenuItem },
+  Component: { MenuItem },
 } = Renderer;
 
 export interface SwiftGuestTakeSnapshotMenuItemProps extends GuestMenuItemProps {
@@ -113,7 +114,7 @@ export const SwiftGuestTakeSnapshotMenuItem = observer((props: SwiftGuestTakeSna
         data-testid="swiftguest-take-snapshot-action"
         title={tooltip}
       >
-        <Icon material="photo_camera" interactive={toolbar} tooltip={tooltip} tooltipOverrideDisabled />
+        <ActionIcon material="photo_camera" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
         <span className="title">{takeSnapshotTitle}</span>
       </MenuItem>
     );

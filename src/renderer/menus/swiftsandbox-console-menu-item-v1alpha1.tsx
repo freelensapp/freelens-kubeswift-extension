@@ -28,13 +28,14 @@ import {
   sandboxConsoleTooltip,
 } from "../components/console-commands";
 import { withErrorPage } from "../components/error-page";
+import { ActionIcon } from "./action-icon";
 
 import type { SandboxConsoleFacts } from "../components/console-commands";
 
 const { observer } = MobxReact;
 
 const {
-  Component: { createTerminalTab, Icon, MenuItem, Notifications, terminalStore },
+  Component: { createTerminalTab, MenuItem, Notifications, terminalStore },
 } = Renderer;
 
 export interface SwiftSandboxConsoleMenuItemProps {
@@ -135,10 +136,11 @@ export const SwiftSandboxConsoleMenuItem = observer((props: SwiftSandboxConsoleM
     // The icon is the host's `subject`, the same one the M4 "View logs"
     // affordance carries in this kind's drawer: both of them open a stream of
     // text about this sandbox in the dock, and a user who has learned one should
-    // recognise the other.
+    // recognise the other. Dimmed by `ActionIcon` when the guard refuses, so
+    // the toolbar says so without a hover (M7 milestone review).
     return (
       <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid="swiftsandbox-console-action" title={tooltip}>
-        <Icon material="subject" interactive={toolbar} tooltip={tooltip} tooltipOverrideDisabled />
+        <ActionIcon material="subject" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
         <span className="title">{title}</span>
       </MenuItem>
     );

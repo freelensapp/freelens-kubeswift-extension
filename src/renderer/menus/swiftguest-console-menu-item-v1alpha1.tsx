@@ -22,8 +22,8 @@
 //
 // - One registration renders in BOTH the list row kebab and the drawer toolbar
 //   (W5), so the component gets exactly `{ object, toolbar }` and uses the host
-//   idiom - `<Icon interactive={toolbar} tooltip={...} />` plus a
-//   `<span className="title">` the toolbar layout hides.
+//   idiom - `<Icon interactive={toolbar} tooltip={...} />`, through
+//   `ActionIcon`, plus a `<span className="title">` the toolbar layout hides.
 // - `MenuItem`'s `disabled` prop does NOT block its `onClick`: it adds a class
 //   and sets `tabIndex: -1`, and what actually stops the click is the
 //   stylesheet's `.MenuItem.disabled { pointer-events: none }`. A guard that
@@ -41,6 +41,7 @@ import {
   guestConsoleTooltip,
 } from "../components/console-commands";
 import { withErrorPage } from "../components/error-page";
+import { ActionIcon } from "./action-icon";
 import { liveGuest } from "./guest-action-menu-item";
 
 import type { GuestConsoleFacts } from "../components/console-commands";
@@ -48,7 +49,7 @@ import type { GuestConsoleFacts } from "../components/console-commands";
 const { observer } = MobxReact;
 
 const {
-  Component: { createTerminalTab, Icon, MenuItem, Notifications, terminalStore },
+  Component: { createTerminalTab, MenuItem, Notifications, terminalStore },
 } = Renderer;
 
 export interface SwiftGuestConsoleMenuItemProps {
@@ -137,10 +138,12 @@ export const SwiftGuestConsoleMenuItem = observer((props: SwiftGuestConsoleMenuI
     // hides the title span, so it is carried three ways: the host `Icon`'s own
     // tooltip, which the toolbar renders; the item's native `title` attribute,
     // which survives the `pointer-events: none` of a disabled item; and,
-    // durably, the drawer's own Serial Console row.
+    // durably, the drawer's own Serial Console row. `ActionIcon` adds the
+    // fourth, which needs no hover: the refusal is visible on the icon itself
+    // (M7 milestone review).
     return (
       <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid="swiftguest-console-action" title={tooltip}>
-        <Icon material="terminal" interactive={toolbar} tooltip={tooltip} tooltipOverrideDisabled />
+        <ActionIcon material="terminal" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
         <span className="title">{title}</span>
       </MenuItem>
     );

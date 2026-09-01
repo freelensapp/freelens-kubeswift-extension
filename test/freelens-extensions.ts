@@ -8,6 +8,7 @@
 //
 // Only the surface actually exercised by the tests is stubbed here. Extend it
 // as your tests need more of the host API.
+import { createElement } from "react";
 import { vi } from "vitest";
 
 class LensExtensionKubeObject {
@@ -48,6 +49,31 @@ export const Renderer = {
   Component: {
     Input: () => null,
     Select: () => null,
+    // `menus/action-icon.tsx` IS rendered by a unit test, because what it
+    // decides - whether a refused action carries the dimming class - is a
+    // decision and not a rendering. The stub therefore has to put the props
+    // that decision produces somewhere the test can read them; it mimics the
+    // host's own `<i class="Icon ...">` closely enough for that and no further.
+    Icon: ({
+      className,
+      material,
+      tooltip,
+      interactive,
+    }: {
+      className?: string;
+      material?: string;
+      tooltip?: string;
+      interactive?: boolean;
+    }) =>
+      createElement(
+        "i",
+        {
+          className: ["Icon", "material", interactive ? "interactive" : undefined, className].filter(Boolean).join(" "),
+          "data-material": material,
+          "data-tooltip": tooltip,
+        },
+        material,
+      ),
   },
 };
 

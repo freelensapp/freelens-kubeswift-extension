@@ -2014,6 +2014,15 @@ describe("KubeSwift views against the fixture cluster", () => {
       expect(runningStart?.title).toContain("already set to run");
       expect(runningStop?.disabled).toBe(false);
 
+      // The kebab is the host's, and stays the host's (M7 milestone review):
+      // `.MenuItem.disabled` greys the whole item, icon and label together, and
+      // the extension adds NOTHING on top of it here. An icon dimmed a second
+      // time would end up darker than the words next to it.
+      expect(runningStart?.itemOpacity).toBeLessThan(1);
+      expect(runningStart?.iconOpacity).toBe(1);
+      expect(runningStop?.itemOpacity).toBe(1);
+      expect(runningStop?.iconOpacity).toBe(1);
+
       // The E2E half of W4: the click is stopped by the stylesheet, not only by
       // the handler, so Playwright's actionability check refuses it.
       let clickWasRefused = false;
@@ -2042,10 +2051,27 @@ describe("KubeSwift views against the fixture cluster", () => {
         "swiftguest-stop-action",
         "swiftguest-take-snapshot-action",
       ]);
-      expect(toolbarItems.find((item) => item.testId === "swiftguest-start-action")?.disabled).toBe(true);
-      expect(toolbarItems.find((item) => item.testId === "swiftguest-start-action")?.title).toContain(
-        "already set to run",
-      );
+      const toolbarStart = toolbarItems.find((item) => item.testId === "swiftguest-start-action");
+      const toolbarStop = toolbarItems.find((item) => item.testId === "swiftguest-stop-action");
+
+      expect(toolbarStart?.disabled).toBe(true);
+      expect(toolbarStart?.title).toContain("already set to run");
+
+      // And the half of W4 the milestone review added on 2026-09-01: in the
+      // toolbar the title span is hidden, so the ONLY thing left to say the
+      // action was refused is the icon. The host greys the item to 0.5 there
+      // too, which the review judged indistinguishable on the drawer's title
+      // bar; `menus/action-icon.module.scss` multiplies that down. The
+      // assertion is on what the eye gets - the product - and on the enabled
+      // neighbour being untouched, so a regression that dropped the class or
+      // widened it to every item fails here either way.
+      const toolbarStartOpacity = (toolbarStart?.itemOpacity ?? 1) * (toolbarStart?.iconOpacity ?? 1);
+
+      expect(toolbarStart?.iconOpacity).toBeLessThan(1);
+      expect(toolbarStartOpacity).toBeLessThanOrEqual(0.4);
+      expect(toolbarStop?.disabled).toBe(false);
+      expect(toolbarStop?.itemOpacity).toBe(1);
+      expect(toolbarStop?.iconOpacity).toBe(1);
 
       await cluster.closeDetails(frame);
 
@@ -5954,6 +5980,11 @@ describe("KubeSwift views against the fixture cluster", () => {
       expect(stoppedItem?.disabled).toBe(true);
       expect(stoppedItem?.title).toContain("stopping deletes its launcher pod");
 
+      // In the kebab the host's own greying of the whole item is the whole
+      // answer, and the extension leaves it that way (M7 milestone review).
+      expect(stoppedItem?.itemOpacity).toBeLessThan(1);
+      expect(stoppedItem?.iconOpacity).toBe(1);
+
       // The E2E half of W4: the click is stopped by the stylesheet, not only by
       // the handler, so Playwright's actionability check refuses it.
       let clickWasRefused = false;
@@ -5989,12 +6020,26 @@ describe("KubeSwift views against the fixture cluster", () => {
       // never opens a menu finds it.
       await pr.openDrawer(frame, "e2e-guest-action-stopped");
 
-      const toolbarItem = (await cluster.actionMenuItems(frame, ".Drawer.KubeObjectDetails .MenuActions")).find(
-        (item) => item.testId === "swiftguest-console-action",
-      );
+      const drawerToolbarItems = await cluster.actionMenuItems(frame, ".Drawer.KubeObjectDetails .MenuActions");
+      const toolbarItem = drawerToolbarItems.find((item) => item.testId === "swiftguest-console-action");
+      // Take Snapshot is the enabled neighbour, and it is chosen because it is
+      // the one action of this milestone that is never disabled for any settled
+      // guest state (SPEC-0010: the gating that matters is per-backend, inside
+      // the dialog), so it cannot drift with what the cases before this one
+      // wrote to the subject.
+      const enabledNeighbour = drawerToolbarItems.find((item) => item.testId === "swiftguest-take-snapshot-action");
 
       expect(toolbarItem?.disabled).toBe(true);
       expect(toolbarItem?.title).toContain("stopping deletes its launcher pod");
+
+      // The toolbar hides the title span, so the icon is the only carrier left,
+      // and after the M7 milestone review it carries it: dimmed well below the
+      // 0.5 the host applies on its own, next to a neighbour at full strength.
+      expect(enabledNeighbour?.disabled).toBe(false);
+      expect(enabledNeighbour?.itemOpacity).toBe(1);
+      expect(enabledNeighbour?.iconOpacity).toBe(1);
+      expect(toolbarItem?.iconOpacity).toBeLessThan(1);
+      expect((toolbarItem?.itemOpacity ?? 1) * (toolbarItem?.iconOpacity ?? 1)).toBeLessThanOrEqual(0.4);
 
       const consoleRow = (await pr.inspectDrawerRows(frame)).find((row) => row.label === "Serial Console");
 

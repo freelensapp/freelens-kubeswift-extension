@@ -1,0 +1,21 @@
+// What a disabled action looks like in the detail drawer's toolbar (M7
+// milestone review, 2026-09-01). One rule, one owner, seven actions.
+//
+// Opacity and nothing else. The drawer title bar is one of the few surfaces
+// whose colours the host itself hardcodes - `--drawerTitleText` is `#ffffff` in
+// BOTH shipped themes - so a rule that dimmed by COLOUR here would have to name
+// one, and would then still have to outrank the host's own
+// `.drawer-title .MenuActions.toolbar .Icon` (four classes) from a CSS module
+// (two). Alpha is nobody's cascade fight, needs no token, and reads the same in
+// either theme.
+//
+// 0.6 MULTIPLIES with the 0.5 the host's own `.MenuItem.disabled` already puts
+// on the whole item, so a disabled toolbar icon renders at 0.3 of an enabled
+// one. The host's 0.5 alone is what the milestone review looked at and judged
+// indistinguishable from an enabled icon on that background.
+//
+// No `cursor` rule: `.MenuItem.disabled` carries `pointer-events: none`, so the
+// icon never sees a pointer and a cursor declared here would be dead code.
+.disabledIcon {
+  opacity: 0.6;
+}
