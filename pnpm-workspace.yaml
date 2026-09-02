@@ -1,8 +1,11 @@
-onlyBuiltDependencies:
-  - '@parcel/watcher'
-  - electron
-  - esbuild
-  - node-pty
-  - playwright
+# pnpm 11 renamed onlyBuiltDependencies to the allowBuilds map; the old key
+# is ignored and install fails with ERR_PNPM_IGNORED_BUILDS. Same packages
+# as before: they may run their install scripts, everything else stays blocked.
+allowBuilds:
+  "@parcel/watcher": true
+  electron: true
+  esbuild: true
+  node-pty: true
+  playwright: true
 
 shellEmulator: true

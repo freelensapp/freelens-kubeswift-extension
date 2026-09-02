@@ -189,7 +189,10 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 
       - name: Disable pre post scripts for pnpm
-        run: pnpm config set enablePrePostScripts false
+        # pnpm 11 rejects this key in "pnpm config set" (global config.yaml
+        # does not accept it); the npmrc line has the same effect and the
+        # Freelens checkout, still on pnpm 10, keeps reading it as before.
+        run: echo "enable-pre-post-scripts=false" >> "$HOME/.npmrc"
 
       - name: Install Electron headers
         if: steps.electron-build-cache.outputs.cache-hit != 'true' && steps.electron-headers.outputs.cache-hit != 'true'
