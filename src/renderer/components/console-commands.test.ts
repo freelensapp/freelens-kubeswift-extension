@@ -522,18 +522,14 @@ describe("canOpenSandboxConsole", () => {
   // hides its Shell on a terminal sandbox and leaves its Logs button ungated
   // even with no pod. A terminal sandbox whose pod survives has the most
   // complete console in the milestone - the whole output plus the exit marker.
-  it.each([
-    "Completed",
-    "Failed",
-    "Running",
-    "Materializing",
-    "",
-    undefined,
-  ])("is not gated on the phase %s", (phase) => {
-    expect(canOpenSandboxConsole(sandbox({ phase: phase as string | undefined, podRef: "build-42" })).enabled).toBe(
-      true,
-    );
-  });
+  it.each(["Completed", "Failed", "Running", "Materializing", "", undefined])(
+    "is not gated on the phase %s",
+    (phase) => {
+      expect(canOpenSandboxConsole(sandbox({ phase: phase as string | undefined, podRef: "build-42" })).enabled).toBe(
+        true,
+      );
+    },
+  );
 
   it("enables a checkout, whose pod is the pool's", () => {
     expect(canOpenSandboxConsole(checkout).enabled).toBe(true);

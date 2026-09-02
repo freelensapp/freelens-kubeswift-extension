@@ -42,7 +42,7 @@ NEVER a source of code:
 pnpm type:check
 
 # Linting & formatting
-pnpm biome:check          # TypeScript/TSX, JS, JSON, CSS/SCSS, HTML (biome)
+pnpm biome:check          # TypeScript/TSX, JS, JSON, CSS, HTML (biome)
 pnpm biome:fix            # Auto-fix the formats above
 pnpm trunk:check          # Markdown, YAML, TOML, and other formats not covered by biome
 pnpm trunk:fix            # Auto-fix Markdown, YAML, etc.
@@ -158,7 +158,8 @@ Other dependencies ARE bundled into the extension output.
 
 ## Code Style
 
-- **Biome** formats **TypeScript/TSX, JS, JSON, CSS/SCSS, HTML**: double quotes, semicolons, trailing commas, 2-space indent, 120 char line width — use `pnpm biome:fix`
+- **Biome** formats **TypeScript/TSX, JS, JSON, CSS, HTML**: double quotes, semicolons, trailing commas, 2-space indent, 120 char line width — use `pnpm biome:fix`
+- **SCSS has no formatter**: biome 2.5.2 dropped scss support (it skips the files during its walk and rejects them as explicit targets), so keep `*.module.scss` tidy by hand, following the style of the existing modules
 - **Trunk** formats **Markdown, YAML**, and other formats not covered by biome — use `pnpm trunk:fix`
 - Import order (enforced by biome organizeImports): built-in modules → `@freelensapp/**` → packages → relative paths
 - React 17 (no `react/jsx-runtime` in tsconfig needed, but handled by build)
@@ -220,7 +221,7 @@ Code in `src/common/` is shared between both processes.
 2. **Follow existing patterns** — grep for similar implementations before creating new ones
 3. **Test changes** before committing
 4. **Run validation before committing:** `pnpm lint:fix && pnpm type:check && pnpm test:unit`
-5. **For TypeScript/TSX, JS, JSON, CSS/SCSS, HTML files:** run `pnpm biome:fix` (or `biome check` directly if `biome` is installed locally)
+5. **For TypeScript/TSX, JS, JSON, CSS, HTML files:** run `pnpm biome:fix` (or `biome check` directly if `biome` is installed locally)
 6. **For Markdown, YAML, and other formats:** run `pnpm trunk:fix` (or `trunk check` directly if `trunk` is installed locally)
 7. **Full build** when in doubt about cached state: `pnpm clean:all && pnpm build`
 8. **Do not use Anthropic Fable for coding tasks** — Fable may be used only for planning,

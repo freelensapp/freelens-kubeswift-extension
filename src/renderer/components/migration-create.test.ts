@@ -784,16 +784,12 @@ describe("the in-flight warning", () => {
     expect(inFlightMigrations("demo", [{ name: "m", guestName: "demo", phase }])).toEqual([]);
   });
 
-  it.each([
-    "Pending",
-    "Validating",
-    "Preparing",
-    "StopAndCopy",
-    "Resuming",
-    undefined,
-  ])("matches a %s migration", (phase) => {
-    expect(inFlightMigrations("demo", [{ name: "m", guestName: "demo", phase }])).toHaveLength(1);
-  });
+  it.each(["Pending", "Validating", "Preparing", "StopAndCopy", "Resuming", undefined])(
+    "matches a %s migration",
+    (phase) => {
+      expect(inFlightMigrations("demo", [{ name: "m", guestName: "demo", phase }])).toHaveLength(1);
+    },
+  );
 
   it("says the offline conflict is a claim conflict at Preparing", () => {
     const warning = inFlightWarning({ name: "m", phase: "Preparing", mode: "offline" });

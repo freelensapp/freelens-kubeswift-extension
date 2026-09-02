@@ -79,16 +79,12 @@ describe("canRestore", () => {
     expect(verdict.reason).toContain("Pending forever");
   });
 
-  it.each([
-    "Ready",
-    "Pending",
-    "Capturing",
-    "Uploading",
-    "Hibernating",
-    undefined,
-  ])("offers the action for the phase %s", (phase) => {
-    expect(canRestore(snapshot({ phase })).enabled).toBe(true);
-  });
+  it.each(["Ready", "Pending", "Capturing", "Uploading", "Hibernating", undefined])(
+    "offers the action for the phase %s",
+    (phase) => {
+      expect(canRestore(snapshot({ phase })).enabled).toBe(true);
+    },
+  );
 });
 
 // W4, written as a loop over a table rather than one assertion per case, so a

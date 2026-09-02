@@ -507,31 +507,29 @@ describe("the payload", () => {
   // Carrier exclusivity is a webhook rule this form cannot break: the backend
   // type picks exactly one carrier, so the invalid combinations are unreachable
   // rather than validated.
-  it.each([
-    "csi-volume-snapshot",
-    "local",
-    "s3",
-    "oci",
-  ] as const)("builds exactly one carrier object, for the %s backend", (backend) => {
-    const { spec } = snapshotCreatePayload(
-      runningGuest,
-      form({
-        backend,
-        hostPath: "/var/lib/kubeswift/snapshots/demo",
-        volumeSnapshotClassName: "csi-hostpath",
-        bucket: "backups",
-        s3CredentialsSecret: "s3-creds",
-        region: "eu-west-1",
-        repository: "registry.example.com/snapshots/demo",
-      }),
-    );
-    const carriers = ["csiVolumeSnapshot", "local", "s3", "oci"].filter(
-      (carrier) => spec.backend[carrier as "local"] !== undefined,
-    );
+  it.each(["csi-volume-snapshot", "local", "s3", "oci"] as const)(
+    "builds exactly one carrier object, for the %s backend",
+    (backend) => {
+      const { spec } = snapshotCreatePayload(
+        runningGuest,
+        form({
+          backend,
+          hostPath: "/var/lib/kubeswift/snapshots/demo",
+          volumeSnapshotClassName: "csi-hostpath",
+          bucket: "backups",
+          s3CredentialsSecret: "s3-creds",
+          region: "eu-west-1",
+          repository: "registry.example.com/snapshots/demo",
+        }),
+      );
+      const carriers = ["csiVolumeSnapshot", "local", "s3", "oci"].filter(
+        (carrier) => spec.backend[carrier as "local"] !== undefined,
+      );
 
-    expect(spec.backend.type).toBe(backend);
-    expect(carriers).toHaveLength(1);
-  });
+      expect(spec.backend.type).toBe(backend);
+      expect(carriers).toHaveLength(1);
+    },
+  );
 
   it("sends a TTL only when one was typed, trimmed", () => {
     expect(snapshotCreatePayload(runningGuest, form()).spec).not.toHaveProperty("ttl");
