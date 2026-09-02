@@ -15,8 +15,10 @@ This procedure backs the per-milestone manual review gate described in
 - A running Docker daemon (Docker Desktop, docker-ce, OrbStack, ...)
 - `kind`, `kubectl`, `curl`
 - Node.js >= 22 with `pnpm` (the same toolchain used to build the
-  extension), and `pnpm install` already run once in the repo
-- The Freelens app installed
+  extension; `corepack install` provides the right pnpm, see the README's
+  "Build from the source" section), and `pnpm install` already run once in
+  the repo
+- The Freelens app installed (>= 1.10.3)
 
 ## Quick start (macOS and Linux)
 
