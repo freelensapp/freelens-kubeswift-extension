@@ -25,6 +25,8 @@ forms, and consoles, grouped in the cluster sidebar under **Guests**, **Boot
 and Images**, **Data Protection**, **Migrations**, **GPU**, **Sandboxes**,
 and **Fleet**.
 
+[Video Demo](https://github.com/user-attachments/assets/4172ce40-7c07-41b9-bf78-f348ada18fa7)
+
 ![The Guests page on the local demo cluster, dark theme](docs/screenshots/guests-page-dark.png)
 
 The extension is CRD-native: it reads and writes the resources directly
