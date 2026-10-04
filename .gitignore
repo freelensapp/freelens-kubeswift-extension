@@ -44,3 +44,16 @@
 
 # TypeScript incremental build info, a local build artifact
 tsconfig.tsbuildinfo
+
+# Credentials and keys. Keep in sync with the Security section of AGENTS.md
+# and the permissions.deny rules in .claude/settings.json.
+.env
+.env.*
+.envrc
+.npmrc
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
