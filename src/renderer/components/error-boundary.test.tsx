@@ -3,8 +3,8 @@
 import { Common, type Renderer } from "@freelensapp/extensions";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Example } from "../api/example/example-v1alpha2";
-import { ExamplesPage } from "../pages/examples-page-v1alpha2";
+import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
+import { SwiftKernelsPage } from "../pages/swiftkernels-page-v1alpha1";
 import {
   ErrorBoundary,
   withDetailsErrorBoundary,
@@ -13,7 +13,7 @@ import {
 } from "./error-boundary";
 
 // A minimal stub extension - only `name` is read by the boundary.
-const extension = { name: "example-extension" } as Renderer.LensExtension;
+const extension = { name: "kubeswift-extension" } as Renderer.LensExtension;
 
 beforeEach(() => {
   // React reports an error that a boundary caught on the console as well.
@@ -54,7 +54,7 @@ describe("ErrorBoundary", () => {
     expect(screen.getByText("before")).toBeDefined();
     expect(screen.getByText("after")).toBeDefined();
     expect(Common.logger.error).toHaveBeenCalledTimes(1);
-    expect(Common.logger.error).toHaveBeenCalledWith("[example-extension]: Error: boom", expect.any(String));
+    expect(Common.logger.error).toHaveBeenCalledWith("[kubeswift-extension]: Error: boom", expect.any(String));
   });
 
   it("renders nothing in place of a child that throws with the fallback nothing, and logs it", () => {
@@ -62,7 +62,7 @@ describe("ErrorBoundary", () => {
       <ul>
         <li>Edit</li>
         <ErrorBoundary extension={extension} fallback="nothing">
-          <li>Suspend</li>
+          <li>Start</li>
           <Throws message="menu item" />
         </ErrorBoundary>
         <li>Delete</li>
@@ -70,7 +70,7 @@ describe("ErrorBoundary", () => {
     );
 
     expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Edit", "Delete"]);
-    expect(Common.logger.error).toHaveBeenCalledWith("[example-extension]: Error: menu item", expect.any(String));
+    expect(Common.logger.error).toHaveBeenCalledWith("[kubeswift-extension]: Error: menu item", expect.any(String));
   });
 
   it("renders its children without an error", () => {
@@ -127,38 +127,38 @@ describe("the registration wrappers", () => {
   // A `try`/`catch` around the call of the page, as `withErrorPage` was, does not see this error: the host calls
   // `renderTableContents` from the render of its own list layout, a child of the page.
   it("keep an error that a callback of the page throws from the render of the host's list layout inside the page", () => {
-    const object = new Example({
-      apiVersion: "example.freelens.app/v1alpha2",
-      kind: "Example",
-      metadata: { name: "example", namespace: "default", uid: "1", resourceVersion: "1", selfLink: "" },
-      spec: {},
+    const object = new SwiftKernel({
+      apiVersion: "kernel.kubeswift.io/v1alpha1",
+      kind: "SwiftKernel",
+      metadata: { name: "kernel", namespace: "default", uid: "1", resourceVersion: "1", selfLink: "" },
+      spec: { ociRef: { image: "registry.local/kernel:6.12" } },
     });
-    vi.spyOn(Example, "getStore").mockReturnValue({ items: [object] } as unknown as Renderer.K8sApi.KubeObjectStore<
-      Example,
-      Renderer.K8sApi.KubeApi<Example>
+    vi.spyOn(SwiftKernel, "getStore").mockReturnValue({ items: [object] } as unknown as Renderer.K8sApi.KubeObjectStore<
+      SwiftKernel,
+      Renderer.K8sApi.KubeApi<SwiftKernel>
     >);
-    vi.spyOn(Example, "getSuspended").mockImplementation(() => {
-      throw new Error("no suspended field");
+    vi.spyOn(SwiftKernel, "getReadyNodeCount").mockImplementation(() => {
+      throw new Error("no node statuses");
     });
     const { Page } = withPageErrorBoundary(extension, {
-      id: "example",
-      components: { Page: () => <ExamplesPage /> },
+      id: "swiftkernels",
+      components: { Page: () => <SwiftKernelsPage extension={extension} /> },
     }).components;
 
     render(<Page params={{}} />);
 
-    expect(screen.getByText("Error: no suspended field")).toBeDefined();
+    expect(screen.getByText("Error: no node statuses")).toBeDefined();
     expect(Common.logger.error).toHaveBeenCalledTimes(1);
     expect(Common.logger.error).toHaveBeenCalledWith(
-      "[example-extension]: Error: no suspended field",
+      "[kubeswift-extension]: Error: no node statuses",
       expect.any(String),
     );
   });
 
   it("keep an error of a details panel inside the panel, and render it again for a new object", () => {
     const { Details } = withDetailsErrorBoundary(extension, {
-      kind: "Example",
-      apiVersions: ["example.freelens.app/v1alpha2"],
+      kind: "SwiftKernel",
+      apiVersions: ["kernel.kubeswift.io/v1alpha1"],
       components: { Details: ThrowsFor },
     }).components;
 
@@ -184,8 +184,8 @@ describe("the registration wrappers", () => {
 
   it("render nothing for a menu item that throws, and leave the other items rendered", () => {
     const { MenuItem } = withMenuItemErrorBoundary(extension, {
-      kind: "Example",
-      apiVersions: ["example.freelens.app/v1alpha2"],
+      kind: "SwiftGuest",
+      apiVersions: ["swift.kubeswift.io/v1alpha1"],
       components: { MenuItem: () => <Throws message="menu item" /> },
     }).components;
 
@@ -199,6 +199,6 @@ describe("the registration wrappers", () => {
 
     expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Edit", "Delete"]);
     expect(screen.queryByText(/menu item/)).toBeNull();
-    expect(Common.logger.error).toHaveBeenCalledWith("[example-extension]: Error: menu item", expect.any(String));
+    expect(Common.logger.error).toHaveBeenCalledWith("[kubeswift-extension]: Error: menu item", expect.any(String));
   });
 });

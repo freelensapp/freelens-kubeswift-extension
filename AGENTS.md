@@ -434,6 +434,55 @@ in the renderer, point `typeRoots` of the renderer config at a directory with
 an empty `node` package, which a reference directive resolves to first. For
 the DOM in main, remove the directive from the declaration with `pnpm patch`.
 
+### Tests and tooling
+
+Tests are not in the environment programs. Vitest runs them in Node, with
+jsdom for files that ask for it, so `src/tsconfig.json` gives them the DOM and
+Node. It sits in `src/` so that an editor finds it for a test file: the
+environment config next to the test excludes it, and the editor goes on to the
+next `tsconfig.json` up the tree. Tests compile against the real
+`@freelensapp/extensions` declaration, while Vitest replaces the package with
+`test/freelens-extensions.ts` at runtime.
+
+No config declares the Vitest globals. TypeScript has no per-file globals, so
+declaring `describe` or `vi` for tests would declare them for every file in the
+program. Test and test-support files import what they use:
+
+```ts
+import { describe, expect, it, vi } from "vitest";
+```
+
+The module resolves from every program, so Biome keeps it out of the
+extension's code: `style/noRestrictedImports` rejects an import of `vitest`
+outside `src/**/*.test.*`, `test/` and `integration/`. The same rule rejects
+there the testing helpers of React: the `act` named import of `react`,
+`react-dom/test-utils` and `@testing-library/*`. They type-check, build and
+pass the unit tests, which run the development build of React, but `act`
+delegates to `React.act`, which the production build that Freelens runs leaves
+out, so the call throws only in the host. `globals: true` stays on in
+`vitest.config.ts` at runtime only, because React Testing Library registers its
+automatic cleanup only when `afterEach` is a global.
+
+`@freelensapp/extensions` is stubbed because the real package cannot run in a
+test: it is a shim that reads `Common`, `Main` and `Renderer` off
+`globalThis.FreelensExtensionApi`, which only the host sets, and it ships no
+mocks. The `alias` in `vitest.config.ts` points the import at
+`test/freelens-extensions.ts`, for the tests and for the extension code they
+import. The stub covers only what the tests use, at runtime only; the type
+check still uses the real declaration. So a test that reaches a member the stub
+lacks compiles and fails on `undefined`: add the member to the stub, as small as
+the test needs. The other host modules are not stubbed: `react`, `mobx` and
+`mobx-react` resolve to the devDependencies, the host's versions.
+
+Vitest runs the development build of mobx, so a test that imports
+a class with `@observable` on a field without `accessor` fails when the class
+is defined. The extension declares no such class today; its forms build their
+models with the function forms of mobx (`observable()`, `observableRef`).
+
+The root `tsconfig.json` checks the tooling files. It has `checkJs`, so the
+Vite config and the build plugins are type-checked too; give their function
+parameters JSDoc types.
+
 ## Code Style
 
 - **Biome** formats **TypeScript/TSX, JS, JSON, CSS, HTML**: double quotes, semicolons, trailing commas, 2-space indent, 120 char line width — use `pnpm biome:fix`
