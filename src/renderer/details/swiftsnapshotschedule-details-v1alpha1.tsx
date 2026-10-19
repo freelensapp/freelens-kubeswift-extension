@@ -14,10 +14,7 @@ const {
 
 const notAvailable = "N/A";
 
-export interface SwiftSnapshotScheduleDetailsProps
-  extends Renderer.Component.KubeObjectDetailsProps<SwiftSnapshotSchedule> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftSnapshotScheduleDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftSnapshotSchedule>;
 
 export const SwiftSnapshotScheduleDetails = observer((props: SwiftSnapshotScheduleDetailsProps) => {
   const { object } = props;

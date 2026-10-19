@@ -7,7 +7,6 @@ import { toKubeObjectRef } from "../api/kubeswift/types";
 import { objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
 import styles from "./swiftgpuprofile-details.module.scss";
-import stylesInline from "./swiftgpuprofile-details.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -204,9 +203,7 @@ const GuestsUsingSection = observer(({ object }: SectionProps) => {
   );
 });
 
-export interface SwiftGPUProfileDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftGPUProfile> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGPUProfileDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftGPUProfile>;
 
 export const SwiftGPUProfileDetails = observer((props: SwiftGPUProfileDetailsProps) => {
   const { object } = props;
@@ -215,7 +212,6 @@ export const SwiftGPUProfileDetails = observer((props: SwiftGPUProfileDetailsPro
   // status property at all, so there is nothing to report (SPEC-0007).
   return (
     <>
-      <style>{stylesInline}</style>
       <DrawerTitle>GPU Profile</DrawerTitle>
       <DrawerItem name="Count">
         <WithTooltip>{SwiftGPUProfile.getCount(object) ?? notAvailable}</WithTooltip>

@@ -2,7 +2,6 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftMigration, type SwiftMigrationApi } from "../api/kubeswift/swiftmigration-v1alpha1";
 import styles from "./swiftmigrations-page.module.scss";
-import stylesInline from "./swiftmigrations-page.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -48,26 +47,23 @@ export const SwiftMigrationsPage = observer((props: SwiftMigrationsPageProps) =>
   const store = KubeObject.getStore<KubeObject>();
 
   return (
-    <>
-      <style>{stylesInline}</style>
-      <KubeObjectListLayout<KubeObject, KubeObjectApi>
-        tableId={`${KubeObject.crd.plural}Table`}
-        className={styles.page}
-        store={store}
-        sortingCallbacks={sortingCallbacks}
-        searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-        renderHeaderTitle={KubeObject.crd.title}
-        renderTableHeader={renderTableHeader}
-        renderTableContents={(object: KubeObject) => [
-          <WithTooltip>{object.getName()}</WithTooltip>,
-          <LinkToNamespace namespace={object.getNs()} />,
-          <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
-          <WithTooltip>{KubeObject.getMode(object)}</WithTooltip>,
-          <WithTooltip>{KubeObject.getPhase(object) ?? notAvailable}</WithTooltip>,
-          <WithTooltip>{KubeObject.getProgressLabel(object) ?? notAvailable}</WithTooltip>,
-          <KubeObjectAge object={object} key="age" />,
-        ]}
-      />
-    </>
+    <KubeObjectListLayout<KubeObject, KubeObjectApi>
+      tableId={`${KubeObject.crd.plural}Table`}
+      className={styles.page}
+      store={store}
+      sortingCallbacks={sortingCallbacks}
+      searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+      renderHeaderTitle={KubeObject.crd.title}
+      renderTableHeader={renderTableHeader}
+      renderTableContents={(object: KubeObject) => [
+        <WithTooltip>{object.getName()}</WithTooltip>,
+        <LinkToNamespace namespace={object.getNs()} />,
+        <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
+        <WithTooltip>{KubeObject.getMode(object)}</WithTooltip>,
+        <WithTooltip>{KubeObject.getPhase(object) ?? notAvailable}</WithTooltip>,
+        <WithTooltip>{KubeObject.getProgressLabel(object) ?? notAvailable}</WithTooltip>,
+        <KubeObjectAge object={object} key="age" />,
+      ]}
+    />
   );
 });

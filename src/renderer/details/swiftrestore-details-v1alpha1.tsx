@@ -26,9 +26,7 @@ const {
 
 const notAvailable = "N/A";
 
-export interface SwiftRestoreDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftRestore> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftRestoreDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftRestore>;
 
 export const SwiftRestoreDetails = observer((props: SwiftRestoreDetailsProps) => {
   const { object } = props;

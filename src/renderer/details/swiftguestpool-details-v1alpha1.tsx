@@ -15,9 +15,7 @@ const {
 
 const notAvailable = "N/A";
 
-export interface SwiftGuestPoolDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftGuestPool> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestPoolDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftGuestPool>;
 
 export const SwiftGuestPoolDetails = observer((props: SwiftGuestPoolDetailsProps) => {
   const { object } = props;

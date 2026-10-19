@@ -22,6 +22,7 @@ import { SwiftSandboxPool as SwiftSandboxPoolV1alpha1 } from "./api/kubeswift/sw
 import { SwiftSeedProfile as SwiftSeedProfileV1alpha1 } from "./api/kubeswift/swiftseedprofile-v1alpha1";
 import { SwiftSnapshot as SwiftSnapshotV1alpha1 } from "./api/kubeswift/swiftsnapshot-v1alpha1";
 import { SwiftSnapshotSchedule as SwiftSnapshotScheduleV1alpha1 } from "./api/kubeswift/swiftsnapshotschedule-v1alpha1";
+import { type AvailableVersionPageProps, createAvailableVersionPage } from "./components/available-version";
 import {
   withDetailsErrorBoundary,
   withMenuItemErrorBoundary,
@@ -66,6 +67,34 @@ import { SwiftSeedProfilesPage as SwiftSeedProfilesPageV1alpha1 } from "./pages/
 import { SwiftSnapshotsPage as SwiftSnapshotsPageV1alpha1 } from "./pages/swiftsnapshots-page-v1alpha1";
 import { SwiftSnapshotSchedulesPage as SwiftSnapshotSchedulesPageV1alpha1 } from "./pages/swiftsnapshotschedules-page-v1alpha1";
 
+import type { KubeSwiftKubeObjectCRD } from "./api/kubeswift/types";
+
+// Each page renders its list once the host serves its kind, and a "not available" panel until then: while the
+// cluster frame loads the CRDs, and on a cluster without KubeSwift. The panel is an observer, so a page that
+// Freelens restores before the CRDs are loaded follows once they are.
+function availablePage(
+  model: typeof Renderer.K8sApi.LensExtensionKubeObject<any, any, any> & { crd: KubeSwiftKubeObjectCRD },
+  PageComponent: React.ComponentType<AvailableVersionPageProps>,
+): React.ComponentType<AvailableVersionPageProps> {
+  return createAvailableVersionPage(model.crd.title, [{ kubeObjectClass: model, PageComponent, version: "v1alpha1" }]);
+}
+
+const SwiftGuestsPage = availablePage(SwiftGuestV1alpha1, SwiftGuestsPageV1alpha1);
+const SwiftGuestClassesPage = availablePage(SwiftGuestClassV1alpha1, SwiftGuestClassesPageV1alpha1);
+const SwiftGuestPoolsPage = availablePage(SwiftGuestPoolV1alpha1, SwiftGuestPoolsPageV1alpha1);
+const SwiftImagesPage = availablePage(SwiftImageV1alpha1, SwiftImagesPageV1alpha1);
+const SwiftSeedProfilesPage = availablePage(SwiftSeedProfileV1alpha1, SwiftSeedProfilesPageV1alpha1);
+const SwiftKernelsPage = availablePage(SwiftKernelV1alpha1, SwiftKernelsPageV1alpha1);
+const SwiftSnapshotsPage = availablePage(SwiftSnapshotV1alpha1, SwiftSnapshotsPageV1alpha1);
+const SwiftRestoresPage = availablePage(SwiftRestoreV1alpha1, SwiftRestoresPageV1alpha1);
+const SwiftSnapshotSchedulesPage = availablePage(SwiftSnapshotScheduleV1alpha1, SwiftSnapshotSchedulesPageV1alpha1);
+const SwiftMigrationsPage = availablePage(SwiftMigrationV1alpha1, SwiftMigrationsPageV1alpha1);
+const SwiftGPUProfilesPage = availablePage(SwiftGPUProfileV1alpha1, SwiftGPUProfilesPageV1alpha1);
+const SwiftGPUNodesPage = availablePage(SwiftGPUNodeV1alpha1, SwiftGPUNodesPageV1alpha1);
+const SwiftSandboxesPage = availablePage(SwiftSandboxV1alpha1, SwiftSandboxesPageV1alpha1);
+const SwiftSandboxPoolsPage = availablePage(SwiftSandboxPoolV1alpha1, SwiftSandboxPoolsPageV1alpha1);
+const FleetClustersPage = availablePage(FleetClusterV1alpha1, FleetClustersPageV1alpha1);
+
 /**
  * Renderer-process entry point of the extension.
  *
@@ -76,161 +105,29 @@ import { SwiftSnapshotSchedulesPage as SwiftSnapshotSchedulesPageV1alpha1 } from
  */
 export default class KubeSwiftRenderer extends Renderer.LensExtension {
   kubeObjectDetailItems: Renderer.LensExtension["kubeObjectDetailItems"] = [
-    {
-      kind: SwiftGuestV1alpha1.kind,
-      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
+    Renderer.K8sApi.detailsFor(SwiftGuestV1alpha1, { priority: 10, Details: SwiftGuestDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftGuestClassV1alpha1, { priority: 10, Details: SwiftGuestClassDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftGuestPoolV1alpha1, { priority: 10, Details: SwiftGuestPoolDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftImageV1alpha1, { priority: 10, Details: SwiftImageDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftSeedProfileV1alpha1, { priority: 10, Details: SwiftSeedProfileDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftKernelV1alpha1, { priority: 10, Details: SwiftKernelDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftSnapshotV1alpha1, { priority: 10, Details: SwiftSnapshotDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftRestoreV1alpha1, { priority: 10, Details: SwiftRestoreDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftSnapshotScheduleV1alpha1, {
       priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftGuestDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftGuestClassV1alpha1.kind,
-      apiVersions: SwiftGuestClassV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftGuestClassDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftGuestPoolV1alpha1.kind,
-      apiVersions: SwiftGuestPoolV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftGuestPoolDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftImageV1alpha1.kind,
-      apiVersions: SwiftImageV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftImageDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftSeedProfileV1alpha1.kind,
-      apiVersions: SwiftSeedProfileV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftSeedProfileDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftKernelV1alpha1.kind,
-      apiVersions: SwiftKernelV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftKernelDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftSnapshotV1alpha1.kind,
-      apiVersions: SwiftSnapshotV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftSnapshotDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftRestoreV1alpha1.kind,
-      apiVersions: SwiftRestoreV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftRestoreDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftSnapshotScheduleV1alpha1.kind,
-      apiVersions: SwiftSnapshotScheduleV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftSnapshotScheduleDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftMigrationV1alpha1.kind,
-      apiVersions: SwiftMigrationV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftMigrationDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftGPUProfileV1alpha1.kind,
-      apiVersions: SwiftGPUProfileV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftGPUProfileDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftGPUNodeV1alpha1.kind,
-      apiVersions: SwiftGPUNodeV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftGPUNodeDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftSandboxV1alpha1.kind,
-      apiVersions: SwiftSandboxV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftSandboxDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftSandboxPoolV1alpha1.kind,
-      apiVersions: SwiftSandboxPoolV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <SwiftSandboxPoolDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
+      Details: SwiftSnapshotScheduleDetailsV1alpha1,
+    }),
+    Renderer.K8sApi.detailsFor(SwiftMigrationV1alpha1, { priority: 10, Details: SwiftMigrationDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftGPUProfileV1alpha1, { priority: 10, Details: SwiftGPUProfileDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftGPUNodeV1alpha1, { priority: 10, Details: SwiftGPUNodeDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftSandboxV1alpha1, { priority: 10, Details: SwiftSandboxDetailsV1alpha1 }),
+    Renderer.K8sApi.detailsFor(SwiftSandboxPoolV1alpha1, { priority: 10, Details: SwiftSandboxPoolDetailsV1alpha1 }),
     // The one registration in this list whose kind is not unique in the
     // Kubernetes ecosystem. The host matches on kind AND apiVersion
     // (`kubeObjectMatchesToKindAndApiVersion`), so a Cluster API
     // (`cluster.x-k8s.io`) or a Rancher Fleet (`fleet.cattle.io`) object of the
     // same kind never receives this drawer, and ours never receives theirs.
-    {
-      kind: FleetClusterV1alpha1.kind,
-      apiVersions: FleetClusterV1alpha1.crd.apiVersions,
-      priority: 10,
-      components: {
-        Details: (props: Renderer.Component.KubeObjectDetailsProps<any>) => (
-          <FleetClusterDetailsV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
+    Renderer.K8sApi.detailsFor(FleetClusterV1alpha1, { priority: 10, Details: FleetClusterDetailsV1alpha1 }),
   ].map((registration) => withDetailsErrorBoundary(this, registration));
 
   // The extension's first write surface (M6, SPEC-0010). Two registrations
@@ -341,85 +238,85 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
     {
       id: "swiftguests",
       components: {
-        Page: () => <SwiftGuestsPageV1alpha1 extension={this} />,
+        Page: () => <SwiftGuestsPage extension={this} />,
       },
     },
     {
       id: "swiftguestclasses",
       components: {
-        Page: () => <SwiftGuestClassesPageV1alpha1 extension={this} />,
+        Page: () => <SwiftGuestClassesPage extension={this} />,
       },
     },
     {
       id: "swiftguestpools",
       components: {
-        Page: () => <SwiftGuestPoolsPageV1alpha1 extension={this} />,
+        Page: () => <SwiftGuestPoolsPage extension={this} />,
       },
     },
     {
       id: "swiftimages",
       components: {
-        Page: () => <SwiftImagesPageV1alpha1 extension={this} />,
+        Page: () => <SwiftImagesPage extension={this} />,
       },
     },
     {
       id: "swiftseedprofiles",
       components: {
-        Page: () => <SwiftSeedProfilesPageV1alpha1 extension={this} />,
+        Page: () => <SwiftSeedProfilesPage extension={this} />,
       },
     },
     {
       id: "swiftkernels",
       components: {
-        Page: () => <SwiftKernelsPageV1alpha1 extension={this} />,
+        Page: () => <SwiftKernelsPage extension={this} />,
       },
     },
     {
       id: "swiftsnapshots",
       components: {
-        Page: () => <SwiftSnapshotsPageV1alpha1 extension={this} />,
+        Page: () => <SwiftSnapshotsPage extension={this} />,
       },
     },
     {
       id: "swiftrestores",
       components: {
-        Page: () => <SwiftRestoresPageV1alpha1 extension={this} />,
+        Page: () => <SwiftRestoresPage extension={this} />,
       },
     },
     {
       id: "swiftsnapshotschedules",
       components: {
-        Page: () => <SwiftSnapshotSchedulesPageV1alpha1 extension={this} />,
+        Page: () => <SwiftSnapshotSchedulesPage extension={this} />,
       },
     },
     {
       id: "swiftmigrations",
       components: {
-        Page: () => <SwiftMigrationsPageV1alpha1 extension={this} />,
+        Page: () => <SwiftMigrationsPage extension={this} />,
       },
     },
     {
       id: "swiftgpuprofiles",
       components: {
-        Page: () => <SwiftGPUProfilesPageV1alpha1 extension={this} />,
+        Page: () => <SwiftGPUProfilesPage extension={this} />,
       },
     },
     {
       id: "swiftgpunodes",
       components: {
-        Page: () => <SwiftGPUNodesPageV1alpha1 extension={this} />,
+        Page: () => <SwiftGPUNodesPage extension={this} />,
       },
     },
     {
       id: "swiftsandboxes",
       components: {
-        Page: () => <SwiftSandboxesPageV1alpha1 extension={this} />,
+        Page: () => <SwiftSandboxesPage extension={this} />,
       },
     },
     {
       id: "swiftsandboxpools",
       components: {
-        Page: () => <SwiftSandboxPoolsPageV1alpha1 extension={this} />,
+        Page: () => <SwiftSandboxPoolsPage extension={this} />,
       },
     },
     // `fleetclusters` rather than `clusters`: page ids are already namespaced
@@ -429,7 +326,7 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
     {
       id: "fleetclusters",
       components: {
-        Page: () => <FleetClustersPageV1alpha1 extension={this} />,
+        Page: () => <FleetClustersPage extension={this} />,
       },
     },
   ].map((registration) => withPageErrorBoundary(this, registration));

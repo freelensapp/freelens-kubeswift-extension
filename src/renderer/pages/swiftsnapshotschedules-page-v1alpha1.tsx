@@ -2,7 +2,6 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftSnapshotSchedule, type SwiftSnapshotScheduleApi } from "../api/kubeswift/swiftsnapshotschedule-v1alpha1";
 import styles from "./swiftsnapshotschedules-page.module.scss";
-import stylesInline from "./swiftsnapshotschedules-page.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -53,31 +52,28 @@ export const SwiftSnapshotSchedulesPage = observer((props: SwiftSnapshotSchedule
   const store = KubeObject.getStore<KubeObject>();
 
   return (
-    <>
-      <style>{stylesInline}</style>
-      <KubeObjectListLayout<KubeObject, KubeObjectApi>
-        tableId={`${KubeObject.crd.plural}Table`}
-        className={styles.page}
-        store={store}
-        sortingCallbacks={sortingCallbacks}
-        searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-        renderHeaderTitle={KubeObject.crd.title}
-        renderTableHeader={renderTableHeader}
-        renderTableContents={(object: KubeObject) => {
-          const lastScheduleTime = KubeObject.getLastScheduleTime(object);
+    <KubeObjectListLayout<KubeObject, KubeObjectApi>
+      tableId={`${KubeObject.crd.plural}Table`}
+      className={styles.page}
+      store={store}
+      sortingCallbacks={sortingCallbacks}
+      searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+      renderHeaderTitle={KubeObject.crd.title}
+      renderTableHeader={renderTableHeader}
+      renderTableContents={(object: KubeObject) => {
+        const lastScheduleTime = KubeObject.getLastScheduleTime(object);
 
-          return [
-            <WithTooltip>{object.getName()}</WithTooltip>,
-            <LinkToNamespace namespace={object.getNs()} />,
-            <WithTooltip>{KubeObject.getSchedule(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip>{KubeObject.getKeepLast(object) ?? "All"}</WithTooltip>,
-            <WithTooltip>{String(KubeObject.isSuspended(object))}</WithTooltip>,
-            lastScheduleTime ? <LocaleDate date={lastScheduleTime} /> : <WithTooltip>{notAvailable}</WithTooltip>,
-            <KubeObjectAge object={object} key="age" />,
-          ];
-        }}
-      />
-    </>
+        return [
+          <WithTooltip>{object.getName()}</WithTooltip>,
+          <LinkToNamespace namespace={object.getNs()} />,
+          <WithTooltip>{KubeObject.getSchedule(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip>{KubeObject.getKeepLast(object) ?? "All"}</WithTooltip>,
+          <WithTooltip>{String(KubeObject.isSuspended(object))}</WithTooltip>,
+          lastScheduleTime ? <LocaleDate date={lastScheduleTime} /> : <WithTooltip>{notAvailable}</WithTooltip>,
+          <KubeObjectAge object={object} key="age" />,
+        ];
+      }}
+    />
   );
 });

@@ -3,7 +3,6 @@ import * as MobxReact from "mobx-react";
 import { SwiftGPUNode, type SwiftGPUNodeApi } from "../api/kubeswift/swiftgpunode-v1alpha1";
 import { classifyGpuNode } from "../components/gpu-status";
 import styles from "./swiftgpunodes-page.module.scss";
-import stylesInline from "./swiftgpunodes-page.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -56,47 +55,44 @@ export const SwiftGPUNodesPage = observer((props: SwiftGPUNodesPageProps) => {
   const store = KubeObject.getStore<KubeObject>();
 
   return (
-    <>
-      <style>{stylesInline}</style>
-      <KubeObjectListLayout<KubeObject, KubeObjectApi>
-        tableId={`${KubeObject.crd.plural}Table`}
-        className={styles.page}
-        store={store}
-        sortingCallbacks={sortingCallbacks}
-        searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-        renderHeaderTitle={KubeObject.crd.title}
-        renderTableHeader={renderTableHeader}
-        renderTableContents={(object: KubeObject) => {
-          const condition = classifyGpuNode(object.status);
+    <KubeObjectListLayout<KubeObject, KubeObjectApi>
+      tableId={`${KubeObject.crd.plural}Table`}
+      className={styles.page}
+      store={store}
+      sortingCallbacks={sortingCallbacks}
+      searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+      renderHeaderTitle={KubeObject.crd.title}
+      renderTableHeader={renderTableHeader}
+      renderTableContents={(object: KubeObject) => {
+        const condition = classifyGpuNode(object.status);
 
-          return [
-            // The name of a SwiftGPUNode is the name of the node it
-            // describes. The drawer turns it into a Node link; here the row
-            // click opens the drawer (DESIGN.md section 1).
-            <WithTooltip key="name">{object.getName()}</WithTooltip>,
-            <WithTooltip key="gpus">{KubeObject.getGpuCount(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip key="free">{KubeObject.getFreeGPUs(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip key="model">{KubeObject.getGpuModel(object) ?? notAvailable}</WithTooltip>,
-            <BadgeBoolean key="vfio" value={KubeObject.getVfioReady(object)} />,
-            <Badge key="condition" className={condition.className} label={condition.state} />,
-            // The generated explanation of the same state: the CRD has no
-            // conditions and no message field, so there is no raw message to
-            // show here (declared deviation, SPEC-0007). A timestamp the
-            // explanation ends on is rendered by `LocaleDate` rather than
-            // formatted inside the classifier.
-            <WithTooltip key="status">
-              {condition.explanation}
-              {condition.lastDiscovery ? (
-                <>
-                  {" "}
-                  <LocaleDate date={condition.lastDiscovery} />
-                </>
-              ) : null}
-            </WithTooltip>,
-            <KubeObjectAge object={object} key="age" />,
-          ];
-        }}
-      />
-    </>
+        return [
+          // The name of a SwiftGPUNode is the name of the node it
+          // describes. The drawer turns it into a Node link; here the row
+          // click opens the drawer (DESIGN.md section 1).
+          <WithTooltip key="name">{object.getName()}</WithTooltip>,
+          <WithTooltip key="gpus">{KubeObject.getGpuCount(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip key="free">{KubeObject.getFreeGPUs(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip key="model">{KubeObject.getGpuModel(object) ?? notAvailable}</WithTooltip>,
+          <BadgeBoolean key="vfio" value={KubeObject.getVfioReady(object)} />,
+          <Badge key="condition" className={condition.className} label={condition.state} />,
+          // The generated explanation of the same state: the CRD has no
+          // conditions and no message field, so there is no raw message to
+          // show here (declared deviation, SPEC-0007). A timestamp the
+          // explanation ends on is rendered by `LocaleDate` rather than
+          // formatted inside the classifier.
+          <WithTooltip key="status">
+            {condition.explanation}
+            {condition.lastDiscovery ? (
+              <>
+                {" "}
+                <LocaleDate date={condition.lastDiscovery} />
+              </>
+            ) : null}
+          </WithTooltip>,
+          <KubeObjectAge object={object} key="age" />,
+        ];
+      }}
+    />
   );
 });

@@ -4,7 +4,6 @@ import { SwiftImage, type SwiftImageApi } from "../api/kubeswift/swiftimage-v1al
 import { createImageTitle } from "../components/image-create";
 import { openCreateImageDialog } from "../components/image-create-dialog";
 import styles from "./swiftimages-page.module.scss";
-import stylesInline from "./swiftimages-page.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -48,28 +47,25 @@ export const SwiftImagesPage = observer((props: SwiftImagesPageProps) => {
   const store = KubeObject.getStore<KubeObject>();
 
   return (
-    <>
-      <style>{stylesInline}</style>
-      <KubeObjectListLayout<KubeObject, KubeObjectApi>
-        tableId={`${KubeObject.crd.plural}Table`}
-        className={styles.page}
-        store={store}
-        sortingCallbacks={sortingCallbacks}
-        searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-        renderHeaderTitle={KubeObject.crd.title}
-        // The host's own floating "+", the same idiom the Guests, Guest
-        // Classes and Kernels pages carry (DESIGN.md pillar 1).
-        addRemoveButtons={{ onAdd: openCreateImageDialog, addTooltip: createImageTitle }}
-        renderTableHeader={renderTableHeader}
-        renderTableContents={(object: KubeObject) => [
-          <WithTooltip>{object.getName()}</WithTooltip>,
-          <LinkToNamespace namespace={object.getNs()} />,
-          <WithTooltip>{getSource(object) ?? "N/A"}</WithTooltip>,
-          <WithTooltip>{KubeObject.getPhase(object) ?? "N/A"}</WithTooltip>,
-          <WithTooltip>{KubeObject.getPreparedSize(object) ?? "N/A"}</WithTooltip>,
-          <KubeObjectAge object={object} key="age" />,
-        ]}
-      />
-    </>
+    <KubeObjectListLayout<KubeObject, KubeObjectApi>
+      tableId={`${KubeObject.crd.plural}Table`}
+      className={styles.page}
+      store={store}
+      sortingCallbacks={sortingCallbacks}
+      searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+      renderHeaderTitle={KubeObject.crd.title}
+      // The host's own floating "+", the same idiom the Guests, Guest
+      // Classes and Kernels pages carry (DESIGN.md pillar 1).
+      addRemoveButtons={{ onAdd: openCreateImageDialog, addTooltip: createImageTitle }}
+      renderTableHeader={renderTableHeader}
+      renderTableContents={(object: KubeObject) => [
+        <WithTooltip>{object.getName()}</WithTooltip>,
+        <LinkToNamespace namespace={object.getNs()} />,
+        <WithTooltip>{getSource(object) ?? "N/A"}</WithTooltip>,
+        <WithTooltip>{KubeObject.getPhase(object) ?? "N/A"}</WithTooltip>,
+        <WithTooltip>{KubeObject.getPreparedSize(object) ?? "N/A"}</WithTooltip>,
+        <KubeObjectAge object={object} key="age" />,
+      ]}
+    />
   );
 });

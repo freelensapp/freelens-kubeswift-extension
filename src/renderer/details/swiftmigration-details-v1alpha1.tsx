@@ -26,9 +26,7 @@ const {
 
 const notAvailable = "N/A";
 
-export interface SwiftMigrationDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftMigration> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftMigrationDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftMigration>;
 
 export const SwiftMigrationDetails = observer((props: SwiftMigrationDetailsProps) => {
   const { object } = props;

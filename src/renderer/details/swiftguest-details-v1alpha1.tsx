@@ -35,9 +35,7 @@ const managedByTooltip =
   "This guest is owned by a pool, which recreates it as soon as it is deleted on its own. Delete or scale the " +
   "pool instead.";
 
-export interface SwiftGuestDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftGuest> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftGuest>;
 
 export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) => {
   const { object } = props;

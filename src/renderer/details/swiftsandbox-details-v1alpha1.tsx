@@ -21,7 +21,6 @@ import { findDefaultContainerOfPod } from "../components/pod-logs";
 import { useReferenceStores } from "../components/reference-loader";
 import { classifySandbox } from "../components/sandbox-status";
 import styles from "./swiftsandbox-details.module.scss";
-import stylesInline from "./swiftsandbox-details.module.scss?inline";
 
 import type { ReferenceRequest } from "../components/reference-loader";
 
@@ -599,9 +598,7 @@ const EnvironmentSection = observer(({ object }: SectionProps) => {
   );
 });
 
-export interface SwiftSandboxDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftSandbox> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftSandboxDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftSandbox>;
 
 export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) => {
   const { object } = props;
@@ -735,7 +732,6 @@ export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) =>
 
   return (
     <>
-      <style>{stylesInline}</style>
       <SandboxSection object={object} />
       <GuestSection object={object} />
       <RuntimeSection object={object} />

@@ -225,15 +225,19 @@ blank area:
 - **Loading**: the layout's spinner is enough for lists; custom pages
   show a centered message or skeleton.
 - **Empty list**: delegated to `KubeObjectListLayout` (`NoItems`).
-- **Render error**: every page and details component is wrapped in
-  `withErrorPage` so a throw renders a readable error, not a blank
-  drawer.
-- **CRDs not installed / version drift**: the page probes the store and
-  renders an explanatory panel (which CRDs are missing, which API
-  versions were tried) with a link to the docs, in the style of
-  gateway-api's `createAvailableVersionPage` and kamaji's empty state.
-  Tri-state logic (`unknown | absent | present`) so "still probing" is
-  not rendered as "not installed".
+- **Render error**: every page, details panel and menu item renders
+  inside the error boundary of `components/error-boundary.tsx`, so a
+  throw renders a readable error in its own place (the main area, the
+  drawer) or, for a menu item, nothing, never a blank drawer or the
+  host's crash page.
+- **CRDs not installed / version drift**: every page is made by
+  `createAvailableVersionPage`, which renders the list once the host
+  serves the kind and otherwise an explanatory panel: which CRD is
+  missing and which API versions were tried. The panel is an `observer`,
+  so a page Freelens restores while the cluster frame is still loading
+  the CRDs follows once they are loaded. The host does not tell "still
+  loading" from "not installed" apart, so the panel can show for a
+  moment on a cluster that has the CRDs.
 
 ## 7. Interaction and performance
 
@@ -330,8 +334,10 @@ patterns:
    exercised so far - re-check when a new CRD arrives. The printer-column
    rows of the same host block are settled by section 3's stance (issue
    #52): they stay duplicated, the extension's sections stay complete.
-6. No CRD-absent state: pages assume the KubeSwift CRDs exist; add the
-   probing panel (section 6).
+6. ~~No CRD-absent state~~: closed by the v2 port (SPEC-0018): every page
+   is made by `createAvailableVersionPage` (section 6). Without a link to
+   the docs, and without the tri-state the section first planned: the
+   host gives no "still loading" state to tell apart.
 7. Both themes were never verified by a human; first milestone review
    covers this.
 

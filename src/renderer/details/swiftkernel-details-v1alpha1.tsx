@@ -10,9 +10,7 @@ const {
 
 const notAvailable = "N/A";
 
-export interface SwiftKernelDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftKernel> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftKernelDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftKernel>;
 
 export const SwiftKernelDetails = observer((props: SwiftKernelDetailsProps) => {
   const { object } = props;

@@ -16,7 +16,6 @@ import { existingObjectRef, objectExists } from "../components/object-existence"
 import { useReferenceStores } from "../components/reference-loader";
 import { classifySandbox, classifySandboxPool } from "../components/sandbox-status";
 import styles from "./swiftsandboxpool-details.module.scss";
-import stylesInline from "./swiftsandboxpool-details.module.scss?inline";
 
 import type { ReferenceRequest } from "../components/reference-loader";
 
@@ -399,9 +398,7 @@ const SandboxesUsingSection = observer(({ object }: SectionProps) => {
   );
 });
 
-export interface SwiftSandboxPoolDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftSandboxPool> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftSandboxPoolDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftSandboxPool>;
 
 export const SwiftSandboxPoolDetails = observer((props: SwiftSandboxPoolDetailsProps) => {
   const { object } = props;
@@ -451,7 +448,6 @@ export const SwiftSandboxPoolDetails = observer((props: SwiftSandboxPoolDetailsP
 
   return (
     <>
-      <style>{stylesInline}</style>
       <PoolSection object={object} />
       <SlotShapeSection object={object} />
       <RootfsSection object={object} />

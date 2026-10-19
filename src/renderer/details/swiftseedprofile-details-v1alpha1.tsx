@@ -3,7 +3,6 @@ import * as MobxReact from "mobx-react";
 import { type SwiftSeedDataSource, SwiftSeedProfile } from "../api/kubeswift/swiftseedprofile-v1alpha1";
 import { getBlobEditorHeight } from "../utils";
 import styles from "./swiftseedprofile-details.module.scss";
-import stylesInline from "./swiftseedprofile-details.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -63,9 +62,7 @@ function SeedDocument({ title, namespace, source, value }: SeedDocumentProps) {
   );
 }
 
-export interface SwiftSeedProfileDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftSeedProfile> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftSeedProfileDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftSeedProfile>;
 
 export const SwiftSeedProfileDetails = observer((props: SwiftSeedProfileDetailsProps) => {
   const { object } = props;
@@ -74,7 +71,6 @@ export const SwiftSeedProfileDetails = observer((props: SwiftSeedProfileDetailsP
 
   return (
     <>
-      <style>{stylesInline}</style>
       {/* The list page already shows the "Datasource" printer column (parity
           with `kubectl get`); a single-value field ("NoCloud" is the only
           option the CRD currently declares) does not earn its own drawer

@@ -10,9 +10,7 @@ const {
 
 const notAvailable = "N/A";
 
-export interface SwiftImageDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftImage> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftImageDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftImage>;
 
 export const SwiftImageDetails = observer((props: SwiftImageDetailsProps) => {
   const { object } = props;

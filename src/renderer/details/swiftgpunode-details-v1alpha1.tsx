@@ -7,7 +7,6 @@ import { classifyGpuDevice, classifyGpuNode } from "../components/gpu-status";
 import { existingObjectRef, objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
 import styles from "./swiftgpunode-details.module.scss";
-import stylesInline from "./swiftgpunode-details.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -376,9 +375,7 @@ function FabricManagerSection({ object }: SectionProps) {
   );
 }
 
-export interface SwiftGPUNodeDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftGPUNode> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGPUNodeDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftGPUNode>;
 
 export const SwiftGPUNodeDetails = observer((props: SwiftGPUNodeDetailsProps) => {
   const { object } = props;
@@ -404,7 +401,6 @@ export const SwiftGPUNodeDetails = observer((props: SwiftGPUNodeDetailsProps) =>
   // (SPEC-0007).
   return (
     <>
-      <style>{stylesInline}</style>
       <DiscoverySection object={object} />
       <InventorySection object={object} />
       <GpusSection object={object} />

@@ -196,9 +196,7 @@ function TelemetrySection({ object }: SectionProps) {
   );
 }
 
-export interface FleetClusterDetailsProps extends Renderer.Component.KubeObjectDetailsProps<FleetCluster> {
-  extension: Renderer.LensExtension;
-}
+export type FleetClusterDetailsProps = Renderer.Component.KubeObjectDetailsProps<FleetCluster>;
 
 export const FleetClusterDetails = observer((props: FleetClusterDetailsProps) => {
   const { object } = props;
