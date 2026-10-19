@@ -145,4 +145,10 @@ To be run before the PR leaves draft; results recorded here (date, tester).
 
 ## Notes and deviations
 
-Filled during implementation.
+- **Surface check (step 0, 2026-10-19).** A copy of the 0.1.0 source compiles against
+  `@freelensapp/extensions@2.0.0-0-nightly-2026-10-17` except for five known causes: the CSS module
+  declarations need `allowArbitraryExtensions` (step 3), `observable.ref` is `observableRef` in mobx 7 (19
+  uses in the forms), `getStore<X>()` types its `api` as `any` (the forms name the store type,
+  `getStore<X, XStore>()`), `node:os` in the two console items, and the global `JSX` namespace. No host
+  symbol or component prop is missing. v2 registers a `clusterPageMenus` tree at any depth with code
+  equivalent to v1's, so the three-level sidebar stays as it is.
