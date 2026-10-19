@@ -483,6 +483,107 @@ The root `tsconfig.json` checks the tooling files. It has `checkJs`, so the
 Vite config and the build plugins are type-checked too; give their function
 parameters JSDoc types.
 
+## Lint and CI
+
+### Biome
+
+`biome.jsonc` has the formatter, import groups and rules of Freelens. Two
+overrides are specific to how the extension is laid out:
+
+- `style/noRestrictedImports` keeps `vitest` and the testing helpers of React
+  out of the extension's code (see "Tests and tooling").
+- `correctness/noNodejsModules` rejects a Node builtin import in
+  `src/renderer/` and `src/common/`, tests left out. It flags the import in the
+  editor, before `pnpm type:check` does; it does not see Node globals such as
+  `Buffer` or `process`, which only the type check catches.
+
+Every path in an override starts with `**/`. Trunk runs Biome from a sandbox
+outside the repository, with `--config-path` pointing back at `biome.jsonc`,
+and there a path anchored at the repository root matches no file, so the
+override silently does nothing. A plain `biome check` matches both forms, so
+only `trunk check` shows the difference.
+
+In that sandbox, Biome also cannot apply `vcs.useIgnoreFile`: since 2.5.15 it
+matches every target against the repository's `.gitignore` and panics on a
+path outside the repository root, so every file fails. The Biome commands in
+`.trunk/trunk.yaml` pass `--vcs-use-ignore-file=false`, because Trunk applies
+`.gitignore` itself before it picks the targets; `biome.jsonc` keeps the
+setting on for `pnpm biome` and editors.
+
+Renovate updates Biome, in the `biome` script and in `.trunk/trunk.yaml`, but
+cannot run `biome migrate`. `biome-migrate.yaml` runs it on the Renovate
+branch and commits the migrated `biome.jsonc` there, so that the update and its
+migration are one pull request. The commit is by `github-actions[bot]`, which
+`gitIgnoredAuthors` in `.renovaterc.json` lists, so that Renovate does not take
+it for a manual edit and stop updating the branch.
+
+Biome does not read SCSS; Trunk formats it with Prettier.
+
+### Knip
+
+`pnpm knip:check` runs knip twice, for unused files and for dependencies: a
+development pass over everything, and a `--production --strict` pass over the
+code that reaches the bundles, which are the entries marked with `!` in
+`knip.jsonc`. In the production pass only `dependencies` count, so a bundled
+library that the extension's code imports belongs there. The host-provided
+modules are devDependencies, for their types, and are ignored.
+
+A file is unused when no entry reaches it: a leftover module, a barrel that
+nothing imports. The production pass starts from the `!` entries only, so it
+also reports a module that only tests import. The fix is to remove the file,
+not to ignore it. The check does not include unused exports and types: on this
+tree they are mostly the exported spec and status types of the models.
+
+`knip.jsonc` lists the entries knip cannot find: the two source entries, the
+Vitest alias target `test/freelens-extensions.ts` and the probes in
+`environment-tests/`. Its Vite plugin is off: it adds the renderer entry of
+`vite.config.mjs` as a development entry, which displaces
+`src/renderer/index.tsx!`, and the production pass then skips the renderer.
+`--no-config-hints` is set because one config serves both passes, and an entry
+that only the production pass needs is reported as redundant by the other.
+
+Two more settings keep the file check to real findings. `project` leaves out
+the CSS module declarations with `!src/**/*.d.scss.ts`: TypeScript reaches them
+through `allowArbitraryExtensions`, while knip resolves
+`import styles from "./x.module.scss"` to the stylesheet, so nothing would
+import them. The negation has no trailing `!`, which would apply it to the
+production pass only. And the SVGO plugin is on (`"svgo": true`), so that
+`svgo.config.mjs` is an entry: Trunk runs SVGO, and no dependency turns the
+plugin on.
+
+`ignore` leaves out `dist/**`. The `main` field of `package.json` makes
+`dist/main.js` an entry once it exists, and the `knip` script runs with
+`--no-gitignore`, so after `pnpm build`, which `check.yaml` runs first, knip
+would analyse the bundle and report what it inlines from the libraries it
+bundles: a `spawnSync("wsl.exe")` in a bundled `@kubernetes/client-node` comes
+out as `Unlisted binaries: wsl.exe dist/main.js`. Run `pnpm knip:check` after a
+build when changing `knip.jsonc`, as `check.yaml` does; without `dist/` the
+problem does not show.
+
+### Workflows
+
+| Workflow                 | Runs                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| `type-check.yaml`        | `pnpm type:check`                                                             |
+| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                            |
+| `unit-tests.yaml`        | `pnpm test:unit`                                                              |
+| `trunk-check.yaml`       | `trunk check --all`                                                           |
+| `integration-tests.yaml` | the integration test, against Freelens                                        |
+| `e2e-tests.yaml`         | the E2E suite, against Freelens and the kind lab                              |
+| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version |
+| `osv-scanner.yaml`       | the OSV scanner over the lock file                                            |
+
+The type check has a workflow of its own, on pull requests and on pushes to
+`main`, as in Freelens. It runs every program, tests, tooling and environment
+tests included, which no build reaches, and a type error shows as its own
+failed check rather than as a failed build. `check.yaml` builds without the
+type check for the same reason, so it does not run twice.
+
+The integration and E2E suites still run inside a freelensapp/freelens
+checkout, as `docs/development/TESTING.md` describes, and knip leaves `e2e/`
+and `integration/` out until they move to the template's pattern (Vitest in
+this repository, driving Freelens dev over CDP).
+
 ## Code Style
 
 - **Biome** formats **TypeScript/TSX, JS, JSON, CSS, HTML**: double quotes, semicolons, trailing commas, 2-space indent, 120 char line width — use `pnpm biome:fix`
