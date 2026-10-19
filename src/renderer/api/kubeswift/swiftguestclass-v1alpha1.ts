@@ -46,6 +46,9 @@ export class SwiftGuestClass extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftGuestClassStatus,
   SwiftGuestClassSpec
 > {
+  declare kind: "SwiftGuestClass";
+  declare apiVersion: "swift.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftGuestClass";
   static readonly namespaced = false;
   static readonly apiBase = "/apis/swift.kubeswift.io/v1alpha1/swiftguestclasses";

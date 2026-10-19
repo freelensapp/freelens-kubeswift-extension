@@ -115,6 +115,9 @@ export class SwiftImage extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftImageStatus,
   SwiftImageSpec
 > {
+  declare kind: "SwiftImage";
+  declare apiVersion: "image.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftImage";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/image.kubeswift.io/v1alpha1/swiftimages";

@@ -202,6 +202,9 @@ export class SwiftSnapshot extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftSnapshotStatus,
   SwiftSnapshotSpec
 > {
+  declare kind: "SwiftSnapshot";
+  declare apiVersion: "snapshot.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftSnapshot";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/snapshot.kubeswift.io/v1alpha1/swiftsnapshots";

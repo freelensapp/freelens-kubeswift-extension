@@ -123,6 +123,9 @@ export class SwiftGuestPool extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftGuestPoolStatus,
   SwiftGuestPoolSpec
 > {
+  declare kind: "SwiftGuestPool";
+  declare apiVersion: "swift.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftGuestPool";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/swift.kubeswift.io/v1alpha1/swiftguestpools";

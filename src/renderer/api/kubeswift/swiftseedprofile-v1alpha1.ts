@@ -107,6 +107,9 @@ export class SwiftSeedProfile extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftSeedProfileStatus,
   SwiftSeedProfileSpec
 > {
+  declare kind: "SwiftSeedProfile";
+  declare apiVersion: "seed.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftSeedProfile";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/seed.kubeswift.io/v1alpha1/swiftseedprofiles";

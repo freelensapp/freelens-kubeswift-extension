@@ -63,6 +63,9 @@ export class SwiftSnapshotSchedule extends Renderer.K8sApi.LensExtensionKubeObje
   SwiftSnapshotScheduleStatus,
   SwiftSnapshotScheduleSpec
 > {
+  declare kind: "SwiftSnapshotSchedule";
+  declare apiVersion: "snapshot.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftSnapshotSchedule";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/snapshot.kubeswift.io/v1alpha1/swiftsnapshotschedules";

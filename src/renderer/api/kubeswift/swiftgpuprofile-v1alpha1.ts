@@ -103,6 +103,9 @@ export class SwiftGPUProfile extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftGPUProfileStatus,
   SwiftGPUProfileSpec
 > {
+  declare kind: "SwiftGPUProfile";
+  declare apiVersion: "gpu.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftGPUProfile";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/gpu.kubeswift.io/v1alpha1/swiftgpuprofiles";

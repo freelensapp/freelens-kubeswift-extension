@@ -122,40 +122,93 @@ source maps. `main` and `renderer` in `package.json` point at the two entries.
 
 ## CRD KubeObject Pattern
 
-K8s object classes MUST use `static readonly` properties for metadata. **Instance methods do NOT work and MUST NOT be used.** The Freelens host reads properties from the class constructor statically — instance methods are not available at runtime because the host creates plain object copies of the K8s resource data, not instances of the extension's class. This means:
+A model is a subclass of `Renderer.K8sApi.LensExtensionKubeObject`, one file
+per kind and API version, in `src/renderer/api/kubeswift/`: for example
+`swiftkernel-v1alpha1.ts` exports `SwiftKernel`. Every KubeSwift kind is
+`v1alpha1` today.
 
-- **Allowed**: `object.spec?.someField`, `object.status?.conditions` — direct property access on typed `spec`/`status` interfaces
-- **Allowed**: helper functions like `hasTrueCondition(conditions, "Accepted")` from `types.ts`
-- **Forbidden**: `object.someMethod()` — instance methods will never exist at runtime
-- **Forbidden**: `typeof (object as any).someMethod === "function" ? ...` — anti-pattern that always falls through to the fallback path
-- **Forbidden**: `as any` — use the existing typed `spec`/`status` interfaces directly; all CRD models already define proper `Spec`/`Status` interfaces
+The host reads the model's metadata from the class, through `static readonly`
+properties. The objects it hands to the extension, in a list, a details panel
+or a menu item, come from the host's store for the resource: they are instances
+of the host's `KubeObject`, not of the extension's subclass. The methods of
+`KubeObject` itself are there (`getName()`, `getNs()`,
+`getCreationTimestamp()`, `getSearchFields()`); a method the subclass defines
+is not, and calling it throws. So:
 
-Always access `spec` and `status` properties directly via their typed interfaces. Do not define instance methods on KubeObject subclasses — they will not be callable at runtime.
+- **Metadata**: `static readonly` `kind`, `namespaced`, `apiBase` and `crd`
+  (`KubeSwiftKubeObjectCRD`: the host's `apiVersions`, `plural`, `singular`,
+  `shortNames`, plus the `title` of the page and the sidebar entry).
+- **Instance type**: `declare kind` and `declare apiVersion`, with the class's
+  kind and version as literals, which `detailsFor` and `menuItemFor` use to
+  tell the model apart from any other (see "Renderer Components"). `declare`
+  emits nothing, so the runtime object is the host's as before.
+- **Per-object logic**: a `static` method that takes the object, such as
+  `SwiftKernel.getReadyNodeCount(object)`, or a helper of `types.ts`.
+- **Fields**: read `object.spec` and `object.status` through the model's typed
+  spec and status interfaces, written from the CRD schemas of the KubeSwift
+  version the specs name (never copied from KubeSwift's code).
+- **Forbidden**: instance methods on the subclass; a fallback such as
+  `typeof (object as any).getPhase === "function" ? ...`, which always takes
+  the fallback; `as any`.
 
 ```typescript
-export class Gateway extends Renderer.K8sApi.LensExtensionKubeObject<
-  Renderer.K8sApi.KubeObjectMetadata,
-  GatewayStatus,
-  GatewaySpec
+export class SwiftKernel extends Renderer.K8sApi.LensExtensionKubeObject<
+  Renderer.K8sApi.NamespaceScopedMetadata,
+  SwiftKernelStatus,
+  SwiftKernelSpec
 > {
-  static readonly kind = "Gateway";
+  declare kind: "SwiftKernel";
+  declare apiVersion: "kernel.kubeswift.io/v1alpha1";
+
+  static readonly kind = "SwiftKernel";
   static readonly namespaced = true;
-  static readonly apiBase = "/apis/gateway.networking.k8s.io/v1/gateways";
-  static readonly crd: GatewayKubeObjectCRD = {
-    apiVersions: ["gateway.networking.k8s.io/v1"],
-    plural: "gateways",
-    singular: "gateway",
-    shortNames: ["gtw"],
-    title: "Gateways",
+  static readonly apiBase = "/apis/kernel.kubeswift.io/v1alpha1/swiftkernels";
+
+  static readonly crd: KubeSwiftKubeObjectCRD = {
+    apiVersions: ["kernel.kubeswift.io/v1alpha1"],
+    plural: "swiftkernels",
+    singular: "swiftkernel",
+    shortNames: ["sk"],
+    title: "Kernels",
   };
+
+  static getReadyNodeCount(object: SwiftKernel): { ready: number; total: number } {
+    // ...
+  }
 }
 
-// Also export Api and Store classes (always needed):
-export class GatewayApi extends Renderer.K8sApi.KubeApi<Gateway> {}
-export class GatewayStore extends Renderer.K8sApi.KubeObjectStore<Gateway, GatewayApi> {}
+export class SwiftKernelApi extends Renderer.K8sApi.KubeApi<SwiftKernel> {}
+export class SwiftKernelStore extends Renderer.K8sApi.KubeObjectStore<SwiftKernel, SwiftKernelApi> {}
 ```
 
-Each CRD file exports three classes: the KubeObject, the KubeApi, and the KubeObjectStore. They are registered in `src/renderer/index.tsx` via `kubeObjectDetailItems`, `clusterPages`, and `clusterPageMenus`.
+The file also exports a `KubeApi` and a `KubeObjectStore` subclass. Neither is
+instantiated: the store comes from the host, through `SwiftKernel.getStore()`.
+They are the types the extension names: the list page passes the `KubeApi`
+type to `KubeObjectListLayout`, and code that calls the store's API names the
+store type, `SwiftKernel.getStore<SwiftKernel, SwiftKernelStore>()`, because
+the default store type of `getStore<SwiftKernel>()` has an untyped `api`.
+
+`src/renderer/index.tsx` registers each model's details panel
+(`kubeObjectDetailItems`) and menu items (`kubeObjectMenuItems`), its page
+(`clusterPages`) and its sidebar entry (`clusterPageMenus`).
+
+`customResources` lists the 15 model classes. The host reads the group and
+plural from each class's `crd`, and while the extension is enabled it leaves
+the resource out of the Custom Resources tree of the cluster sidebar, where it
+would otherwise be listed a second time next to the extension's own page. The
+definition stays in the Definitions list, and the host's own list and details
+stay reachable by URL and from the command palette. The host rejects an entry
+it cannot read (no `kind`, no `crd` or `apiBase`, a core-group resource) with
+an error in the log, and the resource stays in the tree (contract C6 of
+`api.md`).
+
+`getStore()` throws until the host has registered the kind's API, which it does
+only after the cluster frame has loaded the CRDs. Freelens restores the last
+page when a cluster is opened, so a page often renders before that. A component
+that calls `getStore()` while it renders is an `observer`, so that it renders
+again once the API is registered, and it does not let the error escape:
+details panels and menus reach other kinds' stores through
+`maybe(() => Kind.getStore())`.
 
 ## Renderer Components
 

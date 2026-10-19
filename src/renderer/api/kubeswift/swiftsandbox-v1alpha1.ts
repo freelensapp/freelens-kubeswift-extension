@@ -361,6 +361,9 @@ export class SwiftSandbox extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftSandboxStatus,
   SwiftSandboxSpec
 > {
+  declare kind: "SwiftSandbox";
+  declare apiVersion: "sandbox.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftSandbox";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/sandbox.kubeswift.io/v1alpha1/swiftsandboxes";

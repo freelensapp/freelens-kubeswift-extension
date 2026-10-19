@@ -135,6 +135,9 @@ export class SwiftMigration extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftMigrationStatus,
   SwiftMigrationSpec
 > {
+  declare kind: "SwiftMigration";
+  declare apiVersion: "migration.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftMigration";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/migration.kubeswift.io/v1alpha1/swiftmigrations";

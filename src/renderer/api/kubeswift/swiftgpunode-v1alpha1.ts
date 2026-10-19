@@ -157,6 +157,9 @@ export class SwiftGPUNode extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftGPUNodeStatus,
   SwiftGPUNodeSpec
 > {
+  declare kind: "SwiftGPUNode";
+  declare apiVersion: "gpu.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftGPUNode";
   static readonly namespaced = false;
   static readonly apiBase = "/apis/gpu.kubeswift.io/v1alpha1/swiftgpunodes";

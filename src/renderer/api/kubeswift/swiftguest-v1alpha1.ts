@@ -270,6 +270,9 @@ export class SwiftGuest extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftGuestStatus,
   SwiftGuestSpec
 > {
+  declare kind: "SwiftGuest";
+  declare apiVersion: "swift.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftGuest";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/swift.kubeswift.io/v1alpha1/swiftguests";

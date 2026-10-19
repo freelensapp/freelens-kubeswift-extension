@@ -127,6 +127,9 @@ export class SwiftSandboxPool extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftSandboxPoolStatus,
   SwiftSandboxPoolSpec
 > {
+  declare kind: "SwiftSandboxPool";
+  declare apiVersion: "sandbox.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftSandboxPool";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/sandbox.kubeswift.io/v1alpha1/swiftsandboxpools";
