@@ -2600,17 +2600,18 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       await backendControl(frame).click();
       await frame.locator(".snapshot-backend-options .Select__option", { hasText: "local" }).first().click();
 
-      // The webhook rule enforced inline, in the place the webhook would have
-      // spoken from if this install had one enabled - and the submit-disabled
-      // sentence naming the field and the reason (W4).
-      const withoutPath = await cluster.confirmDialogText(frame);
+      // Nothing to ask: KubeSwift derives the directory from the namespace and
+      // the name since v0.15.0, and the form shows it, following the name
+      // (SPEC-0019 T1).
+      await frame.locator('[data-testid="snapshot-name"]').fill("e2e-frozen");
 
-      expect(withoutPath).toContain("Take Snapshot is disabled - Host path");
-      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
-
-      await frame.locator('[data-testid="snapshot-host-path"]').fill("/var/lib/kubeswift/snapshots/e2e-frozen");
+      expect(await frame.locator('[data-testid="snapshot-local-directory"]').innerText()).toBe(
+        `/var/lib/kubeswift/snapshots/${cluster.E2E_NAMESPACE}_e2e-frozen`,
+      );
 
       const withPath = await cluster.confirmDialogText(frame);
+
+      expect(withPath).toContain(`/var/lib/kubeswift/snapshots/${cluster.E2E_NAMESPACE}_e2e-frozen`);
 
       expect(withPath).toContain("paused for the whole capture");
       expect(withPath).not.toContain("Take Snapshot is disabled");
@@ -2625,6 +2626,42 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       // And the button takes the accent styling Stop uses, because this
       // combination terminates service until a human intervenes.
       expect(await frame.locator('[data-testid="confirm"]').getAttribute("class")).toContain("accent");
+
+      await cluster.cancelDialog(frame);
+
+      expect(snapshotNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "warns that an oci repository and tag another snapshot pushes to fails with TagInUse",
+    async () => {
+      // KubeSwift v0.16.0 and later create the second snapshot on a
+      // repository:tag and then fail it, so the form names the snapshot that
+      // holds it, without blocking (SPEC-0019 T1). The holder is the fixture
+      // e2e-snapshot-uploading.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+
+      const before = snapshotNames();
+
+      await cluster.openRowMenu(frame, "e2e-guest-running");
+      await frame.locator('.Menu [data-testid="swiftguest-take-snapshot-action"]').click();
+      await cluster.confirmDialogText(frame);
+      await backendControl(frame).click();
+      await frame.locator(".snapshot-backend-options .Select__option", { hasText: "oci" }).first().click();
+      await frame.locator('[data-testid="snapshot-repository"]').fill("ghcr.io/freelensapp/kubeswift-e2e/vm-snapshots");
+      await frame.locator('[data-testid="snapshot-tag"]').fill("kubeswift-e2e-nightly");
+
+      const warned = await cluster.confirmDialogText(frame);
+
+      expect(warned).toContain(`${cluster.E2E_NAMESPACE}/e2e-snapshot-uploading already pushes to`);
+      expect(warned).toContain("TagInUse");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await frame.locator('[data-testid="snapshot-tag"]').fill("kubeswift-e2e-weekly");
+
+      expect(await cluster.confirmDialogText(frame)).not.toContain("TagInUse");
 
       await cluster.cancelDialog(frame);
 
@@ -4149,9 +4186,22 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
 
       // The exact key set. `coreScheduling` is in it and the form never sent it:
       // the CRD carries `default: "off"`, so this is the API server's own stamp,
-      // asserted explicitly for the reason SPEC-0013's cases assert theirs.
-      expect(Object.keys(spec).sort()).toEqual(["coreScheduling", "cpu", "memory", "rootDisk", "storage"]);
+      // asserted explicitly for the reason SPEC-0013's cases assert theirs. The
+      // CRD of KubeSwift v0.18.0 stamps three more the same way (SPEC-0019).
+      expect(Object.keys(spec).sort()).toEqual([
+        "coreScheduling",
+        "cpu",
+        "cpuPinning",
+        "memory",
+        "rootDisk",
+        "sharedBaseDisk",
+        "smtPolicy",
+        "storage",
+      ]);
       expect(spec.coreScheduling).toBe("off");
+      expect(spec.cpuPinning).toBe("none");
+      expect(spec.smtPolicy).toBe("spread");
+      expect(spec.sharedBaseDisk).toBe(false);
       expect(spec.cpu).toBe("2");
       expect(spec.memory).toBe("4Gi");
       expect(spec.rootDisk).toEqual({ format: "qcow2", size: "30Gi" });

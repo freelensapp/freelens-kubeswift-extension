@@ -46,8 +46,24 @@ export const memoryBackendTypes: SwiftSnapshotBackendType[] = ["local", "s3", "o
 /** `swiftctl`'s own default, and the only backend that neither pauses the VM nor needs credentials. */
 export const defaultBackendType: SwiftSnapshotBackendType = "csi-volume-snapshot";
 
-/** The directory prefix the admission webhook requires of a `local` capture. */
+/** The directory under which KubeSwift keeps `local` captures. */
 export const hostPathPrefix = "/var/lib/kubeswift/snapshots/";
+
+/**
+ * The directory of a `local` capture, which KubeSwift derives from the
+ * snapshot's namespace and name since v0.15.0: `spec.backend.local.hostPath`
+ * must be omitted or be exactly this. The form writes it rather than omitting
+ * it, because a cluster before v0.15.0 requires a directory under the prefix,
+ * and this one is accepted by both.
+ */
+export function localSnapshotDirectory(namespace: string, name: string): string {
+  return `${hostPathPrefix}${namespace}_${name}`;
+}
+
+/** The tag KubeSwift gives an `oci` snapshot whose spec names none. */
+export function defaultOciTag(namespace: string, name: string): string {
+  return `${namespace}-${name}`;
+}
 
 /** The annotation that switches a guest to a hypervisor upstream cannot pause for a capture. */
 export const hypervisorOverrideAnnotation = "kubeswift.io/hypervisor-override";
@@ -242,8 +258,6 @@ export interface SnapshotFormValues {
   backend: SwiftSnapshotBackendType;
   /** csi: empty means the cluster's default VolumeSnapshotClass. */
   volumeSnapshotClassName: string;
-  /** local: the directory on the node the capture is written to. */
-  hostPath: string;
   bucket: string;
   region: string;
   endpoint: string;
@@ -287,7 +301,6 @@ export function defaultSnapshotForm(guest: SnapshotGuestFacts, now: Date): Snaps
     name: defaultSnapshotName(guest.name, now),
     backend: defaultBackendType,
     volumeSnapshotClassName: "",
-    hostPath: "",
     bucket: "",
     region: "",
     endpoint: "",
@@ -310,7 +323,6 @@ export function defaultSnapshotForm(guest: SnapshotGuestFacts, now: Date): Snaps
 export type SnapshotField =
   | "name"
   | "volumeSnapshotClassName"
-  | "hostPath"
   | "bucket"
   | "region"
   | "endpoint"
@@ -329,7 +341,6 @@ export type SnapshotFieldMessages = Partial<Record<SnapshotField, string>>;
 export const snapshotFieldLabels: Record<SnapshotField, string> = {
   name: "Name",
   volumeSnapshotClassName: "VolumeSnapshotClass",
-  hostPath: "Host path",
   bucket: "Bucket",
   region: "Region",
   endpoint: "Endpoint",
@@ -343,16 +354,7 @@ export const snapshotFieldLabels: Record<SnapshotField, string> = {
 };
 
 /** The order the submit-disabled sentence reports the first offending field in. */
-const fieldOrder: SnapshotField[] = [
-  "name",
-  "hostPath",
-  "bucket",
-  "s3CredentialsSecret",
-  "region",
-  "repository",
-  "tag",
-  "ttl",
-];
+const fieldOrder: SnapshotField[] = ["name", "bucket", "s3CredentialsSecret", "region", "repository", "tag", "ttl"];
 
 /** The Kubernetes object-name rule (RFC 1123 subdomain), which the API server would enforce afterwards. */
 const objectNamePattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
@@ -411,18 +413,6 @@ export function snapshotErrors(values: SnapshotFormValues): SnapshotFieldMessage
     errors.name = nameError;
   }
 
-  if (values.backend === "local") {
-    const hostPath = values.hostPath.trim();
-
-    if (!hostPath) {
-      errors.hostPath = `A host path is required, under ${hostPathPrefix}.`;
-    } else if (!hostPath.startsWith(hostPathPrefix)) {
-      errors.hostPath = `The host path must be under ${hostPathPrefix}.`;
-    } else if (hostPath.includes("..")) {
-      errors.hostPath = "The host path must not contain '..'.";
-    }
-  }
-
   if (values.backend === "s3") {
     if (!values.bucket.trim()) {
       errors.bucket = "A bucket is required.";
@@ -460,11 +450,27 @@ export function snapshotErrors(values: SnapshotFormValues): SnapshotFieldMessage
   return errors;
 }
 
-/** A SwiftSnapshot the store already holds, as the collision checks read it. */
+/** A SwiftSnapshot the store or a list call already holds, as the collision checks read it. */
 export interface ExistingSnapshotFacts {
   name: string;
-  /** `spec.backend.local.hostPath`, when this snapshot is a local one. */
-  hostPath?: string;
+  namespace: string;
+  /** The registry reference of an `oci` snapshot, with the tag KubeSwift gives it when the spec names none. */
+  ociReference?: string;
+}
+
+/** The `repository:tag` an `oci` snapshot pushes to, or `undefined` for another backend or no repository yet. */
+export function ociReference(
+  namespace: string,
+  name: string,
+  backend: { type?: string; oci?: { repository?: string; tag?: string } } | undefined,
+): string | undefined {
+  const repository = backend?.oci?.repository?.trim();
+
+  if (backend?.type !== "oci" || !repository) {
+    return undefined;
+  }
+
+  return `${repository}:${backend.oci?.tag?.trim() || defaultOciTag(namespace, name)}`;
 }
 
 /**
@@ -477,29 +483,40 @@ export interface ExistingSnapshotFacts {
  * seat. A store that holds nothing - a cold Snapshots page - simply produces no
  * warnings, and the 409 path stays as the backstop.
  */
-export function snapshotWarnings(values: SnapshotFormValues, existing: ExistingSnapshotFacts[]): SnapshotFieldMessages {
+export function snapshotWarnings(
+  guest: SnapshotGuestFacts,
+  values: SnapshotFormValues,
+  existing: ExistingSnapshotFacts[],
+): SnapshotFieldMessages {
   const warnings: SnapshotFieldMessages = {};
   const name = values.name.trim();
 
-  if (name && existing.some((snapshot) => snapshot.name === name)) {
+  if (name && existing.some((snapshot) => snapshot.namespace === guest.namespace && snapshot.name === name)) {
     warnings.name =
       "A SwiftSnapshot with this name already exists in this namespace. Submitting will be refused by the API " +
       "server; the fix is a different name.";
   }
 
-  if (values.backend === "local") {
-    const hostPath = values.hostPath.trim();
-    // A capture wipes its destination directory before writing, so two
-    // snapshots pointing at one path means the second silently destroys the
-    // first's artifacts while the first object still reads Ready. Only a client
-    // that already holds the namespace's snapshots can see this coming (C7).
-    const reused = hostPath ? existing.find((snapshot) => snapshot.hostPath === hostPath) : undefined;
+  // Since KubeSwift v0.16.0 two oci snapshots may not share a repository:tag:
+  // the second is created, and then fails with TagInUse. Only a client that
+  // already holds the cluster's snapshots can see it coming.
+  const reference = name
+    ? ociReference(guest.namespace, name, {
+        type: values.backend,
+        oci: { repository: values.repository, tag: values.tag },
+      })
+    : undefined;
+  const holder = reference
+    ? existing.find(
+        (snapshot) =>
+          snapshot.ociReference === reference && !(snapshot.namespace === guest.namespace && snapshot.name === name),
+      )
+    : undefined;
 
-    if (reused) {
-      warnings.hostPath =
-        `The snapshot ${reused.name} already writes to this path. A capture wipes the destination directory first, ` +
-        `so this one would destroy ${reused.name}'s artifacts while that snapshot still reads Ready.`;
-    }
+  if (holder) {
+    warnings.tag =
+      `The snapshot ${holder.namespace}/${holder.name} already pushes to ${reference}. KubeSwift v0.16.0 and later ` +
+      "fail a second snapshot on the same repository and tag (TagInUse); the fix is another tag.";
   }
 
   return warnings;
@@ -574,7 +591,7 @@ export function snapshotCreatePayload(
   }
 
   if (values.backend === "local") {
-    spec.backend.local = { hostPath: values.hostPath.trim() };
+    spec.backend.local = { hostPath: localSnapshotDirectory(guest.namespace, values.name.trim()) };
   }
 
   if (values.backend === "s3") {
@@ -661,7 +678,7 @@ export interface SnapshotSummaryFacts {
 }
 
 /** Where the artifacts land, when the form names a destination. */
-function destinationNote(values: SnapshotFormValues): string | undefined {
+function destinationNote(guest: SnapshotGuestFacts, values: SnapshotFormValues): string | undefined {
   switch (values.backend) {
     case "csi-volume-snapshot": {
       const className = values.volumeSnapshotClassName.trim();
@@ -671,9 +688,12 @@ function destinationNote(values: SnapshotFormValues): string | undefined {
         : "The VolumeSnapshot is created with the cluster's default VolumeSnapshotClass.";
     }
     case "local": {
-      const hostPath = values.hostPath.trim();
+      const name = values.name.trim();
 
-      return hostPath ? `The artifacts are written to ${hostPath} on the guest's node.` : undefined;
+      return name
+        ? `The artifacts are written to ${localSnapshotDirectory(guest.namespace, name)} on the guest's node, the ` +
+            "directory KubeSwift derives from the snapshot's namespace and name."
+        : undefined;
     }
     case "s3": {
       const bucket = values.bucket.trim();
@@ -751,7 +771,7 @@ export function snapshotSummary(guest: SnapshotGuestFacts, values: SnapshotFormV
   const name = values.name.trim() || "<name>";
   const notes: string[] = [contentsNote(values)];
   const warnings: string[] = [];
-  const destination = destinationNote(values);
+  const destination = destinationNote(guest, values);
 
   if (destination) {
     notes.push(destination);

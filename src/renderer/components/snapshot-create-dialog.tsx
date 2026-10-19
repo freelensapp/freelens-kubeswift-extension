@@ -38,6 +38,8 @@ import {
   deletionPolicies,
   frozenVmWarning,
   isMemoryBackend,
+  localSnapshotDirectory,
+  ociReference,
   snapshotCreatePayload,
   snapshotErrors,
   snapshotSuccessMessage,
@@ -164,20 +166,27 @@ export async function loadSecretNames(model: SnapshotDialogModel, namespace: str
  * throw: a store that says nothing produces no warnings, and the 409 path stays
  * the backstop the spec designed it to be.
  */
+/** What the collision checks read from a SwiftSnapshot. */
+export function existingSnapshotFacts(snapshot: SwiftSnapshot): ExistingSnapshotFacts {
+  const name = snapshot.getName();
+  const namespace = snapshot.getNs() ?? "";
+
+  return { name, namespace, ociReference: ociReference(namespace, name, snapshot.spec?.backend) };
+}
+
 export async function loadExistingSnapshots(model: SnapshotDialogModel): Promise<void> {
   try {
-    const snapshots = await SwiftSnapshot.getStore<SwiftSnapshot, SwiftSnapshotStore>().api.list({
-      namespace: model.guest.namespace,
-    });
+    const api = SwiftSnapshot.getStore<SwiftSnapshot, SwiftSnapshotStore>().api;
+    // The whole cluster, for the repository:tag check of an oci snapshot; the
+    // namespace alone when the user may not list the others.
+    const snapshots =
+      (await api.list({}).catch(() => undefined)) ?? (await api.list({ namespace: model.guest.namespace }));
 
     if (!snapshots) {
       return;
     }
 
-    const existing = snapshots.map((snapshot) => ({
-      name: snapshot.getName(),
-      hostPath: snapshot.spec?.backend?.local?.hostPath,
-    }));
+    const existing = snapshots.map(existingSnapshotFacts);
 
     Mobx.runInAction(() => {
       model.existing = existing;
@@ -310,7 +319,7 @@ const SnapshotWriteSummary = observer(({ model }: { model: SnapshotDialogModel }
 export const SnapshotCreateForm = observer(({ model }: { model: SnapshotDialogModel }) => {
   const { guest, values } = model;
   const errors = snapshotErrors(values);
-  const warnings = snapshotWarnings(values, model.existing);
+  const warnings = snapshotWarnings(guest, values, model.existing);
   const blocked = submitBlockReason(values);
 
   return (
@@ -342,15 +351,14 @@ export const SnapshotCreateForm = observer(({ model }: { model: SnapshotDialogMo
       ) : null}
 
       {values.backend === "local" ? (
-        <TextField
-          model={model}
-          field="hostPath"
-          testId="snapshot-host-path"
-          label="Host path"
-          placeholder="/var/lib/kubeswift/snapshots/my-snapshot"
-          error={errors.hostPath}
-          warning={warnings.hostPath}
-        />
+        <Field
+          label="Directory"
+          hint="Derived by KubeSwift from the snapshot's namespace and name, on the guest's node."
+        >
+          <div className={styles.readOnlyValue} data-testid="snapshot-local-directory">
+            {localSnapshotDirectory(guest.namespace, values.name.trim() || "<name>")}
+          </div>
+        </Field>
       ) : null}
 
       {values.backend === "s3" ? (
@@ -412,6 +420,7 @@ export const SnapshotCreateForm = observer(({ model }: { model: SnapshotDialogMo
             label="Tag"
             hint={`Empty is tagged ${model.guest.namespace}-${values.name || "<name>"} by the server.`}
             error={errors.tag}
+            warning={warnings.tag}
           />
           <SecretField
             model={model}

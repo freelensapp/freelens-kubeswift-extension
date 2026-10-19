@@ -42,7 +42,7 @@ spec:
     spec:
       guestRef:
         name: e2e-guest-pending
+      # No hostPath: since KubeSwift v0.15.0 every scheduled snapshot gets the
+      # directory derived from its own name, and a template may not set one.
       backend:
         type: local
-        local:
-          hostPath: /var/lib/kubeswift/snapshots

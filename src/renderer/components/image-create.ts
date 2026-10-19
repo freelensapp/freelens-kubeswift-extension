@@ -68,7 +68,7 @@ import type { ApiFailureFacts } from "./guest-actions";
 /** The verb, on the page's create control, on the OK button and in the failure sentences. */
 export const createImageTitle = "Create Image";
 
-/** The two sources this form offers. `upload` and `pvcClone` are dropped in the footer. */
+/** The two sources this form offers. `pvcClone` is dropped in the footer. */
 export type ImageSourceKind = "http" | "oci";
 
 /** How an OCI artifact is pinned. Exactly one, which is what makes the XOR inexpressible (F6). */
@@ -487,17 +487,10 @@ export function storageSectionHint(values: ImageFormValues): string {
   return "Clone strategy copy (the API server's own default), on the cluster's default storage class unless one is named here.";
 }
 
-/** The `upload` source, dropped with what it claims to control (W12 option dropping). */
-export const uploadDroppedFact =
-  "upload is not offered: it exists on no side. An empty Go struct, a property-less CRD object, a controller that " +
-  "parks it as not-implemented with a pinning test, no gateway endpoint, no RPC and no CLI path. Choosing it " +
-  "produces an object with a Failed condition and a permanently blank phase.";
-
-/** The `pvcClone` source, dropped for a sharper reason: it is a stub that always fails. */
+/** The `pvcClone` source, dropped because it was never implemented (W12 option dropping). */
 export const pvcCloneDroppedFact =
-  "pvcClone is not offered: it is a stub that always fails. Upstream's own API reference presents it as working, " +
-  "with a worked example, and its wizard offers it as a first-class button - which is a button that produces a " +
-  "Failed object.";
+  "pvcClone is not offered: it was never implemented, and KubeSwift v0.16.0 and later refuse it. Before, it was a " +
+  "stub that always failed, which upstream's API reference presented as working.";
 
 /** `cloneStorageClassName`, read nowhere in the controller. */
 export const cloneStorageClassDroppedFact =
@@ -505,8 +498,8 @@ export const cloneStorageClassDroppedFact =
   "class of the per-guest clone PVCs - is decided by the import storage class above, which the clone class " +
   "defaults to.";
 
-/** The three fields this form does not offer, as the footer states them. */
-export const imageDroppedFieldsFacts = [uploadDroppedFact, pvcCloneDroppedFact, cloneStorageClassDroppedFact];
+/** The two fields this form does not offer, as the footer states them. */
+export const imageDroppedFieldsFacts = [pvcCloneDroppedFact, cloneStorageClassDroppedFact];
 
 /** Every field of the form, keyed the way the messages are. */
 export type ImageCreateField = keyof ImageFormValues;

@@ -13,6 +13,7 @@ import {
   stopPartialFailureMessage,
   stopPatch,
   stopSuccessMessage,
+  stopTwoWritesNote,
   stopWrites,
   writeFailureMessage,
 } from "./guest-actions";
@@ -233,6 +234,14 @@ describe("the Stop dialog", () => {
       { kind: "patch", text: "spec.runPolicy: Always -> Stopped" },
       { kind: "delete", text: "Delete Pod vms/demo-launcher" },
     ]);
+    expect(facts.notes).toContain(stopTwoWritesNote);
+  });
+
+  it("says why both writes are made only when both are", () => {
+    const policyOnly = stopDialogFacts(guest({ guestClassRef, runPolicy: "Running" }, { phase: "Running" }));
+
+    expect(policyOnly.notes).not.toContain(stopTwoWritesNote);
+    expect(stopTwoWritesNote).toContain("v0.15.0");
   });
 
   it("shows one line when the status names no pod, and says which situation that is", () => {

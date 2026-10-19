@@ -43,7 +43,7 @@ spec:
   backend:
     type: local
     local:
-      hostPath: /var/lib/kubeswift/snapshots/e2e-snapshot-memory-ready
+      hostPath: /var/lib/kubeswift/snapshots/kubeswift-e2e_e2e-snapshot-memory-ready
   deletionPolicy: Delete
 ---
 # The terminal snapshot: the one phase a restore can never be created usefully
@@ -62,5 +62,5 @@ spec:
   backend:
     type: local
     local:
-      hostPath: /var/lib/kubeswift/snapshots/e2e-snapshot-failed
+      hostPath: /var/lib/kubeswift/snapshots/kubeswift-e2e_e2e-snapshot-failed
   deletionPolicy: Delete

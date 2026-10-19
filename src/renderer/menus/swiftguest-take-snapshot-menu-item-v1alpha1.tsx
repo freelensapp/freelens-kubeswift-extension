@@ -24,6 +24,7 @@ import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { canTakeSnapshot } from "../components/snapshot-create";
 import {
   createSnapshotDialogModel,
+  existingSnapshotFacts,
   loadExistingSnapshots,
   loadSecretNames,
   openTakeSnapshotDialog,
@@ -56,18 +57,16 @@ export function snapshotGuestFacts(object: SwiftGuest): SnapshotGuestFacts {
 }
 
 /**
- * The namespace's snapshots as the store already holds them, for the name
- * collision and host path reuse warnings.
+ * The snapshots the store already holds, for the name collision and the oci
+ * repository:tag warnings.
  *
  * Free: no request, and no reason to issue one before the dialog is open. What
  * the store does not have, the list call the dialog fires on open supplies.
  */
-function storedSnapshots(namespace: string): ExistingSnapshotFacts[] {
+function storedSnapshots(): ExistingSnapshotFacts[] {
   const store = maybe(() => SwiftSnapshot.getStore<SwiftSnapshot>());
 
-  return (store?.items ?? [])
-    .filter((snapshot) => snapshot.getNs() === namespace)
-    .map((snapshot) => ({ name: snapshot.getName(), hostPath: snapshot.spec?.backend?.local?.hostPath }));
+  return (store?.items ?? []).map(existingSnapshotFacts);
 }
 
 export const SwiftGuestTakeSnapshotMenuItem = observer((props: SwiftGuestTakeSnapshotMenuItemProps) => {
@@ -93,7 +92,7 @@ export const SwiftGuestTakeSnapshotMenuItem = observer((props: SwiftGuestTakeSna
 
     // The model is created here, outside React, and outlives every render of
     // the dialog's message - including the remount a 409 reopen performs.
-    const model = createSnapshotDialogModel(guest, storedSnapshots(guest.namespace), new Date());
+    const model = createSnapshotDialogModel(guest, storedSnapshots(), new Date());
 
     // Two reads on open, neither awaited and neither able to throw: what they
     // answer sharpens the form, what they refuse degrades one sentence.

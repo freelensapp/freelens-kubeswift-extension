@@ -13,7 +13,7 @@
 # from the upstream repository at this tag when the cluster is created and are
 # never vendored into this repository: kubeswift-io/kubeswift is AGPL-3.0 and
 # this extension is MIT (see docs/development/ARCHITECTURE.md).
-KUBESWIFT_VERSION="${KUBESWIFT_VERSION:-v0.13.12}" # datasource=github-releases depName=kubeswift-io/kubeswift
+KUBESWIFT_VERSION="${KUBESWIFT_VERSION:-v0.18.0}" # datasource=github-releases depName=kubeswift-io/kubeswift
 
 # Pins of the disposable cluster, aligned with .github/workflows/integration-tests.yaml.
 KIND_VERSION="${KIND_VERSION:-0.32.0}"             # datasource=github-releases depName=kubernetes-sigs/kind
@@ -63,11 +63,10 @@ E2E_CONSOLE_POD_IMAGE="docker.io/library/busybox:1.37.0" # datasource=docker dep
 
 KUBESWIFT_CRD_BASE_URL="https://raw.githubusercontent.com/kubeswift-io/kubeswift/${KUBESWIFT_VERSION}/config/crd/bases"
 
-# The 15 CRDs KubeSwift ships, across its 9 API groups. All of them are applied
-# so that the cluster matches a real KubeSwift installation. Since M5 every one
-# of them carries fixtures: fleet's Cluster was the last one waiting for its
-# milestone, and it needed no change here because it has always been the first
-# entry of this array.
+# The 19 CRDs KubeSwift ships, across its 10 API groups. All of them are applied
+# so that the cluster matches a real KubeSwift installation, and every one of
+# them carries fixtures. The storage locations, the artifact placement and the
+# artifact verification policy arrived after v0.13.12 (SPEC-0019).
 KUBESWIFT_CRD_FILES=(
   fleet.kubeswift.io_clusters.yaml
   gpu.kubeswift.io_swiftgpunodes.yaml
@@ -75,12 +74,16 @@ KUBESWIFT_CRD_FILES=(
   image.kubeswift.io_swiftimages.yaml
   kernel.kubeswift.io_swiftkernels.yaml
   migration.kubeswift.io_swiftmigrations.yaml
+  sandbox.kubeswift.io_swiftartifactplacements.yaml
+  sandbox.kubeswift.io_swiftartifactverificationpolicies.yaml
   sandbox.kubeswift.io_swiftsandboxes.yaml
   sandbox.kubeswift.io_swiftsandboxpools.yaml
   seed.kubeswift.io_swiftseedprofiles.yaml
   snapshot.kubeswift.io_swiftrestores.yaml
   snapshot.kubeswift.io_swiftsnapshots.yaml
   snapshot.kubeswift.io_swiftsnapshotschedules.yaml
+  storage.kubeswift.io_swiftclusterstoragelocations.yaml
+  storage.kubeswift.io_swiftstoragelocations.yaml
   swift.kubeswift.io_swiftguestclasses.yaml
   swift.kubeswift.io_swiftguestpools.yaml
   swift.kubeswift.io_swiftguests.yaml

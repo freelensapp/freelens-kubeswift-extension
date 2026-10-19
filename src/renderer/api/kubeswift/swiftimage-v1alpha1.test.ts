@@ -80,10 +80,11 @@ describe("SwiftImage (v1alpha1)", () => {
       expect(SwiftImage.getSourceSummary(otherNamespace)?.reference).toBe("images/golden");
     });
 
-    it("reports the upload placeholder without a reference", () => {
-      const object = buildSwiftImage({ format: "raw", source: { upload: {} } });
+    // The upload placeholder an object from before KubeSwift v0.14.0 can still carry.
+    it("reports no source for the removed upload placeholder", () => {
+      const object = buildSwiftImage({ format: "raw", source: { upload: {} } as never });
 
-      expect(SwiftImage.getSourceSummary(object)).toEqual({ kind: "upload", title: "Upload" });
+      expect(SwiftImage.getSourceSummary(object)).toBeUndefined();
     });
 
     it("returns undefined when no source is set", () => {

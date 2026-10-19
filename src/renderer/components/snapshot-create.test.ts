@@ -9,6 +9,7 @@ import {
   defaultSnapshotName,
   frozenVmWarning,
   memoryCaptureGuard,
+  ociReference,
   snapshotCreatePayload,
   snapshotDeleteConsequences,
   snapshotErrors,
@@ -244,28 +245,11 @@ describe("the validation that replaces the absent webhook", () => {
     expect(snapshotErrors(form({ name: "demo.snap-1" })).name).toBeUndefined();
   });
 
-  describe("the local backend", () => {
-    const local = (hostPath: string) => snapshotErrors(form({ backend: "local", hostPath })).hostPath;
-
-    it("requires a host path", () => {
-      expect(local("")).toContain("/var/lib/kubeswift/snapshots/");
-    });
-
-    it("requires the upstream prefix", () => {
-      expect(local("/tmp/snapshots/demo")).toContain("must be under /var/lib/kubeswift/snapshots/");
-      expect(local("/var/lib/kubeswift/snapshots/demo")).toBeUndefined();
-    });
-
-    it("refuses a path that climbs out of the prefix", () => {
-      expect(local("/var/lib/kubeswift/snapshots/../../demo")).toContain("'..'");
-    });
-
-    it("is silent about the host path on every other backend", () => {
-      expect(snapshotErrors(form({ backend: "csi-volume-snapshot" })).hostPath).toBeUndefined();
-      expect(
-        snapshotErrors(form({ backend: "s3", bucket: "b", s3CredentialsSecret: "s", region: "r" })).hostPath,
-      ).toBeUndefined();
-    });
+  // Since KubeSwift v0.15.0 the directory is derived, so the form has nothing
+  // to ask and nothing to validate (SPEC-0019 T1).
+  it("asks nothing of a local capture but its name", () => {
+    expect(snapshotErrors(form({ backend: "local" }))).toEqual({});
+    expect(submitBlockReason(form({ backend: "local" }))).toBeUndefined();
   });
 
   describe("the s3 backend", () => {
@@ -332,14 +316,14 @@ describe("the validation that replaces the absent webhook", () => {
 
 describe("the submit verdict", () => {
   it("names the field and the reason, never just refusing", () => {
-    const reason = submitBlockReason(form({ backend: "local", hostPath: "" }));
+    const reason = submitBlockReason(form({ backend: "s3", s3CredentialsSecret: "s", region: "r" }));
 
-    expect(reason).toContain("Host path");
-    expect(reason).toContain("/var/lib/kubeswift/snapshots/");
+    expect(reason).toContain("Bucket");
+    expect(reason).toContain("required");
   });
 
   it("reports the first offending field in a stable order", () => {
-    expect(submitBlockReason(form({ name: "", backend: "local", hostPath: "" }))).toContain("Name");
+    expect(submitBlockReason(form({ name: "", backend: "s3" }))).toContain("Name");
   });
 
   it("is silent when the form is valid", () => {
@@ -362,43 +346,63 @@ describe("the submit verdict", () => {
 // and the 409 path is what a warned submit runs into.
 describe("the collision warnings", () => {
   const existing = [
-    { name: "demo-20260830-120000", hostPath: "/var/lib/kubeswift/snapshots/demo-noon" },
-    { name: "other" },
+    { name: "demo-20260830-120000", namespace: "vms" },
+    { name: "demo-20260830-140509", namespace: "other-ns" },
+    { name: "pushed", namespace: "team-b", ociReference: "registry.example.com/vms:nightly" },
+    { name: "defaulted", namespace: "vms", ociReference: "registry.example.com/vms:vms-defaulted" },
   ];
 
-  it("warns about a name the store already holds, without making it an error", () => {
+  it("warns about a name the namespace already holds, without making it an error", () => {
     const values = form({ name: "demo-20260830-120000" });
 
-    expect(snapshotWarnings(values, existing).name).toContain("already exists");
+    expect(snapshotWarnings(runningGuest, values, existing).name).toContain("already exists");
     expect(snapshotErrors(values).name).toBeUndefined();
     expect(submitBlockReason(values)).toBeUndefined();
   });
 
-  it("says nothing about a name nothing holds, or when the store answered with nothing", () => {
-    expect(snapshotWarnings(form({ name: "demo-20260830-140509" }), existing).name).toBeUndefined();
-    expect(snapshotWarnings(form({ name: "demo-20260830-120000" }), []).name).toBeUndefined();
+  it("says nothing about a name only another namespace holds, or when the store answered with nothing", () => {
+    expect(snapshotWarnings(runningGuest, form(), existing).name).toBeUndefined();
+    expect(snapshotWarnings(runningGuest, form({ name: "demo-20260830-120000" }), []).name).toBeUndefined();
   });
 
-  // The capture wipes its destination directory before writing, so a reused path
-  // destroys the previous snapshot's artifacts while that object still reads
-  // Ready. Only a client holding the namespace's snapshots can see it coming.
-  it("warns that a reused host path destroys the other snapshot's artifacts", () => {
-    const values = form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/demo-noon" });
-    const warning = snapshotWarnings(values, existing).hostPath;
+  // Since KubeSwift v0.16.0 the second oci snapshot on a repository:tag is
+  // created and then fails with TagInUse, so the warning names the holder.
+  it("warns that an oci repository and tag another snapshot of the cluster pushes to fails with TagInUse", () => {
+    const values = form({ backend: "oci", repository: "registry.example.com/vms", tag: "nightly" });
+    const warning = snapshotWarnings(runningGuest, values, existing).tag;
 
-    expect(warning).toContain("demo-20260830-120000");
-    expect(warning).toContain("wipes the destination directory");
-    expect(snapshotErrors(values).hostPath).toBeUndefined();
+    expect(warning).toContain("team-b/pushed");
+    expect(warning).toContain("registry.example.com/vms:nightly");
+    expect(warning).toContain("TagInUse");
+    expect(submitBlockReason(values)).toBeUndefined();
   });
 
-  it("says nothing about a host path no other snapshot uses", () => {
+  it("compares the tag KubeSwift gives a snapshot whose spec names none", () => {
+    const defaulted = form({
+      name: "defaulted-again",
+      backend: "oci",
+      repository: "registry.example.com/vms",
+      tag: "vms-defaulted",
+    });
+
+    expect(snapshotWarnings(runningGuest, defaulted, existing).tag).toContain("vms/defaulted");
     expect(
-      snapshotWarnings(form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/fresh" }), existing).hostPath,
+      snapshotWarnings(runningGuest, form({ backend: "oci", repository: "registry.example.com/vms" }), existing).tag,
     ).toBeUndefined();
   });
 
-  it("does not look for a host path collision on the other backends", () => {
-    expect(snapshotWarnings(form({ backend: "csi-volume-snapshot" }), existing).hostPath).toBeUndefined();
+  it("does not look for a tag collision on the other backends, or without a repository", () => {
+    expect(snapshotWarnings(runningGuest, form({ backend: "local", tag: "nightly" }), existing).tag).toBeUndefined();
+    expect(snapshotWarnings(runningGuest, form({ backend: "oci", tag: "nightly" }), existing).tag).toBeUndefined();
+  });
+});
+
+describe("ociReference", () => {
+  it("is the repository and the tag, or the tag KubeSwift derives", () => {
+    expect(ociReference("vms", "a", { type: "oci", oci: { repository: "r/x", tag: "t" } })).toBe("r/x:t");
+    expect(ociReference("vms", "a", { type: "oci", oci: { repository: "r/x" } })).toBe("r/x:vms-a");
+    expect(ociReference("vms", "a", { type: "local" })).toBeUndefined();
+    expect(ociReference("vms", "a", { type: "oci", oci: {} })).toBeUndefined();
   });
 });
 
@@ -430,22 +434,18 @@ describe("the payload", () => {
     ).toEqual({ volumeSnapshotClassName: "csi-hostpath" });
   });
 
-  it("sends the host path of a local capture, trimmed", () => {
-    const { spec } = snapshotCreatePayload(
-      runningGuest,
-      form({ backend: "local", hostPath: " /var/lib/kubeswift/snapshots/demo " }),
-    );
+  // Exactly the directory KubeSwift v0.15.0 and later derive, which the
+  // earlier versions accept too (SPEC-0019 T1).
+  it("sends the derived directory of a local capture", () => {
+    const { spec } = snapshotCreatePayload(runningGuest, form({ backend: "local", name: " demo-snap " }));
 
-    expect(spec.backend.local).toEqual({ hostPath: "/var/lib/kubeswift/snapshots/demo" });
+    expect(spec.backend.local).toEqual({ hostPath: "/var/lib/kubeswift/snapshots/vms_demo-snap" });
     expect(spec.resumeAfterSnapshot).toBe(true);
   });
 
   it("sends resumeAfterSnapshot only where the field means something", () => {
     expect(snapshotCreatePayload(runningGuest, form()).spec).not.toHaveProperty("resumeAfterSnapshot");
-    expect(
-      snapshotCreatePayload(runningGuest, form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/d" })).spec
-        .resumeAfterSnapshot,
-    ).toBe(true);
+    expect(snapshotCreatePayload(runningGuest, form({ backend: "local" })).spec.resumeAfterSnapshot).toBe(true);
     expect(
       snapshotCreatePayload(runningGuest, form({ backend: "oci", repository: "r", resumeAfterSnapshot: false })).spec
         .resumeAfterSnapshot,
@@ -514,7 +514,6 @@ describe("the payload", () => {
         runningGuest,
         form({
           backend,
-          hostPath: "/var/lib/kubeswift/snapshots/demo",
           volumeSnapshotClassName: "csi-hostpath",
           bucket: "backups",
           s3CredentialsSecret: "s3-creds",
@@ -548,11 +547,7 @@ describe("the write summary", () => {
 
   it("says what each backend captures", () => {
     expect(summaryText(snapshotSummary(runningGuest, form()))).toContain("root disk only");
-    expect(
-      summaryText(
-        snapshotSummary(runningGuest, form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/d" })),
-      ),
-    ).toContain("memory and device state");
+    expect(summaryText(snapshotSummary(runningGuest, form({ backend: "local" })))).toContain("memory and device state");
     expect(summaryText(snapshotSummary(runningGuest, form({ backend: "oci", repository: "r" })))).toContain(
       "pushes it to the registry",
     );
@@ -563,11 +558,9 @@ describe("the write summary", () => {
     expect(summaryText(snapshotSummary(runningGuest, form({ volumeSnapshotClassName: "csi-hostpath" })))).toContain(
       "class csi-hostpath",
     );
-    expect(
-      summaryText(
-        snapshotSummary(runningGuest, form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/d" })),
-      ),
-    ).toContain("/var/lib/kubeswift/snapshots/d");
+    expect(summaryText(snapshotSummary(runningGuest, form({ backend: "local" })))).toContain(
+      "/var/lib/kubeswift/snapshots/vms_demo-20260830-140509",
+    );
     expect(
       summaryText(snapshotSummary(runningGuest, form({ backend: "s3", bucket: "backups", prefix: "nightly" }))),
     ).toContain("bucket backups, under nightly");

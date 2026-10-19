@@ -49,14 +49,11 @@ export interface SwiftImageOciSource {
   verifyKeySecretRef?: LocalObjectReference;
 }
 
-/** Placeholder for the upload flow, which the CRD declares but does not implement. */
-export type SwiftImageUploadSource = Record<string, never>;
-
 export interface SwiftImageSource {
   http?: SwiftImageHttpSource;
   oci?: SwiftImageOciSource;
+  /** Never implemented; refused since KubeSwift v0.16.0. */
   pvcClone?: NamespacedObjectReference;
-  upload?: SwiftImageUploadSource;
 }
 
 export interface SwiftImageRootDisk {
@@ -100,7 +97,7 @@ export interface SwiftImageStatus {
   sourceFormat?: SwiftImageDiskFormat;
 }
 
-export type SwiftImageSourceKind = "http" | "oci" | "pvcClone" | "upload";
+export type SwiftImageSourceKind = "http" | "oci" | "pvcClone";
 
 export interface SwiftImageSourceSummary {
   kind: SwiftImageSourceKind;
@@ -156,10 +153,6 @@ export class SwiftImage extends Renderer.K8sApi.LensExtensionKubeObject<
       const { name, namespace } = source.pvcClone;
 
       return { kind: "pvcClone", title: "PVC clone", reference: namespace ? `${namespace}/${name}` : name };
-    }
-
-    if (source?.upload) {
-      return { kind: "upload", title: "Upload" };
     }
 
     return undefined;

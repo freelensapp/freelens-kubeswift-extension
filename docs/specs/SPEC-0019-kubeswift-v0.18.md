@@ -146,4 +146,22 @@ asked about, not guessed.
 
 ## Notes and deviations
 
-Filled during implementation.
+- **T1 (2026-10-19).**
+  - The local backend writes `hostPath` as exactly the derived directory,
+    `/var/lib/kubeswift/snapshots/<namespace>_<name>`, rather than omitting it:
+    v0.15.0 and later accept that value as they accept an omitted one, and the
+    versions before require a directory under the prefix, which an omitted
+    field would not give them. The form shows the directory, following the
+    name; it asks for nothing.
+  - The repository:tag check is a warning on the Tag field, like the name
+    collision: the second snapshot is created and then fails, so the store or
+    the list can be stale without harm. The dialog lists the snapshots of the
+    whole cluster, and of the guest's namespace when the user may not.
+  - The `Resolved=False` explanation is the classifier's one reading of a
+    condition type, on the word of the v0.15.0 upgrade notes; the state stays
+    `Pending` and the Status column already quotes the condition's message.
+  - The image form's footer also says that v0.16.0 refuses `pvcClone`.
+  - On the v0.18.0 lab the CRDs stamp `cpuPinning`, `smtPolicy` and
+    `sharedBaseDisk` on a guest class the form creates; the E2E case reads
+    them back with their defaults. Every other fixture and case passed on the
+    new CRDs unchanged.
