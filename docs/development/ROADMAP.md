@@ -127,13 +127,13 @@ here when it is written.
 
 The extension moves to the Freelens v2 extension API, and 1.0.0 is its first
 release for Freelens 2.x. The port changes no behaviour of M1-M7; it comes
-with the alignment to the current KubeSwift release, whose tiers SPEC-0019
-settles.
+with the alignment to the current KubeSwift release (SPEC-0019: compatibility,
+new fields, new kinds and the new fields in the forms).
 
 | Feature | Spec | Status |
 | --- | --- | --- |
-| Port to the Freelens v2 extension API (data layer, views, writes, console, test suites) | [SPEC-0018](../specs/SPEC-0018-v2-port.md) | Draft |
-| Alignment to KubeSwift v0.18.0 | [SPEC-0019](../specs/SPEC-0019-kubeswift-v0.18.md) | Draft |
+| Port to the Freelens v2 extension API (data layer, views, writes, console, test suites) | [SPEC-0018](../specs/SPEC-0018-v2-port.md) | Approved |
+| Alignment to KubeSwift v0.18.0 | [SPEC-0019](../specs/SPEC-0019-kubeswift-v0.18.md) | Approved |
 
 ### Cross-cutting
 

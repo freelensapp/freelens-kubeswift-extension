@@ -1,6 +1,6 @@
 # SPEC-0018: Port to the Freelens v2 extension API
 
-- **Status:** Draft
+- **Status:** Approved (Roberto, 2026-10-19)
 - **Milestone:** v2 port (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (raised to `v0.18.0` by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md))
 - **Freelens pin:** freelensapp/freelens@f95000fc4ec90099b53920712ed2b9a52cddfd92, `@freelensapp/extensions@2.0.0-0-nightly-2026-10-17`

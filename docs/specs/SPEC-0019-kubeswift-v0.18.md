@@ -1,6 +1,6 @@
 # SPEC-0019: Alignment to KubeSwift v0.18.0
 
-- **Status:** Draft (the tiers this PR carries are to be approved)
+- **Status:** Approved (all four tiers, Roberto, 2026-10-19)
 - **Milestone:** v2 port (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.18.0` (from `v0.13.12`)
 - **Tracking issue:** feature F of the v2 migration ([SPEC-0018](SPEC-0018-v2-port.md))
@@ -21,18 +21,17 @@ ARCHITECTURE.md): types, texts and fixtures are written here.
 
 ## Scope
 
-The changes since `v0.13.12`, in four tiers. The PR of the v2 port carries
-the tiers approved below; the rest becomes roadmap rows with specs of their
-own.
+The changes since `v0.13.12`, in four tiers, all carried by the PR of the v2
+port.
 
-| Tier | Content | Proposed |
+| Tier | Content | In this PR |
 | --- | --- | --- |
-| T1, compatibility | what a write or a state explanation of the extension gets wrong on v0.18.0 | this PR |
-| T2, new fields | the new spec and status fields of the kinds already presented, read-only | this PR |
-| T3, new kinds | read-only pages and details for the four kinds added since | this PR |
-| T4, forms | the new fields offered in the creation forms | later, one spec each |
+| T1, compatibility | what a write or a state explanation of the extension gets wrong on v0.18.0 | yes |
+| T2, new fields | the new spec and status fields of the kinds already presented, read-only | yes |
+| T3, new kinds | read-only pages and details for the four kinds added since | yes |
+| T4, forms | the new fields offered in the creation forms | yes |
 
-Approved: *(to be filled in by the maintainer)*.
+Approved: T1, T2, T3 and T4 (Roberto, 2026-10-19).
 
 ## Design
 
@@ -109,13 +108,38 @@ under "Data Protection", the artifact placement and verification policy under
 "Sandboxes". Read-only; the links from a snapshot to its location and from a
 sandbox's artifacts to their placement and policies.
 
+### T4, forms
+
+The creation forms offer the new fields, with the ground rules of SPEC-0010
+(the confirmation lists every write, no field the controller ignores, a
+choice the cluster cannot satisfy is blocked with its reason) and the form
+patterns of SPEC-0013 to SPEC-0016:
+
+- "Take snapshot" (SPEC-0011): a storage location as the backend, picked from
+  the `SwiftStorageLocation` objects of the guest's namespace and the
+  `SwiftClusterStorageLocation` objects (`spec.backend.locationRef`), next to
+  the backends the form already has.
+- "Create guest class" (SPEC-0014): CPU pinning, hugepages, SMT policy and the
+  shared base disk, each left unset unless changed (the CRD defaults stand).
+- "Create sandbox" and "Create sandbox pool" (SPEC-0016): the network (ports,
+  ingress and egress rules), liveness and readiness probes, the termination
+  drain period, and for artifacts the optional flag, claims and the pull and
+  verification secrets; for a sandbox, the items of a secret file.
+
+Each form's section of this spec gets its field list, validation and write
+summary, from the v0.18.0 schema, and is reviewed before its step is coded;
+a field whose meaning the schema and the release notes leave unclear is
+asked about, not guessed.
+
 ## Tests (non-regression list)
 
-- Unit: the snapshot payload without `hostPath`; the tag conflict check; the
+- Unit: the payload builders of the T4 forms with each new field set and
+  unset; the snapshot payload without `hostPath`; the tag conflict check; the
   guest classification of `Pending` with `Resolved=False`; the models of T2
   and T3 from fixtures written from the v0.18.0 schemas.
 - E2E: the snapshot form's local and `oci` cases; the drawers of T2; the
-  pages and drawers of T3; the lab on v0.18.0.
+  pages and drawers of T3; each form field of T4 and the object it writes;
+  the lab on v0.18.0.
 - Manual verification: on a real KubeSwift v0.18.0, a
   local snapshot taken from the extension captures, and a sandbox with
   network and artifacts shows them.
