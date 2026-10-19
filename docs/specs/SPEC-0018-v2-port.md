@@ -95,9 +95,14 @@ types, failures reported. Forms stay the `message` of `ConfirmDialog.open`.
 ### Console and exec (feature D)
 
 SPEC-0017, with the platform from `Common.App` instead of `node:os`. The
-kubectl the command line names is settled in D0 (the user's preference or the
-bare name, as in 0.1.0; or the kubectl Freelens runs for the cluster, from
-main through C15) and recorded here.
+command line names the kubectl of 0.1.0 (decided in D0): the user's "Path to
+kubectl binary" preference (`Common.App.Preferences.getKubectlPath()`), else
+`kubectl` by name, which the cluster terminal's `PATH` resolves (C15: the
+version-matched kubectl when downloading is on, the user's own, the bundled
+one last). It differs from what the terminal itself runs only when the
+preference is set and downloading is on, as in v1; naming the kubectl of
+`Main.Shell.getKubectlPath(clusterId)` would need a main-process entry and an
+IPC channel for no difference a user meets otherwise.
 
 ### Test suites (feature E)
 

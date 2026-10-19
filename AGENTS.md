@@ -220,6 +220,22 @@ details panels and menus reach other kinds' stores through
 - Styles come from the component's CSS module only: no `?inline` import and no `<style>` element (see "CSS").
 - SCSS modules have generated declarations (`*.module.d.scss.ts`), written by the renderer build (see "CSS module declarations"); commit them with the stylesheet.
 
+### Commands the extension runs
+
+The extension spawns nothing. The two console menu items open a terminal tab
+of the cluster (`Renderer.Component.createTerminalTab`) and type one command
+line into it (`terminalStore.sendCommand(line, { enter: true, tabId })`); the
+terminal runs it with the environment Freelens builds for the cluster
+(`KUBECONFIG` through Freelens, kubectl on `PATH`). The line is built by the
+pure functions of `components/console-commands.ts`, which take the platform
+(`Common.App.isWindows`/`isMac`, never `node:os`) and the kubectl as
+parameters, so both branches are unit-tested on any machine. The kubectl it
+names is the user's "Path to kubectl binary" preference
+(`Common.App.Preferences.getKubectlPath()`, `undefined` when unset), else
+`kubectl` by name. A command that has to run in main would take its kubectl,
+helm and environment from `Main.Shell` (contract C15), never from a binary
+found by name.
+
 ## Rules That Fail Silently
 
 Each of these compiles when it is broken, and breaks the extension at runtime
