@@ -19,6 +19,7 @@
     "*.{js,mjs,ts}",
     "build/*.mjs",
     "environment-tests/*.ts",
+    "integration/**/*.ts",
     "src/**/*.{scss,ts,tsx}!",
     // the CSS module declarations. TypeScript reaches them through
     // allowArbitraryExtensions, while knip resolves `import styles from
@@ -41,10 +42,7 @@
   // entry once it exists, and the `knip` script runs with --no-gitignore, so
   // after `pnpm build` knip would report what the bundle inlines from its
   // libraries, such as a binary a bundled library spawns.
-  // The integration and E2E suites still run inside a Freelens checkout (their
-  // `../helpers/utils` exists only there) until they move to the template's
-  // pattern; until then they are left out of the analysis.
-  "ignore": ["dist/**", "e2e/**", "integration/**"],
+  "ignore": ["dist/**"],
 
   // Binaries that no dependency provides: yq, which the workflows call, comes
   // from mise (see mise.toml), and kubectl, which the integration tests call,
@@ -57,6 +55,7 @@
     "e2e/scripts/demo-down.sh",
     "e2e/scripts/demo-up.sh",
     "e2e/scripts/e2e.sh",
+    "e2e/scripts/freelens-dev.sh",
     "e2e/scripts/pre-review.sh"
   ],
 
@@ -81,6 +80,7 @@
       "src/renderer/tsconfig.json",
       "src/common/tsconfig.json",
       "src/tsconfig.json",
+      "integration/tsconfig.json",
       "tsconfig.json"
     ]
   },

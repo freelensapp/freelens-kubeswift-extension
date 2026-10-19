@@ -56,6 +56,9 @@ pnpm knip:check           # Unused files, unused and unlisted dependencies (knip
 
 # Tests
 pnpm test:unit            # vitest
+pnpm test:integration     # vitest, against Freelens dev: the integration test and the E2E suite
+pnpm e2e                  # Lab up, the E2E suite, lab down (Freelens dev running)
+pnpm pre-review           # The pre-review pass, against the demo cluster
 
 # Local lab (kind cluster with the KubeSwift CRDs and fixtures, see docs/development/TESTING.md)
 pnpm e2e:cluster:up       # Create or re-provision the kubeswift-e2e cluster (own kubeconfig in .e2e/)
@@ -112,8 +115,8 @@ src/
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
-e2e/                             # The local kind lab (scripts, fixtures) and its Playwright suites
-integration/                     # The integration test and the helpers the suites share
+e2e/                             # The local kind lab: scripts and fixtures
+integration/                     # The integration test, the E2E suite and the pre-review pass, over CDP
 docs/                            # Development process, roadmap, design, testing, specs
 ```
 
@@ -434,6 +437,7 @@ does not have fails `pnpm type:check` rather than the extension:
 | `src/common/tsconfig.json`   | ES2024, WebWorker         | none                              | `src/common/`                                                      |
 | `src/tsconfig.json`          | ES2024, DOM, DOM.Iterable | `node`, `vite/client`             | `*.test.ts(x)` under `src/`, and `test/`                           |
 | `tsconfig.json`              | ES2024                    | `node`                            | `vite.config.mjs`, the Vitest configs, `svgo.config.mjs`, `build/` |
+| `integration/tsconfig.json`  | ES2024, DOM, DOM.Iterable | `node`, `@freelensapp/extensions` | `integration/`                                                     |
 
 All of them extend `tsconfig.base.json`, which has the compiler options of
 Freelens's fixture extension: `strict`, `moduleResolution: Bundler`,
@@ -641,8 +645,7 @@ problem does not show.
 | `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                            |
 | `unit-tests.yaml`        | `pnpm test:unit`                                                              |
 | `trunk-check.yaml`       | `trunk check --all`                                                           |
-| `integration-tests.yaml` | the integration test, against Freelens                                        |
-| `e2e-tests.yaml`         | the E2E suite, against Freelens and the kind lab                              |
+| `integration-tests.yaml` | the integration test and the E2E suite, against Freelens dev and the kind lab |
 | `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version |
 | `osv-scanner.yaml`       | the OSV scanner over the lock file                                            |
 
@@ -652,10 +655,17 @@ tests included, which no build reaches, and a type error shows as its own
 failed check rather than as a failed build. `check.yaml` builds without the
 type check for the same reason, so it does not run twice.
 
-The integration and E2E suites still run inside a freelensapp/freelens
-checkout, as `docs/development/TESTING.md` describes, and knip leaves `e2e/`
-and `integration/` out until they move to the template's pattern (Vitest in
-this repository, driving Freelens dev over CDP).
+The integration test and the E2E suite run in this repository, under its own
+Vitest (`vitest.integration.config.ts`, `pnpm test:integration`), against
+Freelens started with `pnpm dev` from a freelensapp/freelens checkout, which
+they attach to with Playwright's `chromium.connectOverCDP`, as in
+freelensapp/freelens-example-extension; `docs/development/TESTING.md`
+describes them, the lab they need and how to run them locally. The workflow
+builds the extension, starts the kind lab with `pnpm e2e:cluster:up`, copies its
+kubeconfig to `~/.kube/config`, which the fresh profile of Freelens dev syncs,
+starts `pnpm dev` under `xvfb-run` and runs both suites once: the E2E suite
+writes to its cluster, so a second run would need the cluster and Freelens
+started again.
 
 ## Code Style
 
@@ -737,6 +747,92 @@ Code in `src/common/` is shared between both processes.
    analysis, and thinking through problems. When writing or editing code,
    use standard editing tools instead.
 
+## Checking the Extension in Freelens Dev
+
+The functional checks of a change run against Freelens started with
+`pnpm dev` from a freelensapp/freelens checkout. That script starts Electron
+with `--remoteDebuggingPort 9223`, so an agent can drive the app over the
+Chrome DevTools Protocol. How to attach Playwright MCP to it is in Freelens's
+`DEVELOPMENT.md`, "Inspecting the running dev app from an AI agent"; start
+Freelens before the session connects. Playwright MCP writes its snapshots to
+`.playwright-mcp/`, which is git-ignored. Added to a Claude Code session that
+is already running, the server is listed as connected, but its tools appear
+only in a new session.
+
+Without the MCP server, or until that new session, a script with
+`chromium.connectOverCDP("http://127.0.0.1:9223")` of `playwright`, a
+devDependency, does the same, as the integration tests do. `browser.close()`
+of such a browser closes only the connection; the app belongs to Freelens and
+keeps running.
+
+Freelens dev lists every context of the developer's own kubeconfig,
+production clusters included, one click away from an agent that drives the
+UI. The folder it syncs by default is `~/.kube` of the user that runs it,
+taken from the system's user database (`os.userInfo().homedir`), not from
+`HOME`. `FREELENS_INTEGRATION_TESTING_DIR`, which the app accepts only under
+the system's temporary directory, moves the user data and Freelens's own home
+directory, but not that folder. To keep a session to the test cluster, start
+Freelens with such a directory and, in "Kubeconfig Syncs" of the Kubernetes
+preferences of that fresh profile, replace the synced `~/.kube` with the
+kubeconfig of the test cluster alone; or run Freelens as a user whose home
+holds only that kubeconfig. For this repository that kubeconfig is
+`.e2e/kubeconfig` (the E2E lab) or `.demo/kubeconfig` (the demo lab), and
+`docs/development/TESTING.md` has the procedure.
+
+### Installing the checkout
+
+1. `pnpm install`, then `pnpm build`. After a branch switch, `node_modules`
+   can still hold another stack, and Freelens loads the extension from
+   `dist/`.
+2. On the Extensions page, enter the checkout's directory and press
+   "Install". Freelens then asks whether to load the extension in place;
+   confirm that too. The table lists the extension as "in place, unverified"
+   and enabled.
+3. A rebuild, by `pnpm build` or by `pnpm dev` of the extension, reloads it
+   once in the root frame and once in each cluster frame.
+
+### Driving the UI
+
+- Every cluster renders in a cross-origin `<clusterId>.renderer.freelens.app`
+  iframe. Pages, menus and details of the extension live in that frame, not
+  in the main page.
+- Pages of the extension have URLs like `/extension/<name>/<pageId>`, with the
+  package name's `@` dropped and `/` turned into `--`, for example
+  `/extension/freelensapp--kubeswift-extension/swiftguests`. The sidebar
+  entries navigate in `onClick`; their `href` is not the page URL. A click on
+  an entry's `[data-testid="sidebar-item-…"]` element does not navigate; a DOM
+  `click()` on the link inside it, `[data-testid="link-for-sidebar-item-…"]`,
+  does. Neither does `history.pushState` in the cluster frame.
+- The root frame navigates with `Renderer.Navigation.navigate(url)` of the
+  extension API, run in its page: `/extensions`, `/catalog`,
+  `/preferences/extension/<name>`, `/cluster/<id>`. The application menu
+  belongs to the main process, which CDP does not reach.
+- Playwright's actionability checks can fail on the hotbar, where
+  `#ScrollSpyRoot` intercepts pointer events; a DOM `click()` on the element
+  works.
+- Views fill in once the host's stores have loaded. Wait for the expected
+  content, not a fixed time, before deciding that a page is empty.
+
+### Reading the console
+
+The renderer console also carries the output of Freelens's terminal dock
+(`%cMESSAGE` lines), which can include the user's shell prompt, account names
+and paths. Keep only warnings, errors, page errors and the extension's own
+lines, and never paste the full console into a PR, an issue or a report.
+React reports key problems as console errors ("Each child in a list should
+have a unique key", "Encountered two children with the same key"); they count
+as failures of the "no error in DevTools" check. Freelens sends the
+renderer's Kubernetes requests through Chromium, which reports every response
+that is not a success as a console error ("Failed to load resource"), also
+one the code that sent the request handles: a host page asking for pod
+metrics on a cluster without a metrics server is one.
+
+The main process logs to the terminal running Freelens, and to a file. On
+macOS it is `~/Library/Logs/Freelens/lens.log`, with the renderer's
+`lens-renderer-*.log` next to it; when the terminal is not at hand, it shows
+the extension's activation, its reloads and its own lines. Filter it as the
+console.
+
 ## GitHub Actions (Claude Code Action) Rules
 
 This project has a Claude Code workflow (`.github/workflows/claude.yaml`) triggered
@@ -811,6 +907,46 @@ When asked to implement a change on a PR:
    separately. Do not batch multiple independent fixes into a single
    commit. This keeps the history bisectable and makes each change easy
    to revert individually.
+
+### Force-Pushing a Rewritten Branch
+
+When you are asked to rebase a pull request branch, or to rewrite its
+history in another way (amend, squash, drop a commit), push the result with:
+
+```bash
+git push --force-with-lease origin HEAD
+```
+
+The push wrapper the action names in its instructions, `git-push.sh`, accepts
+no flags, so it cannot do this; `git` itself is allowed in this workflow.
+Do not fall back to merging `main` into the branch instead: a merge commit is
+not what was asked for.
+
+Force-push only the pull request branch the run was invoked on, and only when
+the request calls for a rewrite. Never force-push `main` or any other branch,
+and never rewrite a history you were not asked to.
+
+### Modifying GitHub Actions Workflows
+
+Claude cannot push changes to files under `.github/workflows/` directly,
+because the GitHub token used by the action lacks the `workflows` permission.
+Any patch to a workflow file MUST therefore be delivered as a new, complete
+file under the `github-workflow-fix/` directory in the repository root instead
+of editing the file in place:
+
+1. Write the full, final contents of the workflow to
+   `github-workflow-fix/<workflow-file-name>`, with the same file name as in
+   `.github/workflows/` (e.g. `github-workflow-fix/check.yaml`). Do **not**
+   edit the original file under `.github/workflows/`.
+2. Make it a **complete** file — the entire workflow as it should look after
+   the change, not just a diff or fragment — so it can be copied verbatim.
+3. Commit it with the change that needs it, and list it in the report. In the
+   PR description, note it as a proposed workflow change that a maintainer
+   must move from `github-workflow-fix/` to `.github/workflows/`.
+
+A maintainer moves the file into `.github/workflows/` in a separate commit and
+removes `github-workflow-fix/`. Pull before continuing on the branch, as it may
+have gained such a commit.
 
 ### Branch Naming Conventions
 

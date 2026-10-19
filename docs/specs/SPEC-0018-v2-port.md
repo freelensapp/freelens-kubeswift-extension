@@ -107,17 +107,28 @@ IPC channel for no difference a user meets otherwise.
 ### Test suites (feature E)
 
 Vitest in this repository drives Freelens dev over CDP: the integration test,
-the 97 E2E cases and the pre-review pass. Locally Freelens dev runs with a
-profile and a `~/.kube` that hold only the lab's kubeconfig.
+the 97 E2E cases and the pre-review pass, all under `integration/__tests__`
+with the template's `vitest.integration.config.ts`. `pnpm test:integration`
+runs the first two; the pre-review pass runs only with `KUBESWIFT_PRE_REVIEW=1`,
+which `pnpm pre-review` sets. The scripts of `e2e/scripts/` build the checkout,
+which the suites install in place, instead of packing it and copying the
+suites into a Freelens checkout. Locally Freelens dev is started by
+`pnpm e2e:freelens`, on a fresh profile that syncs the lab kubeconfigs alone.
+`integration-tests.yaml` (proposed in `github-workflow-fix/`) is the
+template's workflow with the lab of `pnpm e2e:cluster:up` instead of
+`helm/kind-action`, and replaces `e2e-tests.yaml`.
 
 ### Safety
 
 - Writes reach only the kind cluster `kubeswift-e2e`, through
   `.e2e/kubeconfig` and an explicit context; the developer's kubeconfig is
   never read by the lab scripts.
-- Freelens dev used by the suites or a manual check is started isolated:
-  `pnpm dev` alone ignores `FREELENS_INTEGRATION_TESTING_DIR` (turbo's strict
-  environment mode) and would sync the developer's own `~/.kube`.
+- Freelens dev used by the suites or a manual check is started isolated, by
+  `pnpm e2e:freelens`: `pnpm dev` alone ignores
+  `FREELENS_INTEGRATION_TESTING_DIR` (turbo's strict environment mode) and
+  would sync the developer's own `~/.kube`. The script runs turbo in loose
+  mode, writes a fresh profile whose only synced files are the lab
+  kubeconfigs, and refuses a kubeconfig whose server is not on this machine.
 
 ## Tests (non-regression list)
 
@@ -131,8 +142,9 @@ profile and a `~/.kube` that hold only the lab's kubeconfig.
   with a stand-in host API.
 - Integration: `integration/__tests__/extensions.tests.ts` (install in place,
   enabled, activated, no error).
-- E2E: the 97 cases of `kubeswift-e2e.tests.ts`, green against the lab.
-- Pre-review: `pnpm pre-review`, both themes.
+- E2E: the 97 cases of `integration/__tests__/kubeswift-e2e.tests.ts`, green
+  against the lab.
+- Pre-review: `pnpm pre-review`, both themes, no FAIL.
 
 ### Manual verification
 
@@ -157,3 +169,22 @@ To be run before the PR leaves draft; results recorded here (date, tester).
   `getStore<X, XStore>()`), `node:os` in the two console items, and the global `JSX` namespace. No host
   symbol or component prop is missing. v2 registers a `clusterPageMenus` tree at any depth with code
   equivalent to v1's, so the three-level sidebar stays as it is.
+- **Test suites on Freelens 2 (feature E, 2026-10-19).** The three suites pass against Freelens dev of
+  `main`: the integration test, the 97 E2E cases on a new lab and a new profile, and the pre-review pass
+  (74 PASS, 0 FAIL, as on 1.10.3). What changed besides the move:
+  - Chromium reports every failed request of the renderer on the console, which Freelens 1 did not (it
+    sent them from Node). The activation case ignores only the ones listed in `EXPECTED_FAILED_REQUESTS`,
+    by status and URL path: the 404s of the guest deleted under the open Stop dialog, the 409s of the
+    create forms' AlreadyExists cases, and the host's pod metrics, which kind has no server for.
+  - The first terminal of a new profile downloads kubectl before the shell starts, and the host's
+    `sendCommand` sends the line after 10 seconds whether the shell is there or not, so a slow download
+    loses the serial console's command. The setup opens a host terminal first and waits for its shell
+    (`warmUpTerminal`). The same loss reaches a user who opens a console, or the host's own Pod Shell, as
+    the first terminal of a new profile on a slow network: a host matter, for an upstream issue.
+  - The app is not new for every run any more. A rerun needs a new lab and a new Freelens dev: the
+    guests the first run created push fixture rows out of the rendered part of the Guests list.
+  - The pre-review pass sets the Dark theme before the dark screenshots (on 1.10.3 they were taken with
+    the default theme, which was light), and waits for the drawer to stop sliding in before each drawer
+    screenshot.
+  - The workflow runs the suites once, as the template does: the E2E suite changes its cluster, so the
+    retry of `e2e-tests.yaml` would need a new cluster and a new app.

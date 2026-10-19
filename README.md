@@ -8,7 +8,6 @@
 [![Release](https://img.shields.io/github/v/release/freelensapp/freelens-kubeswift-extension?display_name=tag&sort=semver)](https://github.com/freelensapp/freelens-kubeswift-extension/releases)
 [![Unit tests](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/unit-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/unit-tests.yaml)
 [![Integration tests](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/integration-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/integration-tests.yaml)
-[![E2E tests](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/e2e-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/e2e-tests.yaml)
 [![npm](https://img.shields.io/npm/v/@freelensapp/kubeswift-extension.svg)](https://www.npmjs.com/package/@freelensapp/kubeswift-extension)
 
 <!-- markdownlint-enable MD013 -->

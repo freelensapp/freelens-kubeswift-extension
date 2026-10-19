@@ -2,6 +2,9 @@
 #
 # Creates the cluster, runs the E2E suite and tears the cluster down again.
 #
+# Freelens dev must be running, with a profile that syncs the cluster's
+# kubeconfig (.e2e/kubeconfig): see run-suite.sh and docs/development/TESTING.md.
+#
 # Set E2E_KEEP_CLUSTER=1 to keep the cluster around for debugging, then delete
 # it with `pnpm e2e:cluster:down`.
 

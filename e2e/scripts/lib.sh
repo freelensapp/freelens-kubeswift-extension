@@ -31,13 +31,14 @@ E2E_CLUSTER_NAME="${E2E_CLUSTER_NAME:-kubeswift-e2e}"
 E2E_KUBE_CONTEXT="kind-${E2E_CLUSTER_NAME}"
 
 # Dedicated kubeconfig. The developer's default kubeconfig (~/.kube/config) is
-# never read and never written by these scripts: kind writes only here, and the
-# test suite copies this file into the sandboxed Freelens user-data directory.
+# never read and never written by these scripts: kind writes only here. Freelens
+# dev finds the cluster through the kubeconfig its profile syncs, which for the
+# suites holds this file alone (docs/development/TESTING.md).
 E2E_STATE_DIR="${E2E_STATE_DIR:-${REPO_ROOT}/.e2e}"
 E2E_KUBECONFIG="${E2E_KUBECONFIG:-${E2E_STATE_DIR}/kubeconfig}"
 
-# Screenshots taken when an assertion fails. Kept in the repository root rather
-# than in the Freelens checkout, so that CI can upload the directory.
+# Screenshots taken when an assertion fails, in the repository root, so that CI
+# can upload the directory.
 E2E_ARTIFACTS_DIR="${E2E_ARTIFACTS_DIR:-${REPO_ROOT}/e2e-artifacts}"
 
 # Namespace of the namespaced fixtures. Not configurable: the fixture manifests

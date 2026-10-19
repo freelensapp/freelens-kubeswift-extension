@@ -12,12 +12,12 @@
 // Run it with `pnpm e2e`. See docs/development/TESTING.md for the
 // prerequisites and docs/specs/SPEC-0003-e2e-infrastructure.md for the design.
 
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as cluster from "../helpers/kubeswift-cluster";
 import * as kubeswift from "../helpers/kubeswift-extension";
 import * as pr from "../helpers/pre-review";
-import * as utils from "../helpers/utils";
 
-import type { ElectronApplication, Frame, Page } from "playwright";
+import type { Frame, Page } from "playwright";
 
 // Connecting a cluster and installing an extension are both slow, and CI
 // runners are slower still.
@@ -638,13 +638,106 @@ async function closeDockTab(frame: Frame, subject: string): Promise<void> {
   await tab.waitFor({ state: "detached", timeout: 60_000 });
 }
 
-describe("KubeSwift views against the fixture cluster", () => {
-  let app: ElectronApplication;
+/**
+ * Opens one plain host terminal on the cluster and waits until its shell really
+ * runs, so that the first console case does not pay for the host's first
+ * terminal of the session.
+ *
+ * That first terminal is where Freelens downloads its kubectl into a fresh
+ * profile, before it starts the shell, and the host's `sendCommand` stops
+ * waiting for the shell after 10 seconds and sends the line anyway: a download
+ * slower than that loses the console's command, which arrives before the main
+ * process listens for it. A user who opens the console as the first terminal of
+ * a new profile sees the same bare prompt. The case keeps asserting what the
+ * extension owns, and this warm-up takes the host's download out of it.
+ *
+ * Typed rather than sent, and retried, because a keystroke that arrives before
+ * the shell is lost the same way: only the shell's own answer to an arithmetic
+ * expansion, which the typed line does not contain, proves that it runs.
+ */
+async function warmUpTerminal(frame: Frame): Promise<void> {
+  const title = "KubeSwift E2E warm-up";
+
+  await frame.evaluate((tabTitle) => {
+    const renderer = globalThis.FreelensExtensionApi.Renderer;
+
+    if (!renderer) {
+      throw new Error("The cluster frame has no Renderer API");
+    }
+
+    renderer.Component.createTerminalTab({ title: tabTitle });
+  }, title);
+
+  const deadline = Date.now() + 180_000;
+
+  for (;;) {
+    await frame.locator(".xterm-screen").first().click();
+    await frame.page().keyboard.type("echo kubeswift-warm-$((20+6))");
+    await frame.page().keyboard.press("Enter");
+
+    try {
+      await expectTerminalText(frame, "kubeswift-warm-26", 5_000);
+      break;
+    } catch (error) {
+      if (Date.now() > deadline) {
+        throw error;
+      }
+    }
+  }
+
+  await frame.page().keyboard.type("exit");
+  await frame.page().keyboard.press("Enter");
+
+  const tab = frame.locator(".Dock .Tab", { hasText: title }).first();
+
+  await expectTerminalText(frame, processExitedLine, 60_000);
+  await tab.locator('[data-testid^="dock-tab-close-for-"]').first().click();
+  await tab.waitFor({ state: "detached", timeout: 60_000 });
+
+  // The host's default Terminal tab takes the selection and keeps the dock
+  // open, over the lower half of the list pages the next cases read.
+  const minimize = frame.locator('.Dock.isOpen [data-icon-name="keyboard_arrow_down"]').first();
+
+  if (await minimize.isVisible()) {
+    await minimize.click();
+    await frame.locator(".Dock.isOpen").waitFor({ state: "detached", timeout: 60_000 });
+  }
+}
+
+/**
+ * The failed requests this suite causes on purpose, and the one the host makes
+ * on every cluster without metrics.
+ *
+ * Freelens 2 sends the renderer's Kubernetes requests through Chromium's own
+ * network stack, which reports every response that is not a success on the
+ * console as an error, even when the code that sent the request handles it.
+ * Freelens 1 sent them from Node, where nothing reported them. Each entry names
+ * the status and the URL path, so a request this list does not expect still
+ * fails the activation case: a wrong group or version would answer 404 too.
+ */
+const EXPECTED_FAILED_REQUESTS: { status: number; url: RegExp }[] = [
+  // The host's pod metrics. The E2E cluster runs no metrics-server.
+  { status: 404, url: /\/apis\/metrics\.k8s\.io\/v1beta1\// },
+  // The Stop of a guest deleted from under the open dialog, and the host's
+  // reads of the guest and its launcher pod after it.
+  { status: 404, url: /\/swiftguests\/e2e-guest-action-orphanref$/ },
+  { status: 404, url: /\/pods\/e2e-guest-action-orphanref-launcher$/ },
+  // The create forms' AlreadyExists cases.
+  { status: 409, url: /\/namespaces\/[^/]+\/(swiftsnapshots|swiftsandboxes)$/ },
+];
+
+/** Whether a collected error is Chromium's report of a `status` response from `url`. */
+function isFailedRequest(error: string, status: number, url: RegExp): boolean {
+  const match =
+    /^\[renderer\] Failed to load resource: the server responded with a status of (\d+) \(\) \((\S+)\)$/.exec(error);
+
+  return match !== null && Number(match[1]) === status && url.test(new URL(match[2]).pathname);
+}
+
+describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixture cluster", () => {
+  let session: kubeswift.AppSession | undefined;
   let window: Page;
   let frame: Frame;
-  let cleanup: undefined | (() => Promise<void>);
-
-  const errorCollector = kubeswift.createErrorCollector();
 
   beforeAll(async () => {
     if (!cluster.fixturesReady()) {
@@ -653,34 +746,21 @@ describe("KubeSwift views against the fixture cluster", () => {
       );
     }
 
-    errorCollector.start();
-
-    ({ app, window, cleanup } = await utils.start());
-    errorCollector.watch(window);
-
-    // Hand the cluster to the running app before going anywhere near the
-    // catalog: the kubeconfig watcher needs a moment to notice the file.
-    const kubeconfig = await cluster.publishKubeconfig();
-
-    await utils.clickWelcomeButton(window);
-    await kubeswift.installExtension(app, window);
-    await kubeswift.dismissNotifications(window);
-    await kubeswift.navigateToCatalog(app);
-
-    frame = await cluster.openClusterFromCatalog(window, kubeconfig);
+    session = await kubeswift.connectApp();
+    window = session.window;
+    await kubeswift.installExtension(session);
+    ({ frame } = await cluster.openKubeSwiftCluster(window));
 
     // A freshly connected cluster shows the `default` namespace, not all of
     // them, so the fixtures stay invisible until the filter is moved. Doing it
     // once here covers every page: the selection is kept per cluster.
     await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
     await cluster.selectNamespace(frame);
+    await warmUpTerminal(frame);
   }, TIMEOUT);
 
   afterAll(async () => {
-    // Keep the listeners attached through the shutdown, so that late errors
-    // still reach the logs.
-    await cleanup?.();
-    errorCollector.stop(window);
+    await session?.close();
   }, TIMEOUT);
 
   it(
@@ -6389,8 +6469,8 @@ describe("KubeSwift views against the fixture cluster", () => {
       await logTab.waitFor({ state: "visible", timeout: 60_000 });
 
       // The drawer is deliberately left open: this is the last case that
-      // touches the UI, nothing after it reads the DOM, and the app is torn
-      // down immediately afterwards. Closing it would work - the log panel's
+      // touches the UI, nothing after it reads the DOM, and the next run starts
+      // from a restarted Freelens (docs/development/TESTING.md). Closing it would work - the log panel's
       // dock owns the keyboard, its own search field eats Escape, and
       // `closeDetails` falls back to the drawer's close icon exactly for that -
       // but there is nothing left to close it for.
@@ -6401,7 +6481,9 @@ describe("KubeSwift views against the fixture cluster", () => {
   it(
     "activates the extension without renderer or process errors",
     async () => {
-      const errors = errorCollector.errors();
+      const errors = (session?.errors() ?? []).filter(
+        (error) => !EXPECTED_FAILED_REQUESTS.some(({ status, url }) => isFailedRequest(error, status, url)),
+      );
 
       if (errors.length > 0) {
         throw new Error(`Freelens reported errors while the extension was active:\n${errors.join("\n")}`);

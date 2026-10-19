@@ -3,18 +3,14 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-// Helpers for driving a connected cluster: putting the E2E kubeconfig where
-// Freelens finds it, opening the cluster from the catalog, navigating the
-// KubeSwift sidebar group and asserting list rows and detail panels.
-//
-// See `kubeswift-extension.ts` for why these files live next to the Freelens
-// integration helpers at run time.
+// Helpers for driving a connected cluster: opening the E2E cluster in
+// Freelens dev, navigating the KubeSwift sidebar group and asserting list rows
+// and detail panels. The session they run in is `kubeswift-extension.ts`'s.
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { copyFile, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import * as path from "node:path";
-import { EXTENSION_NAME } from "./kubeswift-extension";
+import { EXTENSION_NAME, navigate } from "./kubeswift-extension";
 
 import type { Frame, Locator, Page } from "playwright";
 
@@ -206,72 +202,41 @@ export function clusterNodeName(): string {
 }
 
 /**
- * Copies the kubeconfig of the E2E cluster where the running Freelens picks it
- * up by itself, and returns the path it now has.
+ * Opens the E2E cluster in Freelens dev and returns its frame, where the
+ * extension's pages, details and menus render, with the route it was opened
+ * by (a suite that leaves the cluster, for the preferences, goes back to it).
  *
- * Freelens resolves `~/.kube` through `os.userInfo().homedir`, which reads the
- * passwd entry and ignores `$HOME`, so a sandboxed HOME cannot redirect
- * kubeconfig discovery. What Freelens does always watch is
- * `<userData>/kubeconfigs`, and under `--integration-testing` the user data
- * directory lives inside `FREELENS_INTEGRATION_TESTING_DIR`. Dropping the file
- * there adds the cluster to the catalog without reading or writing anything in
- * the developer's own `~/.kube`.
+ * The cluster is the catalog entity named after the kind context
+ * (`kind-<E2E_CLUSTER_NAME>`): Freelens dev has it from the kubeconfig its
+ * profile syncs, the lab's own kubeconfig and nothing else (see
+ * docs/development/TESTING.md), and it is looked up through the catalog of
+ * the extension API rather than clicked in the catalog's table.
  */
-export async function publishKubeconfig(fileName = "kubeswift-e2e"): Promise<string> {
-  const testingDirectory = process.env.FREELENS_INTEGRATION_TESTING_DIR;
-
-  if (!testingDirectory) {
-    throw new Error("FREELENS_INTEGRATION_TESTING_DIR is not set. Launch the app with the Freelens `start()` helper.");
-  }
-
-  // The user data directory is <testing dir>/<app name>, and the app name is
-  // the product name of the packaged build.
-  const appName = process.env.FREELENS_APP_NAME || "Freelens";
-  const directory = path.join(testingDirectory, appName, "kubeconfigs");
-
-  await mkdir(directory, { recursive: true });
-
-  const destination = path.join(directory, fileName);
-
-  await copyFile(kubeconfigPath(), destination);
-
-  return destination;
-}
-
-/**
- * Id Freelens gives to a cluster entity: the md5 of the kubeconfig path and the
- * context name. It ends up in the id of the cluster iframe.
- */
-export function clusterEntityId(kubeconfigFilePath: string, contextName: string): string {
-  return createHash("md5").update(`${kubeconfigFilePath}:${contextName}`).digest("hex");
-}
-
-/** Clicks the cluster in the catalog and waits for its frame to be usable. */
-export async function openClusterFromCatalog(
-  window: Page,
-  kubeconfigFilePath: string,
-  contextName = E2E_KUBE_CONTEXT,
-): Promise<Frame> {
-  const rowSelector = `div.TableCell >> text='${contextName}'`;
-
-  // The catalog only lists the cluster once the kubeconfig watcher has seen the
-  // file, which happens shortly after it is written.
-  await window.waitForSelector(rowSelector, { timeout: CLUSTER_TIMEOUT });
-  await window.click(rowSelector);
-
-  const frameElement = await window.waitForSelector(
-    `#cluster-frame-${clusterEntityId(kubeconfigFilePath, contextName)}`,
+export async function openKubeSwiftCluster(window: Page): Promise<{ frame: Frame; route: string }> {
+  const handle = await window.waitForFunction(
+    (name) =>
+      globalThis.FreelensExtensionApi.Renderer?.Catalog.catalogEntities
+        .getItemsForApiKind("entity.k8slens.dev/v1alpha1", "KubernetesCluster")
+        .find((entity) => entity.getName() === name)
+        ?.getId(),
+    E2E_KUBE_CONTEXT,
     { timeout: CLUSTER_TIMEOUT },
   );
+  const id = (await handle.jsonValue()) as string;
+  const route = `/cluster/${id}`;
+
+  await navigate(window, route);
+
+  const frameElement = await window.waitForSelector(`#cluster-frame-${id}`, { timeout: CLUSTER_TIMEOUT });
   const frame = await frameElement.contentFrame();
 
   if (!frame) {
-    throw new Error(`No iframe found for cluster ${contextName}`);
+    throw new Error(`No iframe found for cluster ${E2E_KUBE_CONTEXT}`);
   }
 
   await frame.waitForSelector("[data-testid=cluster-sidebar]", { timeout: CLUSTER_TIMEOUT });
 
-  return frame;
+  return { frame, route };
 }
 
 // Freelens derives the sidebar test ids from the extension name, dropping the

@@ -8,10 +8,9 @@
 // src/renderer/index.tsx, in menu order.
 //
 // This list is hand-maintained rather than imported from that file: it is
-// JSX bundled for the renderer process and is not reachable from the
-// Node/Playwright context that drives a *built* Freelens (this suite runs
-// inside a checkout of freelensapp/freelens, against the packed extension
-// tarball, not against this repository's TypeScript sources). Keeping the
+// JSX bundled for the renderer process, which the Node/Playwright context
+// that drives Freelens dev over CDP does not import: the suite checks the
+// built extension through the app, not the TypeScript sources. Keeping the
 // two in sync is a manual step for now - see "Notes and deviations" in
 // docs/specs/SPEC-0006-pre-review-agent-pass.md for the plan to close this
 // gap (e.g. a small views manifest emitted at build time).
