@@ -40,7 +40,6 @@
 
 import { Renderer } from "@freelensapp/extensions";
 import styles from "./action-icon.module.scss";
-import stylesInline from "./action-icon.module.scss?inline";
 
 const {
   Component: { Icon },
@@ -61,17 +60,12 @@ export function ActionIcon({ material, tooltip, disabled, toolbar }: ActionIconP
   const dimmed = disabled && Boolean(toolbar);
 
   return (
-    <>
-      {/* The v1 extension API injection idiom, rendered only when a rule is
-          actually used: an enabled toolbar and every kebab cost nothing. */}
-      {dimmed ? <style>{stylesInline}</style> : null}
-      <Icon
-        material={material}
-        interactive={toolbar}
-        tooltip={tooltip}
-        tooltipOverrideDisabled
-        className={dimmed ? styles.disabledIcon : undefined}
-      />
-    </>
+    <Icon
+      material={material}
+      interactive={toolbar}
+      tooltip={tooltip}
+      tooltipOverrideDisabled
+      className={dimmed ? styles.disabledIcon : undefined}
+    />
   );
 }

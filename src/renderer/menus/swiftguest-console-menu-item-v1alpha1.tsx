@@ -50,11 +50,7 @@ const {
   Component: { createTerminalTab, MenuItem, Notifications, terminalStore },
 } = Renderer;
 
-export interface SwiftGuestConsoleMenuItemProps {
-  object: SwiftGuest;
-  toolbar?: boolean;
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestConsoleMenuItemProps = Common.Types.KubeObjectMenuItemProps<SwiftGuest>;
 
 const title = "Serial Console";
 

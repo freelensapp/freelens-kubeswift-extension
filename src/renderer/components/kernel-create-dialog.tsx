@@ -27,7 +27,6 @@ import { maybe } from "../../common/utils";
 import { SwiftKernel, type SwiftKernelStore } from "../api/kubeswift/swiftkernel-v1alpha1";
 import { dialogReopenDelay, Field, ObjectPickerField, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import { defaultNamespace } from "./guest-create";
 import {
@@ -273,7 +272,6 @@ export const KernelCreateForm = observer(({ model }: { model: KernelDialogModel 
 
   return (
     <div className={styles.form} data-testid="swiftkernel-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftKernel</b>

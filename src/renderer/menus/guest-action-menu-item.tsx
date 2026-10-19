@@ -26,7 +26,7 @@
 //   lives only in CSS is not a guard on a write surface, so the click handler
 //   re-evaluates it before anything is written.
 
-import { Renderer } from "@freelensapp/extensions";
+import { Common, Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
@@ -41,10 +41,7 @@ const {
 } = Renderer;
 
 /** What the host passes a `kubeObjectMenuItems` component, and nothing else. */
-export interface GuestMenuItemProps {
-  object: SwiftGuest;
-  toolbar?: boolean;
-}
+export type GuestMenuItemProps = Common.Types.KubeObjectMenuItemProps<SwiftGuest>;
 
 /** What an action does once the user has confirmed it. */
 export interface GuestActionPlan {
@@ -55,7 +52,6 @@ export interface GuestActionPlan {
 }
 
 export interface GuestActionMenuItemProps extends GuestMenuItemProps {
-  extension: Renderer.LensExtension;
   /** The verb, used as the item's title, as the dialog's OK label and in the tooltip. */
   title: string;
   /** A host Material ligature: an unknown name renders as its own word rather than failing. */

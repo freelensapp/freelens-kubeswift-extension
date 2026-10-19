@@ -55,7 +55,6 @@ import { SwiftSeedProfile, type SwiftSeedProfileStore } from "../api/kubeswift/s
 import { SwiftSnapshot, type SwiftSnapshotStore } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { AddRowButton, CollapsibleSection, dialogReopenDelay, Field, FormRow, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import {
   addDataDisk,
@@ -2526,7 +2525,6 @@ export const GuestCreateForm = observer(({ model }: { model: GuestValuesOwner })
 
   return (
     <div className={styles.form} data-testid="swiftguest-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftGuest</b>

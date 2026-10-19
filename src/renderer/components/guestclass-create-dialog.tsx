@@ -28,7 +28,6 @@ import { maybe } from "../../common/utils";
 import { SwiftGuestClass, type SwiftGuestClassStore } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import { dialogReopenDelay, Field, ObjectPickerField, QuantityField, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import {
   coreSchedulingNote,
@@ -324,7 +323,6 @@ export const GuestClassCreateForm = observer(({ model }: { model: GuestClassDial
 
   return (
     <div className={styles.form} data-testid="swiftguestclass-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftGuestClass</b>

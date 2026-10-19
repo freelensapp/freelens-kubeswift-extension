@@ -42,9 +42,7 @@ const {
   Component: { MenuItem },
 } = Renderer;
 
-export interface SwiftGuestTakeSnapshotMenuItemProps extends GuestMenuItemProps {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestTakeSnapshotMenuItemProps = GuestMenuItemProps;
 
 /** The slice of a live SwiftGuest the dialog's decisions read. */
 export function snapshotGuestFacts(object: SwiftGuest): SnapshotGuestFacts {

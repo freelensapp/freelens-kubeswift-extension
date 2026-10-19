@@ -38,9 +38,8 @@ describe("ActionIcon", () => {
     );
 
     expect(icon(container).className).toContain(styles.disabledIcon);
-    // The stylesheet travels with the class, since the v1 extension API injects
-    // its CSS this way.
-    expect(container.querySelector("style")).not.toBeNull();
+    // The rule reaches the page through renderer.css, which the host links; the item renders no stylesheet.
+    expect(container.querySelector("style")).toBeNull();
   });
 
   it("leaves an offered action in the toolbar alone", () => {

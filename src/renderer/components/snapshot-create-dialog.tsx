@@ -29,7 +29,6 @@ import * as MobxReact from "mobx-react";
 import { SwiftSnapshot, type SwiftSnapshotStore } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import {
   backendChoices,
@@ -316,7 +315,6 @@ export const SnapshotCreateForm = observer(({ model }: { model: SnapshotDialogMo
 
   return (
     <div className={styles.form} data-testid="swiftguest-take-snapshot-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Take a snapshot of "}
         <b>{`SwiftGuest ${guest.namespace}/${guest.name}`}</b>

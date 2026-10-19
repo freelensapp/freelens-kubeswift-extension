@@ -38,7 +38,6 @@ import {
   WriteSummary,
 } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import { defaultNamespace } from "./guest-create";
 import { quantityGrammar } from "./guestclass-create";
@@ -545,7 +544,6 @@ export const ImageCreateForm = observer(({ model }: { model: ImageDialogModel })
 
   return (
     <div className={styles.form} data-testid="swiftimage-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftImage</b>

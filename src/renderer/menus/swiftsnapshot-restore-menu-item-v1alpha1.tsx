@@ -21,7 +21,7 @@
 // it does reuse is the rule that shell exists for - read the object the store
 // holds right now, not the one the row was rendered with (W1).
 
-import { Renderer } from "@freelensapp/extensions";
+import { Common, Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
@@ -47,11 +47,7 @@ const {
   Component: { MenuItem },
 } = Renderer;
 
-export interface SwiftSnapshotRestoreMenuItemProps {
-  object: SwiftSnapshot;
-  toolbar?: boolean;
-  extension: Renderer.LensExtension;
-}
+export type SwiftSnapshotRestoreMenuItemProps = Common.Types.KubeObjectMenuItemProps<SwiftSnapshot>;
 
 /** The slice of a live SwiftSnapshot the dialog's decisions read. */
 export function restoreSnapshotFacts(object: SwiftSnapshot): RestoreSnapshotFacts {

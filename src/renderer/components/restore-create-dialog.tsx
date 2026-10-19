@@ -34,7 +34,6 @@ import { SwiftGuest, type SwiftGuestStore } from "../api/kubeswift/swiftguest-v1
 import { SwiftRestore, type SwiftRestoreStore } from "../api/kubeswift/swiftrestore-v1alpha1";
 import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts, notFoundStatusCode } from "./guest-actions";
 import {
   conflictStatusCode,
@@ -426,7 +425,6 @@ export const RestoreCreateForm = observer(({ model }: { model: RestoreDialogMode
 
   return (
     <div className={styles.form} data-testid="swiftsnapshot-restore-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Restore "}
         <b>{`SwiftSnapshot ${snapshot.namespace}/${snapshot.name}`}</b>

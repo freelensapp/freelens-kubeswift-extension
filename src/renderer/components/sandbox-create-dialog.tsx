@@ -41,7 +41,6 @@ import {
   WriteSummary,
 } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import { defaultNamespace } from "./guest-create";
 import { quantityGrammar } from "./guestclass-create";
@@ -1088,7 +1087,6 @@ export const SandboxCreateForm = observer(({ model }: { model: SandboxDialogMode
 
   return (
     <div className={styles.form} data-testid="swiftsandbox-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftSandbox</b>

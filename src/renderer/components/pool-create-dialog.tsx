@@ -33,7 +33,6 @@ import * as MobxReact from "mobx-react";
 import { SwiftGuestPool } from "../api/kubeswift/swiftguestpool-v1alpha1";
 import { AddRowButton, CollapsibleSection, dialogReopenDelay, Field, FormRow, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import {
   defaultNamespace,
@@ -790,7 +789,6 @@ export const PoolCreateForm = observer(({ model }: { model: PoolCreateDialogMode
 
   return (
     <div className={styles.form} data-testid="swiftguestpool-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftGuestPool</b>

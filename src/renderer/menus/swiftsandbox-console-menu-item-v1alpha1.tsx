@@ -36,11 +36,7 @@ const {
   Component: { createTerminalTab, MenuItem, Notifications, terminalStore },
 } = Renderer;
 
-export interface SwiftSandboxConsoleMenuItemProps {
-  object: SwiftSandbox;
-  toolbar?: boolean;
-  extension: Renderer.LensExtension;
-}
+export type SwiftSandboxConsoleMenuItemProps = Common.Types.KubeObjectMenuItemProps<SwiftSandbox>;
 
 const title = "Workload Console";
 

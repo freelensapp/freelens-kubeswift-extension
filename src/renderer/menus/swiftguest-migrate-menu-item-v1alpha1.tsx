@@ -54,9 +54,7 @@ const {
   Component: { MenuItem },
 } = Renderer;
 
-export interface SwiftGuestMigrateMenuItemProps extends GuestMenuItemProps {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestMigrateMenuItemProps = GuestMenuItemProps;
 
 /** The slice of a live SwiftGuest the dialog's decisions read. */
 export function migrationGuestFacts(object: SwiftGuest): MigrationGuestFacts {

@@ -148,90 +148,34 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
   // Matching is on kind AND full apiVersion, so no other project's SwiftGuest
   // could ever receive these.
   kubeObjectMenuItems: Renderer.LensExtension["kubeObjectMenuItems"] = [
-    {
-      kind: SwiftGuestV1alpha1.kind,
-      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
-      components: {
-        MenuItem: (props: { object: any; toolbar?: boolean }) => (
-          <SwiftGuestStartMenuItemV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
-    {
-      kind: SwiftGuestV1alpha1.kind,
-      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
-      components: {
-        MenuItem: (props: { object: any; toolbar?: boolean }) => (
-          <SwiftGuestStopMenuItemV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
+    Renderer.K8sApi.menuItemFor(SwiftGuestV1alpha1, { MenuItem: SwiftGuestStartMenuItemV1alpha1 }),
+    Renderer.K8sApi.menuItemFor(SwiftGuestV1alpha1, { MenuItem: SwiftGuestStopMenuItemV1alpha1 }),
     // The extension's first CREATE surface (SPEC-0011). Registered on
     // SwiftGuest, because the object a snapshot is about is the guest; the
     // SwiftSnapshot it writes lands on the Snapshots page, which is what the
     // success notification exists to say.
-    {
-      kind: SwiftGuestV1alpha1.kind,
-      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
-      components: {
-        MenuItem: (props: { object: any; toolbar?: boolean }) => (
-          <SwiftGuestTakeSnapshotMenuItemV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
+    Renderer.K8sApi.menuItemFor(SwiftGuestV1alpha1, { MenuItem: SwiftGuestTakeSnapshotMenuItemV1alpha1 }),
     // The other half of SPEC-0011, and the only create in this milestone whose
     // write can destroy something: an in-place restore kills the target guest's
     // launcher pod with no grace period. Registered on SwiftSnapshot, because
     // the object a restore is about is the snapshot; the SwiftRestore it writes
     // lands on the Restores page.
-    {
-      kind: SwiftSnapshotV1alpha1.kind,
-      apiVersions: SwiftSnapshotV1alpha1.crd.apiVersions,
-      components: {
-        MenuItem: (props: { object: any; toolbar?: boolean }) => (
-          <SwiftSnapshotRestoreMenuItemV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
+    Renderer.K8sApi.menuItemFor(SwiftSnapshotV1alpha1, { MenuItem: SwiftSnapshotRestoreMenuItemV1alpha1 }),
     // SPEC-0012, and the third create surface: one dialog, one SwiftMigration.
     // Registered on SwiftGuest, because the object a migration is about is the
     // guest; the SwiftMigration it writes lands on the Migrations page, phase by
     // phase, which is what the success notification exists to say.
-    {
-      kind: SwiftGuestV1alpha1.kind,
-      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
-      components: {
-        MenuItem: (props: { object: any; toolbar?: boolean }) => (
-          <SwiftGuestMigrateMenuItemV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
+    Renderer.K8sApi.menuItemFor(SwiftGuestV1alpha1, { MenuItem: SwiftGuestMigrateMenuItemV1alpha1 }),
     // SPEC-0017 slice 1, and the first action of this extension that writes
     // NOTHING: it composes a `kubectl exec` line and hands it to a terminal tab
     // the host owns. Registered on SwiftGuest like the four above, and rendered
     // by the host in the same two surfaces (W5).
-    {
-      kind: SwiftGuestV1alpha1.kind,
-      apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
-      components: {
-        MenuItem: (props: { object: any; toolbar?: boolean }) => (
-          <SwiftGuestConsoleMenuItemV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
+    Renderer.K8sApi.menuItemFor(SwiftGuestV1alpha1, { MenuItem: SwiftGuestConsoleMenuItemV1alpha1 }),
     // SPEC-0017 slice 2, and the first action this extension registers on
     // SwiftSandbox: the workload console, which is the same non-writing shape as
     // the guest's above with the mechanism inverted - a `tail` on a file rather
     // than a relay to a socket, so read-only by construction.
-    {
-      kind: SwiftSandboxV1alpha1.kind,
-      apiVersions: SwiftSandboxV1alpha1.crd.apiVersions,
-      components: {
-        MenuItem: (props: { object: any; toolbar?: boolean }) => (
-          <SwiftSandboxConsoleMenuItemV1alpha1 {...props} extension={this} />
-        ),
-      },
-    },
+    Renderer.K8sApi.menuItemFor(SwiftSandboxV1alpha1, { MenuItem: SwiftSandboxConsoleMenuItemV1alpha1 }),
   ].map((registration) => withMenuItemErrorBoundary(this, registration));
 
   clusterPages: Renderer.LensExtension["clusterPages"] = [

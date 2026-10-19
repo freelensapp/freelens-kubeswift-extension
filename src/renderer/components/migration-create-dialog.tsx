@@ -36,7 +36,6 @@ import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import { SwiftMigration, type SwiftMigrationStore } from "../api/kubeswift/swiftmigration-v1alpha1";
 import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import {
   conflictStatusCode,
@@ -503,7 +502,6 @@ export const MigrationCreateForm = observer(({ model }: { model: MigrationDialog
 
   return (
     <div className={styles.form} data-testid="swiftguest-migrate-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Migrate "}
         <b>{`SwiftGuest ${guest.namespace}/${guest.name}`}</b>

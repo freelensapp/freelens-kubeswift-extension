@@ -29,7 +29,6 @@ import { maybe } from "../../common/utils";
 import { SwiftSeedProfile, type SwiftSeedProfileStore } from "../api/kubeswift/swiftseedprofile-v1alpha1";
 import { DocumentField, dialogReopenDelay, Field, KeyInObjectField, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import { defaultNamespace } from "./guest-create";
 import { conflictStatusCode } from "./migration-create";
@@ -431,7 +430,6 @@ export const SeedProfileCreateForm = observer(({ model }: { model: SeedProfileDi
 
   return (
     <div className={styles.form} data-testid="swiftseedprofile-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftSeedProfile</b>
