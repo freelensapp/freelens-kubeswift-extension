@@ -30,7 +30,6 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { ActionIcon } from "./action-icon";
 
 import type { ActionDialogFacts, ActionGuard, GuestActionFacts } from "../components/guest-actions";
@@ -123,64 +122,62 @@ function renderMessage(title: string, facts: ActionDialogFacts) {
   );
 }
 
-export const GuestActionMenuItem = observer((props: GuestActionMenuItemProps) =>
-  withErrorPage(props, () => {
-    const { object, toolbar, title, icon, testId, accent, guard, plan } = props;
+export const GuestActionMenuItem = observer((props: GuestActionMenuItemProps) => {
+  const { object, toolbar, title, icon, testId, accent, guard, plan } = props;
 
-    // A terminating object is not a thing you act on, and the host's own
-    // delete-mode logic keys on the same field (W4's one exception: absent
-    // rather than disabled).
-    if (object.metadata?.deletionTimestamp) {
-      return <></>;
+  // A terminating object is not a thing you act on, and the host's own
+  // delete-mode logic keys on the same field (W4's one exception: absent
+  // rather than disabled).
+  if (object.metadata?.deletionTimestamp) {
+    return <></>;
+  }
+
+  const verdict = guard(guestActionFacts(object));
+  const tooltip = verdict.enabled ? title : `${title}: ${verdict.reason}`;
+
+  const onClick = async () => {
+    const live = liveGuest(object);
+    // The guard is re-evaluated against the live object before anything is
+    // written: `disabled` alone does not stop the click, and the render-time
+    // verdict may have been computed from a stale object (W4).
+    if (!guard(guestActionFacts(live)).enabled) {
+      return;
     }
 
-    const verdict = guard(guestActionFacts(object));
-    const tooltip = verdict.enabled ? title : `${title}: ${verdict.reason}`;
+    let action: GuestActionPlan;
 
-    const onClick = async () => {
-      const live = liveGuest(object);
-      // The guard is re-evaluated against the live object before anything is
-      // written: `disabled` alone does not stop the click, and the render-time
-      // verdict may have been computed from a stale object (W4).
-      if (!guard(guestActionFacts(live)).enabled) {
-        return;
-      }
+    try {
+      action = await plan(guestActionFacts(live), live);
+    } catch (error) {
+      Notifications.checkedError(error, `Could not prepare the ${title.toLowerCase()} of ${object.getName()}.`);
 
-      let action: GuestActionPlan;
+      return;
+    }
 
-      try {
-        action = await plan(guestActionFacts(live), live);
-      } catch (error) {
-        Notifications.checkedError(error, `Could not prepare the ${title.toLowerCase()} of ${object.getName()}.`);
+    // `open({ ok })` rather than `confirm()`: it keeps the dialog on screen
+    // and its OK button in the host's `waiting` state until the promise
+    // settles, which is the "buttons disable while an operation is in flight"
+    // DESIGN.md section 7 asks for. Declared deviation, recorded in SPEC-0010.
+    ConfirmDialog.open({
+      labelOk: title,
+      okButtonProps: accent ? { primary: false, accent: true } : undefined,
+      message: renderMessage(title, action.facts),
+      ok: action.run,
+    });
+  };
 
-        return;
-      }
-
-      // `open({ ok })` rather than `confirm()`: it keeps the dialog on screen
-      // and its OK button in the host's `waiting` state until the promise
-      // settles, which is the "buttons disable while an operation is in flight"
-      // DESIGN.md section 7 asks for. Declared deviation, recorded in SPEC-0010.
-      ConfirmDialog.open({
-        labelOk: title,
-        okButtonProps: accent ? { primary: false, accent: true } : undefined,
-        message: renderMessage(title, action.facts),
-        ok: action.run,
-      });
-    };
-
-    // The reason has to be reachable in BOTH surfaces (B5), and the toolbar
-    // hides the title span, so it is carried three ways: the host `Icon`'s own
-    // tooltip, which the toolbar renders; the item's native `title` attribute,
-    // which survives the `pointer-events: none` of a disabled item and is what
-    // the pre-review pass reads without opening a menu; and, durably, the
-    // drawer's Condition row explanation. `ActionIcon` adds the fourth, which
-    // needs no hover and no reading at all: a refused action is visibly dimmer
-    // than the ones next to it (M7 milestone review).
-    return (
-      <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid={testId} title={tooltip}>
-        <ActionIcon material={icon} toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
-        <span className="title">{title}</span>
-      </MenuItem>
-    );
-  }),
-);
+  // The reason has to be reachable in BOTH surfaces (B5), and the toolbar
+  // hides the title span, so it is carried three ways: the host `Icon`'s own
+  // tooltip, which the toolbar renders; the item's native `title` attribute,
+  // which survives the `pointer-events: none` of a disabled item and is what
+  // the pre-review pass reads without opening a menu; and, durably, the
+  // drawer's Condition row explanation. `ActionIcon` adds the fourth, which
+  // needs no hover and no reading at all: a refused action is visibly dimmer
+  // than the ones next to it (M7 milestone review).
+  return (
+    <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid={testId} title={tooltip}>
+      <ActionIcon material={icon} toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
+      <span className="title">{title}</span>
+    </MenuItem>
+  );
+});

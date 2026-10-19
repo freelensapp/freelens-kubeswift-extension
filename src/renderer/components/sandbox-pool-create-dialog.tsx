@@ -26,9 +26,9 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
-import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
-import { SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
+import { SwiftGPUProfile, type SwiftGPUProfileStore } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
+import { SwiftKernel, type SwiftKernelStore } from "../api/kubeswift/swiftkernel-v1alpha1";
+import { SwiftSandboxPool, type SwiftSandboxPoolStore } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import {
   AddRowButton,
   CollapsibleSection,
@@ -176,7 +176,7 @@ export function createSandboxPoolDialogModel(
       okButtonProps: { disabled: false, primary: true, accent: false },
       onValuesChanged: () => syncOkButton(model),
     },
-    { existingNames: Mobx.observable.ref, onValuesChanged: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef, onValuesChanged: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -274,7 +274,7 @@ export async function loadSecrets(model: SandboxShapeOwner, namespace: string): 
 /** The namespace's SwiftKernels, for the kernel-profile picker. */
 export async function loadKernels(model: SandboxShapeOwner, namespace: string): Promise<void> {
   try {
-    const kernels = await SwiftKernel.getStore<SwiftKernel>().api.list({ namespace });
+    const kernels = await SwiftKernel.getStore<SwiftKernel, SwiftKernelStore>().api.list({ namespace });
     const names = (kernels ?? []).map((kernel) => kernel.getName()).sort();
 
     Mobx.runInAction(() => {
@@ -302,7 +302,7 @@ export async function loadKernels(model: SandboxShapeOwner, namespace: string): 
  */
 export async function loadGpuProfiles(model: SandboxShapeOwner, namespace: string): Promise<void> {
   try {
-    const profiles = await SwiftGPUProfile.getStore<SwiftGPUProfile>().api.list({ namespace });
+    const profiles = await SwiftGPUProfile.getStore<SwiftGPUProfile, SwiftGPUProfileStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -332,7 +332,7 @@ export async function loadGpuProfiles(model: SandboxShapeOwner, namespace: strin
 /** The namespace's SwiftSandboxPool names, for the collision warning that never blocks. */
 export async function loadPoolNames(model: SandboxPoolDialogModel, namespace: string): Promise<void> {
   try {
-    const pools = await SwiftSandboxPool.getStore<SwiftSandboxPool>().api.list({ namespace });
+    const pools = await SwiftSandboxPool.getStore<SwiftSandboxPool, SwiftSandboxPoolStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       model.existingNames = (pools ?? []).map((pool) => pool.getName());

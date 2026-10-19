@@ -33,7 +33,7 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
-import { SwiftMigration } from "../api/kubeswift/swiftmigration-v1alpha1";
+import { SwiftMigration, type SwiftMigrationStore } from "../api/kubeswift/swiftmigration-v1alpha1";
 import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
@@ -160,10 +160,10 @@ export function createMigrationDialogModel(
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
     {
-      guest: Mobx.observable.ref,
-      guestClass: Mobx.observable.ref,
-      inFlight: Mobx.observable.ref,
-      existingNames: Mobx.observable.ref,
+      guest: Mobx.observableRef,
+      guestClass: Mobx.observableRef,
+      inFlight: Mobx.observableRef,
+      existingNames: Mobx.observableRef,
     },
   );
 
@@ -263,7 +263,7 @@ export async function loadGuestClass(model: MigrationDialogModel): Promise<void>
  */
 export async function loadExistingMigrations(model: MigrationDialogModel): Promise<void> {
   try {
-    const migrations = await SwiftMigration.getStore<SwiftMigration>().api.list({
+    const migrations = await SwiftMigration.getStore<SwiftMigration, SwiftMigrationStore>().api.list({
       namespace: model.guest.namespace,
     });
 

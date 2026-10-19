@@ -256,7 +256,8 @@ export interface GuestConsoleCommandInput {
    */
   kubectlPath?: string;
   /**
-   * `os.platform()`. Taken as a parameter rather than read here so this module
+   * The host's platform, named as Node names it (`win32`, `darwin`, `linux`), from
+   * `Common.App`. Taken as a parameter rather than read here so this module
    * stays pure and both branches are unit-testable on either machine.
    */
   platform: string;
@@ -558,7 +559,7 @@ export interface SandboxConsoleCommandInput {
   sandbox: SandboxConsoleFacts;
   /** As `GuestConsoleCommandInput.kubectlPath`: empty on a default install. */
   kubectlPath?: string;
-  /** As `GuestConsoleCommandInput.platform`: `os.platform()`, taken as a parameter to stay pure. */
+  /** As `GuestConsoleCommandInput.platform`: the host's platform, taken as a parameter to stay pure. */
   platform: string;
 }
 

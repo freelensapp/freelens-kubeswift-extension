@@ -26,7 +26,7 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftSeedProfile } from "../api/kubeswift/swiftseedprofile-v1alpha1";
+import { SwiftSeedProfile, type SwiftSeedProfileStore } from "../api/kubeswift/swiftseedprofile-v1alpha1";
 import { DocumentField, dialogReopenDelay, Field, KeyInObjectField, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
@@ -151,7 +151,7 @@ export function createSeedProfileDialogModel(
       existingNamesUnverified: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
-    { existingNames: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -280,7 +280,7 @@ export async function loadConfigMaps(model: SeedProfileDialogModel, namespace: s
 /** The namespace's SwiftSeedProfile names, for the collision warning. */
 export async function loadSeedProfileNames(model: SeedProfileDialogModel, namespace: string): Promise<void> {
   try {
-    const profiles = await SwiftSeedProfile.getStore<SwiftSeedProfile>().api.list({ namespace });
+    const profiles = await SwiftSeedProfile.getStore<SwiftSeedProfile, SwiftSeedProfileStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       model.existingNames = (profiles ?? []).map((profile) => profile.getName());

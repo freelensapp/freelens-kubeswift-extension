@@ -1,7 +1,6 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftGuest, type SwiftGuestApi } from "../api/kubeswift/swiftguest-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { createGuestTitle } from "../components/guest-create";
 import { openCreateGuestDialog } from "../components/guest-create-dialog";
 import { classifyGuest, guestMessage } from "../components/guest-status";
@@ -53,49 +52,47 @@ export interface SwiftGuestsPageProps {
   extension: Renderer.LensExtension;
 }
 
-export const SwiftGuestsPage = observer((props: SwiftGuestsPageProps) =>
-  withErrorPage(props, () => {
-    const store = KubeObject.getStore<KubeObject>();
+export const SwiftGuestsPage = observer((props: SwiftGuestsPageProps) => {
+  const store = KubeObject.getStore<KubeObject>();
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <KubeObjectListLayout<KubeObject, KubeObjectApi>
-          tableId={`${KubeObject.crd.plural}Table`}
-          className={styles.page}
-          store={store}
-          sortingCallbacks={sortingCallbacks}
-          searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-          renderHeaderTitle={KubeObject.crd.title}
-          // The extension's first create that is not about an object the user
-          // already selected, so it is not a `kubeObjectMenuItems` registration
-          // but the host's own create affordance: `addRemoveButtons` renders the
-          // floating "+" that core's Namespaces page uses for "Add Namespace",
-          // in the same corner of every list page in the app (DESIGN.md pillar
-          // 1: never a custom control where a native one exists). The header
-          // button the spec first planned would have been a second idiom for the
-          // idiom Freelens already has.
-          addRemoveButtons={{ onAdd: openCreateGuestDialog, addTooltip: createGuestTitle }}
-          renderTableHeader={renderTableHeader}
-          renderTableContents={(object: KubeObject) => {
-            const condition = classifyGuest(object.spec, object.status);
+  return (
+    <>
+      <style>{stylesInline}</style>
+      <KubeObjectListLayout<KubeObject, KubeObjectApi>
+        tableId={`${KubeObject.crd.plural}Table`}
+        className={styles.page}
+        store={store}
+        sortingCallbacks={sortingCallbacks}
+        searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+        renderHeaderTitle={KubeObject.crd.title}
+        // The extension's first create that is not about an object the user
+        // already selected, so it is not a `kubeObjectMenuItems` registration
+        // but the host's own create affordance: `addRemoveButtons` renders the
+        // floating "+" that core's Namespaces page uses for "Add Namespace",
+        // in the same corner of every list page in the app (DESIGN.md pillar
+        // 1: never a custom control where a native one exists). The header
+        // button the spec first planned would have been a second idiom for the
+        // idiom Freelens already has.
+        addRemoveButtons={{ onAdd: openCreateGuestDialog, addTooltip: createGuestTitle }}
+        renderTableHeader={renderTableHeader}
+        renderTableContents={(object: KubeObject) => {
+          const condition = classifyGuest(object.spec, object.status);
 
-            return [
-              <WithTooltip key="name">{object.getName()}</WithTooltip>,
-              <NamespaceSelectBadge key="namespace" namespace={object.getNs()} />,
-              <LinkToNode key="node" name={KubeObject.getNodeName(object)} />,
-              <WithTooltip key="ip">{KubeObject.getPrimaryIP(object) ?? notAvailable}</WithTooltip>,
-              <WithTooltip key="restarts">{KubeObject.getRestartCount(object)}</WithTooltip>,
-              // The badge carries the derived state, so a guest whose stop has
-              // been written but not yet reconciled reads `Stopping` here rather
-              // than the `Running` the API still reports (SPEC-0010, B12).
-              <Badge key="condition" className={condition.className} label={condition.state} />,
-              <WithTooltip key="status">{guestMessage(object.spec, object.status)}</WithTooltip>,
-              <KubeObjectAge object={object} key="age" />,
-            ];
-          }}
-        />
-      </>
-    );
-  }),
-);
+          return [
+            <WithTooltip key="name">{object.getName()}</WithTooltip>,
+            <NamespaceSelectBadge key="namespace" namespace={object.getNs()} />,
+            <LinkToNode key="node" name={KubeObject.getNodeName(object)} />,
+            <WithTooltip key="ip">{KubeObject.getPrimaryIP(object) ?? notAvailable}</WithTooltip>,
+            <WithTooltip key="restarts">{KubeObject.getRestartCount(object)}</WithTooltip>,
+            // The badge carries the derived state, so a guest whose stop has
+            // been written but not yet reconciled reads `Stopping` here rather
+            // than the `Running` the API still reports (SPEC-0010, B12).
+            <Badge key="condition" className={condition.className} label={condition.state} />,
+            <WithTooltip key="status">{guestMessage(object.spec, object.status)}</WithTooltip>,
+            <KubeObjectAge object={object} key="age" />,
+          ];
+        }}
+      />
+    </>
+  );
+});

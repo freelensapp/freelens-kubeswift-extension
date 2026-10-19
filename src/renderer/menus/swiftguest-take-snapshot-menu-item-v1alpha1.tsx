@@ -21,7 +21,6 @@ import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { canTakeSnapshot } from "../components/snapshot-create";
 import {
   createSnapshotDialogModel,
@@ -73,50 +72,48 @@ function storedSnapshots(namespace: string): ExistingSnapshotFacts[] {
     .map((snapshot) => ({ name: snapshot.getName(), hostPath: snapshot.spec?.backend?.local?.hostPath }));
 }
 
-export const SwiftGuestTakeSnapshotMenuItem = observer((props: SwiftGuestTakeSnapshotMenuItemProps) =>
-  withErrorPage(props, () => {
-    const { object, toolbar } = props;
+export const SwiftGuestTakeSnapshotMenuItem = observer((props: SwiftGuestTakeSnapshotMenuItemProps) => {
+  const { object, toolbar } = props;
 
-    // A terminating object is not a thing you act on (W4's one exception:
-    // absent rather than disabled).
-    if (object.metadata?.deletionTimestamp) {
-      return <></>;
+  // A terminating object is not a thing you act on (W4's one exception:
+  // absent rather than disabled).
+  if (object.metadata?.deletionTimestamp) {
+    return <></>;
+  }
+
+  const verdict = canTakeSnapshot(snapshotGuestFacts(object));
+  const tooltip = verdict.enabled ? takeSnapshotTitle : `${takeSnapshotTitle}: ${verdict.reason}`;
+
+  const onClick = () => {
+    const guest = snapshotGuestFacts(liveGuest(object));
+
+    // The guard is re-evaluated against the live object before the dialog is
+    // built: `disabled` alone does not stop the click (W4).
+    if (!canTakeSnapshot(guest).enabled) {
+      return;
     }
 
-    const verdict = canTakeSnapshot(snapshotGuestFacts(object));
-    const tooltip = verdict.enabled ? takeSnapshotTitle : `${takeSnapshotTitle}: ${verdict.reason}`;
+    // The model is created here, outside React, and outlives every render of
+    // the dialog's message - including the remount a 409 reopen performs.
+    const model = createSnapshotDialogModel(guest, storedSnapshots(guest.namespace), new Date());
 
-    const onClick = () => {
-      const guest = snapshotGuestFacts(liveGuest(object));
+    // Two reads on open, neither awaited and neither able to throw: what they
+    // answer sharpens the form, what they refuse degrades one sentence.
+    void loadSecretNames(model, guest.namespace);
+    void loadExistingSnapshots(model);
 
-      // The guard is re-evaluated against the live object before the dialog is
-      // built: `disabled` alone does not stop the click (W4).
-      if (!canTakeSnapshot(guest).enabled) {
-        return;
-      }
+    openTakeSnapshotDialog(model);
+  };
 
-      // The model is created here, outside React, and outlives every render of
-      // the dialog's message - including the remount a 409 reopen performs.
-      const model = createSnapshotDialogModel(guest, storedSnapshots(guest.namespace), new Date());
-
-      // Two reads on open, neither awaited and neither able to throw: what they
-      // answer sharpens the form, what they refuse degrades one sentence.
-      void loadSecretNames(model, guest.namespace);
-      void loadExistingSnapshots(model);
-
-      openTakeSnapshotDialog(model);
-    };
-
-    return (
-      <MenuItem
-        onClick={onClick}
-        disabled={!verdict.enabled}
-        data-testid="swiftguest-take-snapshot-action"
-        title={tooltip}
-      >
-        <ActionIcon material="photo_camera" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
-        <span className="title">{takeSnapshotTitle}</span>
-      </MenuItem>
-    );
-  }),
-);
+  return (
+    <MenuItem
+      onClick={onClick}
+      disabled={!verdict.enabled}
+      data-testid="swiftguest-take-snapshot-action"
+      title={tooltip}
+    >
+      <ActionIcon material="photo_camera" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
+      <span className="title">{takeSnapshotTitle}</span>
+    </MenuItem>
+  );
+});

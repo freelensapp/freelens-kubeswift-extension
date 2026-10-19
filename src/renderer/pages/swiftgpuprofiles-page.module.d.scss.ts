@@ -1,6 +1,5 @@
 declare const classNames: {
   readonly page: "page";
-  readonly tableCell: "tableCell";
   readonly count: "count";
   readonly model: "model";
   readonly partitionMode: "partitionMode";

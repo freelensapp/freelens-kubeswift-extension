@@ -24,7 +24,7 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
+import { SwiftKernel, type SwiftKernelStore } from "../api/kubeswift/swiftkernel-v1alpha1";
 import { dialogReopenDelay, Field, ObjectPickerField, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
@@ -113,7 +113,7 @@ export function createKernelDialogModel(
       existingNamesUnverified: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
-    { existingNames: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -183,7 +183,7 @@ export async function loadSecrets(model: KernelDialogModel, namespace: string): 
 /** The namespace's SwiftKernel names, for the collision warning. */
 export async function loadKernelNames(model: KernelDialogModel, namespace: string): Promise<void> {
   try {
-    const kernels = await SwiftKernel.getStore<SwiftKernel>().api.list({ namespace });
+    const kernels = await SwiftKernel.getStore<SwiftKernel, SwiftKernelStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       model.existingNames = (kernels ?? []).map((kernel) => kernel.getName());

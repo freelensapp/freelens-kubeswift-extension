@@ -46,13 +46,13 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
-import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
-import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
-import { SwiftImage } from "../api/kubeswift/swiftimage-v1alpha1";
-import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
-import { SwiftSeedProfile } from "../api/kubeswift/swiftseedprofile-v1alpha1";
-import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
+import { SwiftGPUProfile, type SwiftGPUProfileStore } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
+import { SwiftGuest, type SwiftGuestStore } from "../api/kubeswift/swiftguest-v1alpha1";
+import { SwiftGuestClass, type SwiftGuestClassStore } from "../api/kubeswift/swiftguestclass-v1alpha1";
+import { SwiftImage, type SwiftImageStore } from "../api/kubeswift/swiftimage-v1alpha1";
+import { SwiftKernel, type SwiftKernelStore } from "../api/kubeswift/swiftkernel-v1alpha1";
+import { SwiftSeedProfile, type SwiftSeedProfileStore } from "../api/kubeswift/swiftseedprofile-v1alpha1";
+import { SwiftSnapshot, type SwiftSnapshotStore } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { AddRowButton, CollapsibleSection, dialogReopenDelay, Field, FormRow, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
@@ -403,7 +403,7 @@ function guestOwnerFields(namespace: string, seed: GuestFormSeed): GuestValuesOw
  * the dialog is opened, and it is called from inside the actions below.
  */
 const guestOwnerAnnotations = {
-  existingNames: Mobx.observable.ref,
+  existingNames: Mobx.observableRef,
   onValuesChanged: false,
   embedding: false,
 } as const;
@@ -526,7 +526,7 @@ export const changeNamespace = Mobx.action((model: GuestValuesOwner, namespace: 
  */
 export async function loadGuestClasses(model: GuestValuesOwner): Promise<void> {
   try {
-    const guestClasses = await SwiftGuestClass.getStore<SwiftGuestClass>().api.list();
+    const guestClasses = await SwiftGuestClass.getStore<SwiftGuestClass, SwiftGuestClassStore>().api.list();
 
     Mobx.runInAction(() => {
       model.guestClasses = { state: "ready", items: (guestClasses ?? []).map(guestClassFacts) };
@@ -576,7 +576,7 @@ export async function loadNamespacedObjects(model: GuestValuesOwner): Promise<vo
  */
 async function loadKernels(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
-    const kernels = await SwiftKernel.getStore<SwiftKernel>().api.list({ namespace });
+    const kernels = await SwiftKernel.getStore<SwiftKernel, SwiftKernelStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -601,7 +601,7 @@ async function loadKernels(model: GuestValuesOwner, namespace: string): Promise<
 /** The chosen namespace's snapshots, for clone boot, under the same rule. */
 async function loadSnapshots(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
-    const snapshots = await SwiftSnapshot.getStore<SwiftSnapshot>().api.list({ namespace });
+    const snapshots = await SwiftSnapshot.getStore<SwiftSnapshot, SwiftSnapshotStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -625,7 +625,7 @@ async function loadSnapshots(model: GuestValuesOwner, namespace: string): Promis
 
 async function loadImages(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
-    const images = await SwiftImage.getStore<SwiftImage>().api.list({ namespace });
+    const images = await SwiftImage.getStore<SwiftImage, SwiftImageStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -693,7 +693,7 @@ async function loadPvcs(model: GuestValuesOwner, namespace: string): Promise<voi
 /** The chosen namespace's GPU profiles, for the native GPU backend. */
 async function loadGpuProfiles(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
-    const profiles = await SwiftGPUProfile.getStore<SwiftGPUProfile>().api.list({ namespace });
+    const profiles = await SwiftGPUProfile.getStore<SwiftGPUProfile, SwiftGPUProfileStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -717,7 +717,7 @@ async function loadGpuProfiles(model: GuestValuesOwner, namespace: string): Prom
 
 async function loadSeedProfiles(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
-    const profiles = await SwiftSeedProfile.getStore<SwiftSeedProfile>().api.list({ namespace });
+    const profiles = await SwiftSeedProfile.getStore<SwiftSeedProfile, SwiftSeedProfileStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -745,7 +745,7 @@ async function loadSeedProfiles(model: GuestValuesOwner, namespace: string): Pro
 
 async function loadGuestNames(model: GuestValuesOwner, namespace: string): Promise<void> {
   try {
-    const guests = await SwiftGuest.getStore<SwiftGuest>().api.list({ namespace });
+    const guests = await SwiftGuest.getStore<SwiftGuest, SwiftGuestStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {

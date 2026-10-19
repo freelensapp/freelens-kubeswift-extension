@@ -1,7 +1,6 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftSnapshot, type SwiftSnapshotApi } from "../api/kubeswift/swiftsnapshot-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import styles from "./swiftsnapshots-page.module.scss";
 import stylesInline from "./swiftsnapshots-page.module.scss?inline";
 
@@ -46,33 +45,31 @@ export interface SwiftSnapshotsPageProps {
   extension: Renderer.LensExtension;
 }
 
-export const SwiftSnapshotsPage = observer((props: SwiftSnapshotsPageProps) =>
-  withErrorPage(props, () => {
-    const store = KubeObject.getStore<KubeObject>();
+export const SwiftSnapshotsPage = observer((props: SwiftSnapshotsPageProps) => {
+  const store = KubeObject.getStore<KubeObject>();
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <KubeObjectListLayout<KubeObject, KubeObjectApi>
-          tableId={`${KubeObject.crd.plural}Table`}
-          className={styles.page}
-          store={store}
-          sortingCallbacks={sortingCallbacks}
-          searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-          renderHeaderTitle={KubeObject.crd.title}
-          renderTableHeader={renderTableHeader}
-          renderTableContents={(object: KubeObject) => [
-            <WithTooltip>{object.getName()}</WithTooltip>,
-            <LinkToNamespace namespace={object.getNs()} />,
-            <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip>{KubeObject.getBackendType(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip>{KubeObject.getContents(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip>{KubeObject.getPhase(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip>{KubeObject.getTotalSize(object) ?? notAvailable}</WithTooltip>,
-            <KubeObjectAge object={object} key="age" />,
-          ]}
-        />
-      </>
-    );
-  }),
-);
+  return (
+    <>
+      <style>{stylesInline}</style>
+      <KubeObjectListLayout<KubeObject, KubeObjectApi>
+        tableId={`${KubeObject.crd.plural}Table`}
+        className={styles.page}
+        store={store}
+        sortingCallbacks={sortingCallbacks}
+        searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+        renderHeaderTitle={KubeObject.crd.title}
+        renderTableHeader={renderTableHeader}
+        renderTableContents={(object: KubeObject) => [
+          <WithTooltip>{object.getName()}</WithTooltip>,
+          <LinkToNamespace namespace={object.getNs()} />,
+          <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip>{KubeObject.getBackendType(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip>{KubeObject.getContents(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip>{KubeObject.getPhase(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip>{KubeObject.getTotalSize(object) ?? notAvailable}</WithTooltip>,
+          <KubeObjectAge object={object} key="age" />,
+        ]}
+      />
+    </>
+  );
+});

@@ -28,7 +28,7 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftImage } from "../api/kubeswift/swiftimage-v1alpha1";
+import { SwiftImage, type SwiftImageStore } from "../api/kubeswift/swiftimage-v1alpha1";
 import {
   CollapsibleSection,
   dialogReopenDelay,
@@ -146,7 +146,7 @@ export function createImageDialogModel(
       storageOpen: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
-    { existingNames: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -228,7 +228,7 @@ export async function loadSecrets(model: ImageDialogModel, namespace: string): P
 /** The namespace's SwiftImage names, for the collision warning. */
 export async function loadImageNames(model: ImageDialogModel, namespace: string): Promise<void> {
   try {
-    const images = await SwiftImage.getStore<SwiftImage>().api.list({ namespace });
+    const images = await SwiftImage.getStore<SwiftImage, SwiftImageStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       model.existingNames = (images ?? []).map((image) => image.getName());

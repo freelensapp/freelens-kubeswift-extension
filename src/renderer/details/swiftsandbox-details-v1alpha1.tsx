@@ -16,7 +16,6 @@ import {
 import { SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import { formatQuantity } from "../api/kubeswift/types";
 import { canOpenSandboxConsole, sandboxConsoleDrawerExplanation } from "../components/console-commands";
-import { withErrorPage } from "../components/error-page";
 import { existingObjectRef, objectExists } from "../components/object-existence";
 import { findDefaultContainerOfPod } from "../components/pod-logs";
 import { useReferenceStores } from "../components/reference-loader";
@@ -604,150 +603,148 @@ export interface SwiftSandboxDetailsProps extends Renderer.Component.KubeObjectD
   extension: Renderer.LensExtension;
 }
 
-export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) =>
-  withErrorPage(props, () => {
-    const { object } = props;
-    const namespace = object.getNs();
-    const nodeName = SwiftSandbox.getNodeName(object);
-    const podName = SwiftSandbox.getPodName(object);
-    const gpuNodeName = object.status?.gpu?.nodeName;
-    const gpuProfileName = object.spec?.gpuProfileRef?.name;
-    const kernelName = object.spec?.kernelProfileRef?.name;
-    const poolName = object.spec?.poolRef?.name;
-    const secretNames = SwiftSandbox.getSecretNames(object);
-    const configMapNames = SwiftSandbox.getConfigMapNames(object);
-    const pvcNames = SwiftSandbox.getPvcNames(object);
-    const scratchStorageClassName = object.spec?.scratchDisk?.blank?.storageClassName;
-    const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
-    const gpuNodeStore = maybe(() => SwiftGPUNode.getStore<SwiftGPUNode>());
-    const kernelStore = maybe(() => SwiftKernel.getStore<SwiftKernel>());
-    const poolStore = maybe(() => SwiftSandboxPool.getStore<SwiftSandboxPool>());
+export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) => {
+  const { object } = props;
+  const namespace = object.getNs();
+  const nodeName = SwiftSandbox.getNodeName(object);
+  const podName = SwiftSandbox.getPodName(object);
+  const gpuNodeName = object.status?.gpu?.nodeName;
+  const gpuProfileName = object.spec?.gpuProfileRef?.name;
+  const kernelName = object.spec?.kernelProfileRef?.name;
+  const poolName = object.spec?.poolRef?.name;
+  const secretNames = SwiftSandbox.getSecretNames(object);
+  const configMapNames = SwiftSandbox.getConfigMapNames(object);
+  const pvcNames = SwiftSandbox.getPvcNames(object);
+  const scratchStorageClassName = object.spec?.scratchDisk?.blank?.storageClassName;
+  const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
+  const gpuNodeStore = maybe(() => SwiftGPUNode.getStore<SwiftGPUNode>());
+  const kernelStore = maybe(() => SwiftKernel.getStore<SwiftKernel>());
+  const poolStore = maybe(() => SwiftSandboxPool.getStore<SwiftSandboxPool>());
 
-    // This drawer resolves more kinds than any other in the extension, so the
-    // request list is assembled conditionally: a store whose references are all
-    // absent contributes no request at all, and a plain sandbox with no
-    // secrets, no scratch disk and no GPU asks for exactly what the SwiftGuest
-    // drawer asks for. `nodesStore` is cluster-scoped and loads cluster-wide;
-    // every namespaced store is asked for the sandbox's own namespace rather
-    // than for whatever the namespace filter happens to hold (DESIGN.md
-    // section 3, issue #38).
-    //
-    // A `lookup=miss` is expected here more often than anywhere else in the
-    // extension and is not a defect: a terminal sandbox's launcher pod is gone,
-    // a blank scratch PVC is deleted with its sandbox, and a pooled sandbox may
-    // name a pool that was removed. Those rows render as plain text, which is
-    // the correct outcome.
-    const requests: ReferenceRequest<unknown>[] = [];
+  // This drawer resolves more kinds than any other in the extension, so the
+  // request list is assembled conditionally: a store whose references are all
+  // absent contributes no request at all, and a plain sandbox with no
+  // secrets, no scratch disk and no GPU asks for exactly what the SwiftGuest
+  // drawer asks for. `nodesStore` is cluster-scoped and loads cluster-wide;
+  // every namespaced store is asked for the sandbox's own namespace rather
+  // than for whatever the namespace filter happens to hold (DESIGN.md
+  // section 3, issue #38).
+  //
+  // A `lookup=miss` is expected here more often than anywhere else in the
+  // extension and is not a defect: a terminal sandbox's launcher pod is gone,
+  // a blank scratch PVC is deleted with its sandbox, and a pooled sandbox may
+  // name a pool that was removed. Those rows render as plain text, which is
+  // the correct outcome.
+  const requests: ReferenceRequest<unknown>[] = [];
 
-    if (nodeName || gpuNodeName) {
-      requests.push({
-        label: "nodes",
-        store: nodesStore,
-        lookups: [{ name: nodeName }, { name: gpuNodeName }],
-      });
-    }
+  if (nodeName || gpuNodeName) {
+    requests.push({
+      label: "nodes",
+      store: nodesStore,
+      lookups: [{ name: nodeName }, { name: gpuNodeName }],
+    });
+  }
 
-    if (podName) {
-      requests.push({
-        label: "pods",
-        store: podsStore,
-        namespaces: [namespace],
-        lookups: [{ name: podName, namespace }],
-      });
-    }
+  if (podName) {
+    requests.push({
+      label: "pods",
+      store: podsStore,
+      namespaces: [namespace],
+      lookups: [{ name: podName, namespace }],
+    });
+  }
 
-    if (secretNames.length > 0) {
-      requests.push({
-        label: "secrets",
-        store: secretsStore,
-        namespaces: [namespace],
-        lookups: secretNames.map((name) => ({ name, namespace })),
-      });
-    }
+  if (secretNames.length > 0) {
+    requests.push({
+      label: "secrets",
+      store: secretsStore,
+      namespaces: [namespace],
+      lookups: secretNames.map((name) => ({ name, namespace })),
+    });
+  }
 
-    if (configMapNames.length > 0) {
-      requests.push({
-        label: "configmaps",
-        store: configMapStore,
-        namespaces: [namespace],
-        lookups: configMapNames.map((name) => ({ name, namespace })),
-      });
-    }
+  if (configMapNames.length > 0) {
+    requests.push({
+      label: "configmaps",
+      store: configMapStore,
+      namespaces: [namespace],
+      lookups: configMapNames.map((name) => ({ name, namespace })),
+    });
+  }
 
-    if (pvcNames.length > 0) {
-      requests.push({
-        label: "persistentvolumeclaims",
-        store: pvcStore,
-        namespaces: [namespace],
-        lookups: pvcNames.map((name) => ({ name, namespace })),
-      });
-    }
+  if (pvcNames.length > 0) {
+    requests.push({
+      label: "persistentvolumeclaims",
+      store: pvcStore,
+      namespaces: [namespace],
+      lookups: pvcNames.map((name) => ({ name, namespace })),
+    });
+  }
 
-    // Only a `blank` scratch disk names a StorageClass, and only then is the
-    // store worth loading: a sandbox with no scratch disk, or one attaching an
-    // existing PVC, contributes no request here. `storageClassStore` is
-    // cluster-scoped, so it takes no namespaces (issue #38).
-    if (scratchStorageClassName) {
-      requests.push({
-        label: "storageclasses",
-        store: storageClassStore,
-        lookups: [{ name: scratchStorageClassName }],
-      });
-    }
+  // Only a `blank` scratch disk names a StorageClass, and only then is the
+  // store worth loading: a sandbox with no scratch disk, or one attaching an
+  // existing PVC, contributes no request here. `storageClassStore` is
+  // cluster-scoped, so it takes no namespaces (issue #38).
+  if (scratchStorageClassName) {
+    requests.push({
+      label: "storageclasses",
+      store: storageClassStore,
+      lookups: [{ name: scratchStorageClassName }],
+    });
+  }
 
-    if (kernelName) {
-      requests.push({
-        label: SwiftKernel.crd.plural,
-        store: kernelStore,
-        namespaces: [namespace],
-        lookups: [{ name: kernelName, namespace }],
-      });
-    }
+  if (kernelName) {
+    requests.push({
+      label: SwiftKernel.crd.plural,
+      store: kernelStore,
+      namespaces: [namespace],
+      lookups: [{ name: kernelName, namespace }],
+    });
+  }
 
-    // `poolRef` is a `LocalObjectReference`, so the pool can only be in this
-    // sandbox's own namespace. A GPU sandbox never carries one - the documented
-    // webhook rules make `poolRef` exclusive with both GPU backends - so this
-    // request and the two below are mutually exclusive in practice.
-    if (poolName) {
-      requests.push({
-        label: SwiftSandboxPool.crd.plural,
-        store: poolStore,
-        namespaces: [namespace],
-        lookups: [{ name: poolName, namespace }],
-      });
-    }
+  // `poolRef` is a `LocalObjectReference`, so the pool can only be in this
+  // sandbox's own namespace. A GPU sandbox never carries one - the documented
+  // webhook rules make `poolRef` exclusive with both GPU backends - so this
+  // request and the two below are mutually exclusive in practice.
+  if (poolName) {
+    requests.push({
+      label: SwiftSandboxPool.crd.plural,
+      store: poolStore,
+      namespaces: [namespace],
+      lookups: [{ name: poolName, namespace }],
+    });
+  }
 
-    if (gpuProfileName) {
-      requests.push({
-        label: SwiftGPUProfile.crd.plural,
-        store: gpuProfileStore,
-        namespaces: [namespace],
-        lookups: [{ name: gpuProfileName, namespace }],
-      });
-    }
+  if (gpuProfileName) {
+    requests.push({
+      label: SwiftGPUProfile.crd.plural,
+      store: gpuProfileStore,
+      namespaces: [namespace],
+      lookups: [{ name: gpuProfileName, namespace }],
+    });
+  }
 
-    // `status.gpu.nodeName` is looked up twice on purpose: once against
-    // `nodesStore` (the Kubernetes node) and once here (the GPU inventory
-    // object named after it), which is the pairing SPEC-0007 settled.
-    if (gpuNodeName) {
-      requests.push({ label: SwiftGPUNode.crd.plural, store: gpuNodeStore, lookups: [{ name: gpuNodeName }] });
-    }
+  // `status.gpu.nodeName` is looked up twice on purpose: once against
+  // `nodesStore` (the Kubernetes node) and once here (the GPU inventory
+  // object named after it), which is the pairing SPEC-0007 settled.
+  if (gpuNodeName) {
+    requests.push({ label: SwiftGPUNode.crd.plural, store: gpuNodeStore, lookups: [{ name: gpuNodeName }] });
+  }
 
-    useReferenceStores(requests);
+  useReferenceStores(requests);
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <SandboxSection object={object} />
-        <GuestSection object={object} />
-        <RuntimeSection object={object} />
-        <RootfsSection object={object} />
-        <ModelSection object={object} />
-        <ScratchDiskSection object={object} />
-        <GpuSection object={object} />
-        <EnvironmentSection object={object} />
-        <KubeObjectConditionsDrawer object={object} />
-      </>
-    );
-  }),
-);
+  return (
+    <>
+      <style>{stylesInline}</style>
+      <SandboxSection object={object} />
+      <GuestSection object={object} />
+      <RuntimeSection object={object} />
+      <RootfsSection object={object} />
+      <ModelSection object={object} />
+      <ScratchDiskSection object={object} />
+      <GpuSection object={object} />
+      <EnvironmentSection object={object} />
+      <KubeObjectConditionsDrawer object={object} />
+    </>
+  );
+});

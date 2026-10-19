@@ -25,7 +25,7 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
+import { SwiftGuestClass, type SwiftGuestClassStore } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import { dialogReopenDelay, Field, ObjectPickerField, QuantityField, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
@@ -118,7 +118,7 @@ export function createGuestClassDialogModel(
       existingNamesUnverified: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
-    { existingNames: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -169,7 +169,7 @@ export async function loadStorageClasses(model: GuestClassDialogModel): Promise<
  */
 export async function loadGuestClassNames(model: GuestClassDialogModel): Promise<void> {
   try {
-    const guestClasses = await SwiftGuestClass.getStore<SwiftGuestClass>().api.list();
+    const guestClasses = await SwiftGuestClass.getStore<SwiftGuestClass, SwiftGuestClassStore>().api.list();
 
     Mobx.runInAction(() => {
       model.existingNames = (guestClasses ?? []).map((guestClass) => guestClass.getName());

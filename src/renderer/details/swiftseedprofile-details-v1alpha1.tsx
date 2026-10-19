@@ -1,7 +1,6 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { type SwiftSeedDataSource, SwiftSeedProfile } from "../api/kubeswift/swiftseedprofile-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { getBlobEditorHeight } from "../utils";
 import styles from "./swiftseedprofile-details.module.scss";
 import stylesInline from "./swiftseedprofile-details.module.scss?inline";
@@ -68,40 +67,38 @@ export interface SwiftSeedProfileDetailsProps extends Renderer.Component.KubeObj
   extension: Renderer.LensExtension;
 }
 
-export const SwiftSeedProfileDetails = observer((props: SwiftSeedProfileDetailsProps) =>
-  withErrorPage(props, () => {
-    const { object } = props;
-    const spec = object.spec;
-    const namespace = object.getNs();
+export const SwiftSeedProfileDetails = observer((props: SwiftSeedProfileDetailsProps) => {
+  const { object } = props;
+  const spec = object.spec;
+  const namespace = object.getNs();
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        {/* The list page already shows the "Datasource" printer column (parity
-            with `kubectl get`); a single-value field ("NoCloud" is the only
-            option the CRD currently declares) does not earn its own drawer
-            section here, and duplicating it under a "Seed Profile" title with
-            no other content of its own was the #25 finding. Each document
-            below carries its own title with real content instead. */}
-        <SeedDocument
-          title="User Data"
-          namespace={namespace}
-          source={SwiftSeedProfile.getUserDataSource(object)}
-          value={spec?.userData}
-        />
-        <SeedDocument
-          title="Meta Data"
-          namespace={namespace}
-          source={SwiftSeedProfile.getMetaDataSource(object)}
-          value={spec?.metaData}
-        />
-        <SeedDocument
-          title="Network Data"
-          namespace={namespace}
-          source={SwiftSeedProfile.getNetworkDataSource(object)}
-          value={spec?.networkData}
-        />
-      </>
-    );
-  }),
-);
+  return (
+    <>
+      <style>{stylesInline}</style>
+      {/* The list page already shows the "Datasource" printer column (parity
+          with `kubectl get`); a single-value field ("NoCloud" is the only
+          option the CRD currently declares) does not earn its own drawer
+          section here, and duplicating it under a "Seed Profile" title with
+          no other content of its own was the #25 finding. Each document
+          below carries its own title with real content instead. */}
+      <SeedDocument
+        title="User Data"
+        namespace={namespace}
+        source={SwiftSeedProfile.getUserDataSource(object)}
+        value={spec?.userData}
+      />
+      <SeedDocument
+        title="Meta Data"
+        namespace={namespace}
+        source={SwiftSeedProfile.getMetaDataSource(object)}
+        value={spec?.metaData}
+      />
+      <SeedDocument
+        title="Network Data"
+        namespace={namespace}
+        source={SwiftSeedProfile.getNetworkDataSource(object)}
+        value={spec?.networkData}
+      />
+    </>
+  );
+});

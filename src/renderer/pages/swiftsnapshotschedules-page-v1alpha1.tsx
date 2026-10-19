@@ -1,7 +1,6 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftSnapshotSchedule, type SwiftSnapshotScheduleApi } from "../api/kubeswift/swiftsnapshotschedule-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import styles from "./swiftsnapshotschedules-page.module.scss";
 import stylesInline from "./swiftsnapshotschedules-page.module.scss?inline";
 
@@ -50,37 +49,35 @@ export interface SwiftSnapshotSchedulesPageProps {
   extension: Renderer.LensExtension;
 }
 
-export const SwiftSnapshotSchedulesPage = observer((props: SwiftSnapshotSchedulesPageProps) =>
-  withErrorPage(props, () => {
-    const store = KubeObject.getStore<KubeObject>();
+export const SwiftSnapshotSchedulesPage = observer((props: SwiftSnapshotSchedulesPageProps) => {
+  const store = KubeObject.getStore<KubeObject>();
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <KubeObjectListLayout<KubeObject, KubeObjectApi>
-          tableId={`${KubeObject.crd.plural}Table`}
-          className={styles.page}
-          store={store}
-          sortingCallbacks={sortingCallbacks}
-          searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-          renderHeaderTitle={KubeObject.crd.title}
-          renderTableHeader={renderTableHeader}
-          renderTableContents={(object: KubeObject) => {
-            const lastScheduleTime = KubeObject.getLastScheduleTime(object);
+  return (
+    <>
+      <style>{stylesInline}</style>
+      <KubeObjectListLayout<KubeObject, KubeObjectApi>
+        tableId={`${KubeObject.crd.plural}Table`}
+        className={styles.page}
+        store={store}
+        sortingCallbacks={sortingCallbacks}
+        searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+        renderHeaderTitle={KubeObject.crd.title}
+        renderTableHeader={renderTableHeader}
+        renderTableContents={(object: KubeObject) => {
+          const lastScheduleTime = KubeObject.getLastScheduleTime(object);
 
-            return [
-              <WithTooltip>{object.getName()}</WithTooltip>,
-              <LinkToNamespace namespace={object.getNs()} />,
-              <WithTooltip>{KubeObject.getSchedule(object) ?? notAvailable}</WithTooltip>,
-              <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
-              <WithTooltip>{KubeObject.getKeepLast(object) ?? "All"}</WithTooltip>,
-              <WithTooltip>{String(KubeObject.isSuspended(object))}</WithTooltip>,
-              lastScheduleTime ? <LocaleDate date={lastScheduleTime} /> : <WithTooltip>{notAvailable}</WithTooltip>,
-              <KubeObjectAge object={object} key="age" />,
-            ];
-          }}
-        />
-      </>
-    );
-  }),
-);
+          return [
+            <WithTooltip>{object.getName()}</WithTooltip>,
+            <LinkToNamespace namespace={object.getNs()} />,
+            <WithTooltip>{KubeObject.getSchedule(object) ?? notAvailable}</WithTooltip>,
+            <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
+            <WithTooltip>{KubeObject.getKeepLast(object) ?? "All"}</WithTooltip>,
+            <WithTooltip>{String(KubeObject.isSuspended(object))}</WithTooltip>,
+            lastScheduleTime ? <LocaleDate date={lastScheduleTime} /> : <WithTooltip>{notAvailable}</WithTooltip>,
+            <KubeObjectAge object={object} key="age" />,
+          ];
+        }}
+      />
+    </>
+  );
+});

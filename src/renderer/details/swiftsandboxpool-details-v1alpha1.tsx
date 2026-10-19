@@ -12,7 +12,6 @@ import {
 } from "../api/kubeswift/swiftsandbox-v1alpha1";
 import { noWarmCapTooltip, SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import { formatQuantity } from "../api/kubeswift/types";
-import { withErrorPage } from "../components/error-page";
 import { existingObjectRef, objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
 import { classifySandbox, classifySandboxPool } from "../components/sandbox-status";
@@ -404,65 +403,63 @@ export interface SwiftSandboxPoolDetailsProps extends Renderer.Component.KubeObj
   extension: Renderer.LensExtension;
 }
 
-export const SwiftSandboxPoolDetails = observer((props: SwiftSandboxPoolDetailsProps) =>
-  withErrorPage(props, () => {
-    const { object } = props;
-    const namespace = object.getNs();
-    const secretNames = SwiftSandboxPool.getSecretNames(object);
-    const kernelName = object.spec?.kernelProfileRef?.name;
-    const gpuProfileName = object.spec?.gpuProfileRef?.name;
-    const kernelStore = maybe(() => SwiftKernel.getStore<SwiftKernel>());
-    const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
+export const SwiftSandboxPoolDetails = observer((props: SwiftSandboxPoolDetailsProps) => {
+  const { object } = props;
+  const namespace = object.getNs();
+  const secretNames = SwiftSandboxPool.getSecretNames(object);
+  const kernelName = object.spec?.kernelProfileRef?.name;
+  const gpuProfileName = object.spec?.gpuProfileRef?.name;
+  const kernelStore = maybe(() => SwiftKernel.getStore<SwiftKernel>());
+  const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
 
-    // Assembled conditionally, exactly as the SwiftSandbox drawer assembles
-    // its own: a store whose references are all absent contributes no request,
-    // so a pool with no secrets, no kernel profile and no GPU asks for nothing
-    // here at all. The SwiftSandbox store the last section needs is declared by
-    // that section itself, because it is a listing rather than a set of names
-    // known in advance.
-    const requests: ReferenceRequest<unknown>[] = [];
+  // Assembled conditionally, exactly as the SwiftSandbox drawer assembles
+  // its own: a store whose references are all absent contributes no request,
+  // so a pool with no secrets, no kernel profile and no GPU asks for nothing
+  // here at all. The SwiftSandbox store the last section needs is declared by
+  // that section itself, because it is a listing rather than a set of names
+  // known in advance.
+  const requests: ReferenceRequest<unknown>[] = [];
 
-    if (secretNames.length > 0) {
-      requests.push({
-        label: "secrets",
-        store: secretsStore,
-        namespaces: [namespace],
-        lookups: secretNames.map((name) => ({ name, namespace })),
-      });
-    }
+  if (secretNames.length > 0) {
+    requests.push({
+      label: "secrets",
+      store: secretsStore,
+      namespaces: [namespace],
+      lookups: secretNames.map((name) => ({ name, namespace })),
+    });
+  }
 
-    if (kernelName) {
-      requests.push({
-        label: SwiftKernel.crd.plural,
-        store: kernelStore,
-        namespaces: [namespace],
-        lookups: [{ name: kernelName, namespace }],
-      });
-    }
+  if (kernelName) {
+    requests.push({
+      label: SwiftKernel.crd.plural,
+      store: kernelStore,
+      namespaces: [namespace],
+      lookups: [{ name: kernelName, namespace }],
+    });
+  }
 
-    if (gpuProfileName) {
-      requests.push({
-        label: SwiftGPUProfile.crd.plural,
-        store: gpuProfileStore,
-        namespaces: [namespace],
-        lookups: [{ name: gpuProfileName, namespace }],
-      });
-    }
+  if (gpuProfileName) {
+    requests.push({
+      label: SwiftGPUProfile.crd.plural,
+      store: gpuProfileStore,
+      namespaces: [namespace],
+      lookups: [{ name: gpuProfileName, namespace }],
+    });
+  }
 
-    useReferenceStores(requests);
+  useReferenceStores(requests);
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <PoolSection object={object} />
-        <SlotShapeSection object={object} />
-        <RootfsSection object={object} />
-        <ModelSection object={object} />
-        <GpuSection object={object} />
-        <ImageEnvironmentSection object={object} />
-        <SandboxesUsingSection object={object} />
-        <KubeObjectConditionsDrawer object={object} />
-      </>
-    );
-  }),
-);
+  return (
+    <>
+      <style>{stylesInline}</style>
+      <PoolSection object={object} />
+      <SlotShapeSection object={object} />
+      <RootfsSection object={object} />
+      <ModelSection object={object} />
+      <GpuSection object={object} />
+      <ImageEnvironmentSection object={object} />
+      <SandboxesUsingSection object={object} />
+      <KubeObjectConditionsDrawer object={object} />
+    </>
+  );
+});

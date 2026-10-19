@@ -28,8 +28,8 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftSandbox } from "../api/kubeswift/swiftsandbox-v1alpha1";
-import { SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
+import { SwiftSandbox, type SwiftSandboxStore } from "../api/kubeswift/swiftsandbox-v1alpha1";
+import { SwiftSandboxPool, type SwiftSandboxPoolStore } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import {
   AddRowButton,
   CollapsibleSection,
@@ -239,7 +239,7 @@ export function createSandboxDialogModel(
       okButtonProps: { disabled: false, primary: true, accent: false },
       onValuesChanged: () => syncOkButton(model),
     },
-    { existingNames: Mobx.observable.ref, onValuesChanged: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef, onValuesChanged: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -328,7 +328,7 @@ export async function loadSandboxNamespacedObjects(model: SandboxDialogModel): P
  */
 export async function loadSandboxPools(model: SandboxDialogModel, namespace: string): Promise<void> {
   try {
-    const pools = await SwiftSandboxPool.getStore<SwiftSandboxPool>().api.list({ namespace });
+    const pools = await SwiftSandboxPool.getStore<SwiftSandboxPool, SwiftSandboxPoolStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -344,7 +344,8 @@ export async function loadSandboxPools(model: SandboxDialogModel, namespace: str
           claimed: pool.status?.claimedReplicas,
           image: pool.spec?.image,
           cpu: pool.spec?.cpu,
-          memory: pool.spec?.memory,
+          // A Quantity may be a number; the facts carry it as text.
+          memory: pool.spec?.memory === undefined ? undefined : String(pool.spec.memory),
           rootfsMode: pool.spec?.rootfsMode,
         })),
       };
@@ -394,7 +395,7 @@ export async function loadScratchClaims(model: SandboxDialogModel, namespace: st
 /** The namespace's SwiftSandbox names, for the collision warning that never blocks. */
 export async function loadSandboxNames(model: SandboxDialogModel, namespace: string): Promise<void> {
   try {
-    const sandboxes = await SwiftSandbox.getStore<SwiftSandbox>().api.list({ namespace });
+    const sandboxes = await SwiftSandbox.getStore<SwiftSandbox, SwiftSandboxStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       model.existingNames = (sandboxes ?? []).map((sandbox) => sandbox.getName());

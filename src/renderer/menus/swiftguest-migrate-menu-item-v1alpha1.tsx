@@ -27,7 +27,6 @@ import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
 import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import { SwiftMigration } from "../api/kubeswift/swiftmigration-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { canMigrate } from "../components/migration-create";
 import {
   createMigrationDialogModel,
@@ -101,53 +100,51 @@ function storedMigrations(guest: MigrationGuestFacts): { existingNames: string[]
   };
 }
 
-export const SwiftGuestMigrateMenuItem = observer((props: SwiftGuestMigrateMenuItemProps) =>
-  withErrorPage(props, () => {
-    const { object, toolbar } = props;
+export const SwiftGuestMigrateMenuItem = observer((props: SwiftGuestMigrateMenuItemProps) => {
+  const { object, toolbar } = props;
 
-    // A terminating object is not a thing you act on (W4's one exception:
-    // absent rather than disabled).
-    if (object.metadata?.deletionTimestamp) {
-      return <></>;
+  // A terminating object is not a thing you act on (W4's one exception:
+  // absent rather than disabled).
+  if (object.metadata?.deletionTimestamp) {
+    return <></>;
+  }
+
+  const verdict = canMigrate(migrationGuestFacts(object));
+  const tooltip = verdict.enabled ? migrateTitle : `${migrateTitle}: ${verdict.reason}`;
+
+  const onClick = () => {
+    const guest = migrationGuestFacts(liveGuest(object));
+
+    // The guard is re-evaluated against the live object before the dialog is
+    // built: `disabled` alone does not stop the click (W4).
+    if (!canMigrate(guest).enabled) {
+      return;
     }
 
-    const verdict = canMigrate(migrationGuestFacts(object));
-    const tooltip = verdict.enabled ? migrateTitle : `${migrateTitle}: ${verdict.reason}`;
-
-    const onClick = () => {
-      const guest = migrationGuestFacts(liveGuest(object));
-
-      // The guard is re-evaluated against the live object before the dialog is
-      // built: `disabled` alone does not stop the click (W4).
-      if (!canMigrate(guest).enabled) {
-        return;
-      }
-
-      // The model is created here, outside React, and outlives every render of
-      // the dialog's message - including the remount a 409 reopen performs.
-      const model = createMigrationDialogModel(
-        guest,
-        { guestClass: storedGuestClass(guest), ...storedMigrations(guest) },
-        new Date(),
-      );
-
-      // The reads on open, none awaited and none able to throw: what they answer
-      // sharpens the form, what they refuse degrades one sentence. The nodes are
-      // the one that matters most here, because the field they fill is required.
-      void loadNodes(model);
-      void loadGuestClass(model);
-      void loadExistingMigrations(model);
-
-      openMigrateDialog(model);
-    };
-
-    return (
-      <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid="swiftguest-migrate-action" title={tooltip}>
-        {/* Upstream's own icon for this verb, and a Material ligature name
-            rather than their asset (ARCHITECTURE.md's licensing boundary). */}
-        <ActionIcon material="swap_horiz" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
-        <span className="title">{migrateTitle}</span>
-      </MenuItem>
+    // The model is created here, outside React, and outlives every render of
+    // the dialog's message - including the remount a 409 reopen performs.
+    const model = createMigrationDialogModel(
+      guest,
+      { guestClass: storedGuestClass(guest), ...storedMigrations(guest) },
+      new Date(),
     );
-  }),
-);
+
+    // The reads on open, none awaited and none able to throw: what they answer
+    // sharpens the form, what they refuse degrades one sentence. The nodes are
+    // the one that matters most here, because the field they fill is required.
+    void loadNodes(model);
+    void loadGuestClass(model);
+    void loadExistingMigrations(model);
+
+    openMigrateDialog(model);
+  };
+
+  return (
+    <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid="swiftguest-migrate-action" title={tooltip}>
+      {/* Upstream's own icon for this verb, and a Material ligature name
+          rather than their asset (ARCHITECTURE.md's licensing boundary). */}
+      <ActionIcon material="swap_horiz" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
+      <span className="title">{migrateTitle}</span>
+    </MenuItem>
+  );
+});

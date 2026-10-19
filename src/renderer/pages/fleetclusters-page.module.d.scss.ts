@@ -1,8 +1,7 @@
 declare const classNames: {
   readonly page: "page";
-  readonly tableCell: "tableCell";
   readonly server: "server";
-  readonly k8s: "k8s";
+  readonly k8S: "k8S";
   readonly guests: "guests";
   readonly condition: "condition";
   readonly status: "status";

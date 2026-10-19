@@ -30,8 +30,8 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
-import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
-import { SwiftRestore } from "../api/kubeswift/swiftrestore-v1alpha1";
+import { SwiftGuest, type SwiftGuestStore } from "../api/kubeswift/swiftguest-v1alpha1";
+import { SwiftRestore, type SwiftRestoreStore } from "../api/kubeswift/swiftrestore-v1alpha1";
 import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
@@ -140,10 +140,10 @@ export function createRestoreDialogModel(
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
     {
-      snapshot: Mobx.observable.ref,
-      source: Mobx.observable.ref,
-      existingRestores: Mobx.observable.ref,
-      existingGuests: Mobx.observable.ref,
+      snapshot: Mobx.observableRef,
+      source: Mobx.observableRef,
+      existingRestores: Mobx.observableRef,
+      existingGuests: Mobx.observableRef,
     },
   );
 
@@ -212,7 +212,9 @@ export async function loadSourceGuest(model: RestoreDialogModel): Promise<void> 
  */
 export async function loadExistingRestores(model: RestoreDialogModel): Promise<void> {
   try {
-    const restores = await SwiftRestore.getStore<SwiftRestore>().api.list({ namespace: model.snapshot.namespace });
+    const restores = await SwiftRestore.getStore<SwiftRestore, SwiftRestoreStore>().api.list({
+      namespace: model.snapshot.namespace,
+    });
 
     if (!restores) {
       return;
@@ -230,7 +232,9 @@ export async function loadExistingRestores(model: RestoreDialogModel): Promise<v
 
 export async function loadExistingGuests(model: RestoreDialogModel): Promise<void> {
   try {
-    const guests = await SwiftGuest.getStore<SwiftGuest>().api.list({ namespace: model.snapshot.namespace });
+    const guests = await SwiftGuest.getStore<SwiftGuest, SwiftGuestStore>().api.list({
+      namespace: model.snapshot.namespace,
+    });
 
     if (!guests) {
       return;

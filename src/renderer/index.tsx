@@ -22,6 +22,11 @@ import { SwiftSandboxPool as SwiftSandboxPoolV1alpha1 } from "./api/kubeswift/sw
 import { SwiftSeedProfile as SwiftSeedProfileV1alpha1 } from "./api/kubeswift/swiftseedprofile-v1alpha1";
 import { SwiftSnapshot as SwiftSnapshotV1alpha1 } from "./api/kubeswift/swiftsnapshot-v1alpha1";
 import { SwiftSnapshotSchedule as SwiftSnapshotScheduleV1alpha1 } from "./api/kubeswift/swiftsnapshotschedule-v1alpha1";
+import {
+  withDetailsErrorBoundary,
+  withMenuItemErrorBoundary,
+  withPageErrorBoundary,
+} from "./components/error-boundary";
 import { FleetClusterDetails as FleetClusterDetailsV1alpha1 } from "./details/fleetcluster-details-v1alpha1";
 import { SwiftGPUNodeDetails as SwiftGPUNodeDetailsV1alpha1 } from "./details/swiftgpunode-details-v1alpha1";
 import { SwiftGPUProfileDetails as SwiftGPUProfileDetailsV1alpha1 } from "./details/swiftgpuprofile-details-v1alpha1";
@@ -64,12 +69,13 @@ import { SwiftSnapshotSchedulesPage as SwiftSnapshotSchedulesPageV1alpha1 } from
 /**
  * Renderer-process entry point of the extension.
  *
- * The KubeSwift resource views are being implemented milestone by milestone
- * (see `docs/development/ROADMAP.md`); each one registers itself here through
- * `kubeObjectDetailItems`, `clusterPages`, and `clusterPageMenus`.
+ * Each KubeSwift view registers itself here through `kubeObjectDetailItems`,
+ * `kubeObjectMenuItems`, `clusterPages` and `clusterPageMenus`, each mapped through
+ * the error boundary of `components/error-boundary.tsx`, and every kind is one of
+ * the extension's `customResources`.
  */
 export default class KubeSwiftRenderer extends Renderer.LensExtension {
-  kubeObjectDetailItems = [
+  kubeObjectDetailItems: Renderer.LensExtension["kubeObjectDetailItems"] = [
     {
       kind: SwiftGuestV1alpha1.kind,
       apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
@@ -225,7 +231,7 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         ),
       },
     },
-  ];
+  ].map((registration) => withDetailsErrorBoundary(this, registration));
 
   // The extension's first write surface (M6, SPEC-0010). Two registrations
   // rather than one component emitting two items: the host's optional `visible`
@@ -244,7 +250,7 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
   //
   // Matching is on kind AND full apiVersion, so no other project's SwiftGuest
   // could ever receive these.
-  kubeObjectMenuItems = [
+  kubeObjectMenuItems: Renderer.LensExtension["kubeObjectMenuItems"] = [
     {
       kind: SwiftGuestV1alpha1.kind,
       apiVersions: SwiftGuestV1alpha1.crd.apiVersions,
@@ -329,9 +335,9 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         ),
       },
     },
-  ];
+  ].map((registration) => withMenuItemErrorBoundary(this, registration));
 
-  clusterPages = [
+  clusterPages: Renderer.LensExtension["clusterPages"] = [
     {
       id: "swiftguests",
       components: {
@@ -426,6 +432,26 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         Page: () => <FleetClustersPageV1alpha1 extension={this} />,
       },
     },
+  ].map((registration) => withPageErrorBoundary(this, registration));
+
+  // Every kind has a page and a sidebar entry of its own under "KubeSwift", so the Custom Resources tree of
+  // the cluster sidebar would list it a second time.
+  customResources = [
+    FleetClusterV1alpha1,
+    SwiftGPUNodeV1alpha1,
+    SwiftGPUProfileV1alpha1,
+    SwiftGuestV1alpha1,
+    SwiftGuestClassV1alpha1,
+    SwiftGuestPoolV1alpha1,
+    SwiftImageV1alpha1,
+    SwiftKernelV1alpha1,
+    SwiftMigrationV1alpha1,
+    SwiftRestoreV1alpha1,
+    SwiftSandboxV1alpha1,
+    SwiftSandboxPoolV1alpha1,
+    SwiftSeedProfileV1alpha1,
+    SwiftSnapshotV1alpha1,
+    SwiftSnapshotScheduleV1alpha1,
   ];
 
   clusterPageMenus = [

@@ -26,7 +26,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
-import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
+import { SwiftSnapshot, type SwiftSnapshotStore } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import stylesInline from "./create-dialog.module.scss?inline";
@@ -114,7 +114,7 @@ export function createSnapshotDialogModel(
       secrets: { state: "loading", names: [] } as SecretPickerFacts,
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
-    { guest: Mobx.observable.ref, existing: Mobx.observable.ref },
+    { guest: Mobx.observableRef, existing: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -167,7 +167,9 @@ export async function loadSecretNames(model: SnapshotDialogModel, namespace: str
  */
 export async function loadExistingSnapshots(model: SnapshotDialogModel): Promise<void> {
   try {
-    const snapshots = await SwiftSnapshot.getStore<SwiftSnapshot>().api.list({ namespace: model.guest.namespace });
+    const snapshots = await SwiftSnapshot.getStore<SwiftSnapshot, SwiftSnapshotStore>().api.list({
+      namespace: model.guest.namespace,
+    });
 
     if (!snapshots) {
       return;

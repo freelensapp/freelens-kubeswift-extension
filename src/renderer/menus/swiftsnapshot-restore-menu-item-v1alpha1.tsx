@@ -27,7 +27,6 @@ import { maybe } from "../../common/utils";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftRestore } from "../api/kubeswift/swiftrestore-v1alpha1";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { canRestore, targetNodeApplies } from "../components/restore-create";
 import {
   createRestoreDialogModel,
@@ -105,67 +104,55 @@ function storedGuests(namespace: string): ExistingGuestFacts[] {
     .map((guest) => ({ name: guest.getName(), nodeName: guest.status?.nodeName || guest.spec?.nodeName }));
 }
 
-export const SwiftSnapshotRestoreMenuItem = observer((props: SwiftSnapshotRestoreMenuItemProps) =>
-  withErrorPage(props, () => {
-    const { object, toolbar } = props;
+export const SwiftSnapshotRestoreMenuItem = observer((props: SwiftSnapshotRestoreMenuItemProps) => {
+  const { object, toolbar } = props;
 
-    // A terminating object is not a thing you act on (W4's one exception:
-    // absent rather than disabled).
-    if (object.metadata?.deletionTimestamp) {
-      return <></>;
+  // A terminating object is not a thing you act on (W4's one exception:
+  // absent rather than disabled).
+  if (object.metadata?.deletionTimestamp) {
+    return <></>;
+  }
+
+  const verdict = canRestore(restoreSnapshotFacts(object));
+  const tooltip = verdict.enabled ? restoreTitle : `${restoreTitle}: ${verdict.reason}`;
+
+  const onClick = () => {
+    const snapshot = restoreSnapshotFacts(liveSnapshot(object));
+
+    // The guard is re-evaluated against the live object before the dialog is
+    // built: `disabled` alone does not stop the click (W4).
+    if (!canRestore(snapshot).enabled) {
+      return;
     }
 
-    const verdict = canRestore(restoreSnapshotFacts(object));
-    const tooltip = verdict.enabled ? restoreTitle : `${restoreTitle}: ${verdict.reason}`;
-
-    const onClick = () => {
-      const snapshot = restoreSnapshotFacts(liveSnapshot(object));
-
-      // The guard is re-evaluated against the live object before the dialog is
-      // built: `disabled` alone does not stop the click (W4).
-      if (!canRestore(snapshot).enabled) {
-        return;
-      }
-
-      // The model is created here, outside React, and outlives every render of
-      // the dialog's message - including the remount a 409 reopen performs.
-      const model = createRestoreDialogModel(
-        snapshot,
-        storedRestoreNames(snapshot.namespace),
-        storedGuests(snapshot.namespace),
-        new Date(),
-      );
-
-      // The reads on open, none awaited and none able to throw: what they answer
-      // sharpens the form, what they refuse degrades one sentence. The nodes are
-      // only fetched where the field they fill exists at all (W12's option
-      // dropping applied to the request, not only to the control).
-      void loadSourceGuest(model);
-      void loadExistingRestores(model);
-      void loadExistingGuests(model);
-
-      if (targetNodeApplies(snapshot)) {
-        void loadNodeNames(model);
-      }
-
-      openRestoreDialog(model);
-    };
-
-    return (
-      <MenuItem
-        onClick={onClick}
-        disabled={!verdict.enabled}
-        data-testid="swiftsnapshot-restore-action"
-        title={tooltip}
-      >
-        <ActionIcon
-          material="settings_backup_restore"
-          toolbar={toolbar}
-          tooltip={tooltip}
-          disabled={!verdict.enabled}
-        />
-        <span className="title">{restoreTitle}</span>
-      </MenuItem>
+    // The model is created here, outside React, and outlives every render of
+    // the dialog's message - including the remount a 409 reopen performs.
+    const model = createRestoreDialogModel(
+      snapshot,
+      storedRestoreNames(snapshot.namespace),
+      storedGuests(snapshot.namespace),
+      new Date(),
     );
-  }),
-);
+
+    // The reads on open, none awaited and none able to throw: what they answer
+    // sharpens the form, what they refuse degrades one sentence. The nodes are
+    // only fetched where the field they fill exists at all (W12's option
+    // dropping applied to the request, not only to the control).
+    void loadSourceGuest(model);
+    void loadExistingRestores(model);
+    void loadExistingGuests(model);
+
+    if (targetNodeApplies(snapshot)) {
+      void loadNodeNames(model);
+    }
+
+    openRestoreDialog(model);
+  };
+
+  return (
+    <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid="swiftsnapshot-restore-action" title={tooltip}>
+      <ActionIcon material="settings_backup_restore" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
+      <span className="title">{restoreTitle}</span>
+    </MenuItem>
+  );
+});
