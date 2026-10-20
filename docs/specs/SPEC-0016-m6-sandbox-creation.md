@@ -20,6 +20,7 @@
   so the tag is the whole basis and there is no drift caveat to carry.
   UX reference kubeswift-ui `main` `c4e53ce`, the commit SPEC-0013
   reviewed. Recon date 2026-08-31.
+- **Revised for KubeSwift `v0.18.0`:** by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md): the network, probes, drain period, artifacts, secret files and pod labels, the corrected footers.
 - **Author / date:** Claude with Roberto, 2026-08-31
 
 ## Goal

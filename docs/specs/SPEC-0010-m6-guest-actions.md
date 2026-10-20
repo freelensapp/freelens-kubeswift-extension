@@ -10,6 +10,7 @@
 - **Milestone:** M6 (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (schema re-read at `main`, see
   "Upstream recon"); UX reference kubeswift-ui `v0.12.3`
+- **Revised for KubeSwift `v0.18.0`:** by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md): the Stop confirmation's note on its two writes.
 - **Author / date:** Claude with Roberto, 2026-08-29
 
 ## Goal

@@ -14,6 +14,7 @@
   upstream `main` `d66cff5`, so there is no unreleased schema drift either;
   controller, webhook, `swiftctl` and docs recon run at `d66cff5` on
   2026-08-30). UX reference kubeswift-ui `main` `c4e53ce` (2026-08-30).
+- **Revised for KubeSwift `v0.18.0`:** by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md): the derived local directory, the TagInUse warning, the storage-location destination, the oci deletion policy.
 - **Author / date:** Claude with Roberto, 2026-08-30
 
 ## Goal

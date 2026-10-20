@@ -15,6 +15,7 @@
   byte-identical, so the tag is the basis exactly as it was for
   SPEC-0013. UX reference kubeswift-ui `main` `c4e53ce`, the same
   commit SPEC-0013 reviewed. Recon date 2026-08-31.
+- **Revised for KubeSwift `v0.18.0`:** by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md): the guest class's placement fields and shared base disk, the image form's footer without `upload`.
 - **Author / date:** Claude with Roberto, 2026-08-31
 
 ## Goal
