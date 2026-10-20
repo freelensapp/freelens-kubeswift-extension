@@ -1,0 +1,23 @@
+# Merge patch applied to the status subresource of the cluster-scoped
+# swiftclusterstoragelocation/e2e-cluster-location-down. See
+# swiftstoragelocation-e2e-location-team.yaml for why statuses are injected.
+#
+# The unreachable branch: Reachable is False, which makes the verdict
+# Unreachable, and it is the NEWER of the two failing conditions, so its dial
+# error is what the Status column shows.
+status:
+  observedGeneration: 1
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: RegistryUnreachable
+      message: The registry of this location cannot be used.
+      lastTransitionTime: "2026-10-19T08:20:00Z"
+      observedGeneration: 1
+    - type: Reachable
+      status: "False"
+      reason: DialFailed
+      message: >-
+        dial tcp 10.10.0.42:80: connect: connection refused
+      lastTransitionTime: "2026-10-19T08:25:00Z"
+      observedGeneration: 1

@@ -24,24 +24,28 @@
 // results, and would double the number of preferences round-trips this pass
 // needs. See "Notes and deviations" in SPEC-0006.
 
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as cluster from "../helpers/kubeswift-cluster";
 import * as kubeswift from "../helpers/kubeswift-extension";
 import { KUBESWIFT_VIEWS } from "../helpers/kubeswift-views";
 import * as pr from "../helpers/pre-review";
-import * as utils from "../helpers/utils";
 
-import type { ElectronApplication, Frame, Page } from "playwright";
+import type { Frame, Page } from "playwright";
 
-// Connecting a cluster, installing an extension, and walking ten views twice
+// Connecting a cluster, installing an extension, and walking nineteen views twice
 // (both themes, with drawer links each re-navigating and reopening) is slow,
 // and this pass is meant to run before a milestone review, not on every PR.
 const TIMEOUT = 20 * 60 * 1000;
 
-describe("Pre-review agent pass against the demo cluster", () => {
-  let app: ElectronApplication;
+// Run only by `pnpm pre-review`, against the demo cluster: `pnpm test:integration` runs the other suites, against
+// the E2E cluster.
+const preReview = process.env.KUBESWIFT_PRE_REVIEW === "1";
+
+describe.skipIf(!preReview || !(await kubeswift.appReady()))("Pre-review agent pass against the demo cluster", () => {
+  let session: kubeswift.AppSession | undefined;
   let window: Page;
   let frame: Frame;
-  let cleanup: undefined | (() => Promise<void>);
+  let clusterRoute: string;
 
   const views: pr.ViewReport[] = [];
 
@@ -53,16 +57,13 @@ describe("Pre-review agent pass against the demo cluster", () => {
       );
     }
 
-    ({ app, window, cleanup } = await utils.start());
-
-    const kubeconfig = await cluster.publishKubeconfig();
-
-    await utils.clickWelcomeButton(window);
-    await kubeswift.installExtension(app, window);
-    await kubeswift.dismissNotifications(window);
-    await kubeswift.navigateToCatalog(app);
-
-    frame = await cluster.openClusterFromCatalog(window, kubeconfig);
+    session = await kubeswift.connectApp();
+    window = session.window;
+    await kubeswift.installExtension(session);
+    ({ frame, route: clusterRoute } = await cluster.openKubeSwiftCluster(window));
+    // The first pass is the dark one whatever theme the profile had: a fresh
+    // profile follows the system's.
+    await kubeswift.setColorTheme(window, "Dark", clusterRoute);
 
     // See kubeswift-e2e.tests.ts: a freshly connected cluster only shows the
     // `default` namespace until the filter is moved once.
@@ -71,7 +72,7 @@ describe("Pre-review agent pass against the demo cluster", () => {
   }, TIMEOUT);
 
   afterAll(async () => {
-    await cleanup?.();
+    await session?.close();
   }, TIMEOUT);
 
   /**
@@ -164,14 +165,14 @@ describe("Pre-review agent pass against the demo cluster", () => {
         await captureView(view, "dark", true);
       }
 
-      await kubeswift.setColorTheme(app, window, "Light");
+      await kubeswift.setColorTheme(window, "Light", clusterRoute);
 
       for (const view of KUBESWIFT_VIEWS) {
         await captureView(view, "light", false);
       }
 
       // Leave the app in its default theme for whoever inspects it next.
-      await kubeswift.setColorTheme(app, window, "Dark");
+      await kubeswift.setColorTheme(window, "Dark", clusterRoute);
 
       const reportPath = await pr.writeReport(views);
 

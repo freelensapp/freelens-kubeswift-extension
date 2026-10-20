@@ -25,17 +25,18 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
+import { SwiftGuestClass, type SwiftGuestClassStore } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import { dialogReopenDelay, Field, ObjectPickerField, QuantityField, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import {
   coreSchedulingNote,
+  cpuPinningStaticFact,
   createGuestClassTitle,
   defaultGuestClassForm,
   guestClassAccessModes,
   guestClassCoreSchedulingPolicies,
+  guestClassCpuPinnings,
   guestClassCreateErrors,
   guestClassCreateFailureMessage,
   guestClassCreatePayload,
@@ -43,19 +44,27 @@ import {
   guestClassCreateSummary,
   guestClassCreateWarnings,
   guestClassDiskFormats,
+  guestClassHugepages,
   guestClassLiveMigrationFact,
   guestClassScopeFact,
   guestClassSizingRulesFact,
+  guestClassSmtPolicies,
   guestClassStorageFact,
   guestClassSubmitBlockReason,
   guestClassVolumeModes,
+  hugepagesNote,
   quantityGrammar,
+  sharedBaseDiskWarning,
+  smtPolicyNote,
 } from "./guestclass-create";
 import { conflictStatusCode } from "./migration-create";
 
 import type {
   SwiftGuestClassCoreScheduling,
+  SwiftGuestClassCpuPinning,
   SwiftGuestClassDiskFormat,
+  SwiftGuestClassHugepages,
+  SwiftGuestClassSmtPolicy,
 } from "../api/kubeswift/swiftguestclass-v1alpha1";
 import type { ObjectPickerFacts } from "./create-dialog";
 import type { GuestClassCreateInputs, GuestClassFormValues } from "./guestclass-create";
@@ -63,7 +72,7 @@ import type { GuestClassCreateInputs, GuestClassFormValues } from "./guestclass-
 const { observer } = MobxReact;
 
 const {
-  Component: { ConfirmDialog, Input, Notifications, Select },
+  Component: { Checkbox, ConfirmDialog, Input, Notifications, Select },
   K8sApi: { storageClassApi, storageClassStore },
 } = Renderer;
 
@@ -118,7 +127,7 @@ export function createGuestClassDialogModel(
       existingNamesUnverified: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
-    { existingNames: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -169,7 +178,7 @@ export async function loadStorageClasses(model: GuestClassDialogModel): Promise<
  */
 export async function loadGuestClassNames(model: GuestClassDialogModel): Promise<void> {
   try {
-    const guestClasses = await SwiftGuestClass.getStore<SwiftGuestClass>().api.list();
+    const guestClasses = await SwiftGuestClass.getStore<SwiftGuestClass, SwiftGuestClassStore>().api.list();
 
     Mobx.runInAction(() => {
       model.existingNames = (guestClasses ?? []).map((guestClass) => guestClass.getName());
@@ -324,7 +333,6 @@ export const GuestClassCreateForm = observer(({ model }: { model: GuestClassDial
 
   return (
     <div className={styles.form} data-testid="swiftguestclass-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftGuestClass</b>
@@ -401,6 +409,59 @@ export const GuestClassCreateForm = observer(({ model }: { model: GuestClassDial
           }
         />
       </Field>
+
+      <Field
+        label="CPU pinning"
+        hint={model.values.cpuPinning === "static" ? cpuPinningStaticFact : "The host scheduler places the vCPUs."}
+      >
+        <Select
+          id="guestclass-create-cpu-pinning"
+          themeName="light"
+          menuClass={styles.selectMenu}
+          value={model.values.cpuPinning}
+          options={guestClassCpuPinnings.map((pinning) => ({ value: pinning, label: pinning }))}
+          onChange={(option: { value: SwiftGuestClassCpuPinning } | null) =>
+            option && updateGuestClassForm(model, { cpuPinning: option.value })
+          }
+        />
+      </Field>
+
+      {model.values.cpuPinning === "static" ? (
+        <Field label="SMT policy" hint={smtPolicyNote(model.values.smtPolicy)}>
+          <Select
+            id="guestclass-create-smt-policy"
+            themeName="light"
+            menuClass={styles.selectMenu}
+            value={model.values.smtPolicy}
+            options={guestClassSmtPolicies.map((policy) => ({ value: policy, label: policy }))}
+            onChange={(option: { value: SwiftGuestClassSmtPolicy } | null) =>
+              option && updateGuestClassForm(model, { smtPolicy: option.value })
+            }
+          />
+        </Field>
+      ) : null}
+
+      <Field label="Hugepages" hint={hugepagesNote(model.values.hugepages) ?? "Ordinary pages."}>
+        <Select
+          id="guestclass-create-hugepages"
+          themeName="light"
+          menuClass={styles.selectMenu}
+          value={model.values.hugepages}
+          options={guestClassHugepages.map((size) => ({ value: size, label: size || "none" }))}
+          onChange={(option: { value: SwiftGuestClassHugepages } | null) =>
+            option && updateGuestClassForm(model, { hugepages: option.value })
+          }
+        />
+      </Field>
+
+      <div className={styles.checkboxRow} data-testid="guestclass-create-shared-base-disk">
+        <Checkbox
+          label="Shared base disk"
+          value={model.values.sharedBaseDisk}
+          onChange={(value: boolean) => updateGuestClassForm(model, { sharedBaseDisk: value })}
+        />
+        {model.values.sharedBaseDisk ? <div className={styles.warning}>{sharedBaseDiskWarning}</div> : null}
+      </div>
 
       <GuestClassWriteSummary model={model} />
 

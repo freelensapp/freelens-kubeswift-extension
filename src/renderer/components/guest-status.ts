@@ -15,14 +15,17 @@
 // formatting inside, so it stays unit-testable with plain objects and without
 // stubbing the host global.
 //
-// Nothing here keys on a condition TYPE. SwiftGuest reports several
+// The state keys on no condition TYPE. SwiftGuest reports several
 // (`Resolved`, `PodScheduled`, `GuestRunning`, `StorageReady`, `NetworkReady`,
 // `GPUAllocated` and others), but they live in Go constants and prose rather
 // than in the CRD manifest, so a selector keyed on them would go silently blank
 // the day a controller adds one more. The one exception SPEC-0009 allowed - a
 // condition type the manifest publishes as a printer column - does not exist
 // here: SwiftGuest's printer columns key on `status.phase`, so this classifier
-// does too.
+// does too. One explanation reads `Resolved`, because the KubeSwift v0.15.0
+// upgrade notes name it as the place to look for a guest that waits for a
+// missing reference (SPEC-0019); without it the explanation stays the generic
+// one, and the state is `Pending` either way.
 
 import { conditionMessage } from "./condition-message";
 
@@ -49,6 +52,9 @@ export const guestFailedPhase = "Failed";
  * absent included, meaning "run".
  */
 export const stoppedRunPolicy = "Stopped";
+
+/** The condition KubeSwift v0.15.0 and later set to False while a reference of the guest is missing. */
+export const resolvedConditionType = "Resolved";
 
 /** The phases from which a `Stopped` policy is still on its way to taking effect. */
 const notYetStoppedPhases: string[] = [guestRunningPhase, guestSchedulingPhase, guestPendingPhase];
@@ -82,6 +88,13 @@ export interface GuestCondition {
   className: GuestStatusClass;
   /** One line saying how that state was reached, the last resort of the Status column. */
   explanation: string;
+}
+
+/** Whether the guest reports `Resolved=False`: since KubeSwift v0.15.0 a missing reference keeps it `Pending`. */
+function waitsForReference(status?: GuestStatusFacts): boolean {
+  return (status?.conditions ?? []).some(
+    (condition) => condition.type === resolvedConditionType && condition.status === "False",
+  );
 }
 
 /**
@@ -141,7 +154,11 @@ export function classifyGuest(spec?: GuestSpecFacts, status?: GuestStatusFacts):
       return {
         state: guestStates.pending,
         className: "warning",
-        explanation: "The controller has accepted the guest and is preparing what it needs to boot",
+        explanation: waitsForReference(status)
+          ? "The guest waits for an object it references to exist or to be ready (its image, class, seed profile, " +
+            "kernel or a data disk's source): KubeSwift checks again every 10 seconds, and a misspelt name keeps " +
+            "it here"
+          : "The controller has accepted the guest and is preparing what it needs to boot",
       };
     case guestFailedPhase:
       return {

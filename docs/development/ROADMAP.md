@@ -123,6 +123,18 @@ here when it is written.
 | VM serial console | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Done |
 | Sandbox workload console tail (the interactive in-guest shell is excluded: it needs the gateway's vsock frame protocol, which is upstream's AGPL wire format, see SPEC-0017) | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Done |
 
+### v2 port
+
+The extension moves to the Freelens v2 extension API, and 1.0.0 is its first
+release for Freelens 2.x. The port changes no behaviour of M1-M7; it comes
+with the alignment to the current KubeSwift release (SPEC-0019: compatibility,
+new fields, new kinds and the new fields in the forms).
+
+| Feature | Spec | Status |
+| --- | --- | --- |
+| Port to the Freelens v2 extension API (data layer, views, writes, console, test suites) | [SPEC-0018](../specs/SPEC-0018-v2-port.md) | Approved |
+| Alignment to KubeSwift v0.18.0 | [SPEC-0019](../specs/SPEC-0019-kubeswift-v0.18.md) | Approved |
+
 ### Cross-cutting
 
 | Item | Status |
@@ -146,3 +158,4 @@ here when it is written.
 - All milestones M1-M7 implemented, each behind an approved spec.
 - Every feature covered by non-regression tests (unit + E2E) green in CI.
 - Docs (specs, architecture, roadmap) aligned with the shipped behavior.
+- Runs on Freelens 2.x, on the v2 extension API ([SPEC-0018](../specs/SPEC-0018-v2-port.md)).

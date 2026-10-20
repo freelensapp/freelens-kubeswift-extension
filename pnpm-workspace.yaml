@@ -1,11 +1,19 @@
-# pnpm 11 renamed onlyBuiltDependencies to the allowBuilds map; the old key
-# is ignored and install fails with ERR_PNPM_IGNORED_BUILDS. Same packages
-# as before: they may run their install scripts, everything else stays blocked.
 allowBuilds:
-  "@parcel/watcher": true
+  '@parcel/watcher': true
   electron: true
-  esbuild: true
-  node-pty: true
-  playwright: true
+  esbuild: false
+
+engineStrict: true
+
+# pnpm holds back any version younger than minimumReleaseAge (1 day by
+# default). @freelensapp/extensions is pinned exactly to a nightly that is
+# often published on the day it is adopted.
+minimumReleaseAgeExclude:
+  - '@freelensapp/extensions'
 
 shellEmulator: true
+
+# Fail the install, instead of printing one warning line, when a library the
+# extension shares with the host is outside the peer range of
+# @freelensapp/extensions.
+strictPeerDependencies: true

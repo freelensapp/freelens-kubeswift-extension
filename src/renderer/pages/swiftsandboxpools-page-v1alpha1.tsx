@@ -1,12 +1,10 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftSandboxPool, type SwiftSandboxPoolApi } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { createSandboxPoolTitle } from "../components/sandbox-create";
 import { openCreateSandboxPoolDialog } from "../components/sandbox-pool-create-dialog";
 import { classifySandboxPool, sandboxPoolMessage } from "../components/sandbox-status";
 import styles from "./swiftsandboxpools-page.module.scss";
-import stylesInline from "./swiftsandboxpools-page.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -62,47 +60,42 @@ export interface SwiftSandboxPoolsPageProps {
   extension: Renderer.LensExtension;
 }
 
-export const SwiftSandboxPoolsPage = observer((props: SwiftSandboxPoolsPageProps) =>
-  withErrorPage(props, () => {
-    const store = KubeObject.getStore<KubeObject>();
+export const SwiftSandboxPoolsPage = observer((props: SwiftSandboxPoolsPageProps) => {
+  const store = KubeObject.getStore<KubeObject>();
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <KubeObjectListLayout<KubeObject, KubeObjectApi>
-          tableId={`${KubeObject.crd.plural}Table`}
-          className={styles.page}
-          store={store}
-          sortingCallbacks={sortingCallbacks}
-          searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-          renderHeaderTitle={KubeObject.crd.title}
-          // The host's own floating create affordance, the idiom SPEC-0013
-          // established and six pages already carry: never a custom control
-          // where a native one exists (DESIGN.md pillar 1). The stylesheet's
-          // clearance rule goes with it.
-          addRemoveButtons={{ onAdd: openCreateSandboxPoolDialog, addTooltip: createSandboxPoolTitle }}
-          renderTableHeader={renderTableHeader}
-          renderTableContents={(object: KubeObject) => {
-            const condition = classifySandboxPool(object.status);
+  return (
+    <KubeObjectListLayout<KubeObject, KubeObjectApi>
+      tableId={`${KubeObject.crd.plural}Table`}
+      className={styles.page}
+      store={store}
+      sortingCallbacks={sortingCallbacks}
+      searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+      renderHeaderTitle={KubeObject.crd.title}
+      // The host's own floating create affordance, the idiom SPEC-0013
+      // established and six pages already carry: never a custom control
+      // where a native one exists (DESIGN.md pillar 1). The stylesheet's
+      // clearance rule goes with it.
+      addRemoveButtons={{ onAdd: openCreateSandboxPoolDialog, addTooltip: createSandboxPoolTitle }}
+      renderTableHeader={renderTableHeader}
+      renderTableContents={(object: KubeObject) => {
+        const condition = classifySandboxPool(object.status);
 
-            return [
-              <WithTooltip key="name">{object.getName()}</WithTooltip>,
-              <NamespaceSelectBadge key="namespace" namespace={object.getNs()} />,
-              // Digests are long, so the cell truncates and the tooltip carries
-              // the whole reference.
-              <WithTooltip key="image">{KubeObject.getImage(object) ?? notAvailable}</WithTooltip>,
-              // The desired count, then the actual one, then the in-use one.
-              // `0` is a fact in all three and is kept as such.
-              <WithTooltip key="minWarm">{KubeObject.getMinWarm(object) ?? notAvailable}</WithTooltip>,
-              <WithTooltip key="warm">{KubeObject.getWarmReplicas(object) ?? notAvailable}</WithTooltip>,
-              <WithTooltip key="claimed">{KubeObject.getClaimedReplicas(object) ?? notAvailable}</WithTooltip>,
-              <Badge key="condition" className={condition.className} label={condition.state} />,
-              <WithTooltip key="status">{sandboxPoolMessage(object.status)}</WithTooltip>,
-              <KubeObjectAge object={object} key="age" />,
-            ];
-          }}
-        />
-      </>
-    );
-  }),
-);
+        return [
+          <WithTooltip key="name">{object.getName()}</WithTooltip>,
+          <NamespaceSelectBadge key="namespace" namespace={object.getNs()} />,
+          // Digests are long, so the cell truncates and the tooltip carries
+          // the whole reference.
+          <WithTooltip key="image">{KubeObject.getImage(object) ?? notAvailable}</WithTooltip>,
+          // The desired count, then the actual one, then the in-use one.
+          // `0` is a fact in all three and is kept as such.
+          <WithTooltip key="minWarm">{KubeObject.getMinWarm(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip key="warm">{KubeObject.getWarmReplicas(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip key="claimed">{KubeObject.getClaimedReplicas(object) ?? notAvailable}</WithTooltip>,
+          <Badge key="condition" className={condition.className} label={condition.state} />,
+          <WithTooltip key="status">{sandboxPoolMessage(object.status)}</WithTooltip>,
+          <KubeObjectAge object={object} key="age" />,
+        ];
+      }}
+    />
+  );
+});

@@ -15,7 +15,7 @@ import type { Condition, LocalObjectReference, Quantity } from "./types";
  * speedup and is never a failure.
  *
  * The interfaces below are written from the published CustomResourceDefinition
- * schema (KubeSwift v0.13.12). As in every model of this extension, values the
+ * schema (KubeSwift v0.18.0). As in every model of this extension, values the
  * schema constrains with an `enum` are still typed as plain strings, so a
  * future controller writing a fifth phase cannot break a view (SPEC-0008).
  *
@@ -78,6 +78,8 @@ export interface SwiftSandboxPoolStatus {
   /** The warm-slot label selector, serialized as a string by the scale subresource. */
   selector?: string;
   warmReplicas?: number;
+  /** Unclaimed slots not ready yet. A checkout never takes one; with no ready slot it boots cold. */
+  warmingReplicas?: number;
 }
 
 /** What `maxWarm: 0` (or an absent `maxWarm`) means: a sentinel, not a count. */
@@ -127,6 +129,9 @@ export class SwiftSandboxPool extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftSandboxPoolStatus,
   SwiftSandboxPoolSpec
 > {
+  declare kind: "SwiftSandboxPool";
+  declare apiVersion: "sandbox.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftSandboxPool";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/sandbox.kubeswift.io/v1alpha1/swiftsandboxpools";
@@ -176,6 +181,11 @@ export class SwiftSandboxPool extends Renderer.K8sApi.LensExtensionKubeObject<
   /** The actual number of Ready, pre-booted, unclaimed slots. */
   static getWarmReplicas(object: SwiftSandboxPool): number | undefined {
     return object.status?.warmReplicas;
+  }
+
+  /** How many unclaimed slots are still being scheduled, materialized or booted. */
+  static getWarmingReplicas(object: SwiftSandboxPool): number | undefined {
+    return object.status?.warmingReplicas;
   }
 
   /** How many slots are currently checked out to a sandbox. */

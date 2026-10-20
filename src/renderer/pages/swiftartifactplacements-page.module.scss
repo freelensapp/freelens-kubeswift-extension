@@ -1,0 +1,29 @@
+.page {
+  :global(.TableCell) {
+    &.pool {
+      flex-grow: 1;
+    }
+
+    // The two counts sit side by side on purpose: the gap between them is
+    // how far the placement is from done.
+    &.prepared {
+      flex-grow: 0.5;
+    }
+
+    &.nodes {
+      flex-grow: 0.5;
+    }
+
+    &.condition {
+      flex-grow: 0.7;
+    }
+
+    &.status {
+      flex-grow: 1.5;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

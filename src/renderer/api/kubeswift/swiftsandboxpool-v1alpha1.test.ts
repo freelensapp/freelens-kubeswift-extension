@@ -203,4 +203,15 @@ describe("SwiftSandboxPool (v1alpha1)", () => {
     expect(SwiftSandboxPool.getImageEnv(pool)).toEqual([]);
     expect(SwiftSandboxPool.getSelector(pool)).toBeUndefined();
   });
+
+  it("reads the v0.18.0 warming count and the shared network fields", () => {
+    const pool = buildSwiftSandboxPool(
+      { ...minimalSpec, network: { mode: "restricted", ports: [{ name: "http", port: 8080 }] } },
+      { phase: "Warming", warmReplicas: 1, warmingReplicas: 2, claimedReplicas: 0 },
+    );
+
+    expect(SwiftSandboxPool.getWarmingReplicas(pool)).toBe(2);
+    expect(pool.spec.network?.ports).toEqual([{ name: "http", port: 8080 }]);
+    expect(SwiftSandboxPool.getWarmingReplicas(buildSwiftSandboxPool(minimalSpec))).toBeUndefined();
+  });
 });

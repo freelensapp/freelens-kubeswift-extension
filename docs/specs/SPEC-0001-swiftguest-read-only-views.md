@@ -4,6 +4,7 @@
   main)
 - **Milestone:** M1
 - **KubeSwift version reviewed:** v0.13.12
+- **Revised for KubeSwift `v0.18.0`:** by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md): the Pending explanation of a guest with `Resolved=False`, the Guest IP and Pod IP columns, the IP scope and the shared base disk in the drawer.
 - **Author / date:** Claude with Roberto, 2026-08-27
 
 ## Goal
@@ -57,7 +58,7 @@ addition for `kubectl get sg -o wide` parity).
   extension installs, is listed as enabled, and activates without renderer
   or process errors. Asserting that the KubeSwift page opens and the guest
   list renders is a follow-up on top of this harness.
-- E2E: `e2e/__tests__/kubeswift-e2e.tests.ts` — "lists the SwiftGuests with
+- E2E: `integration/__tests__/kubeswift-e2e.tests.ts` — "lists the SwiftGuests with
   their phase, node and address" asserts the row of the running fixture
   guest (phase `Running`, node, IP and restart count), the row of the guest
   left without a status (`N/A`), and its detail panel (phase, hypervisor,

@@ -41,9 +41,7 @@ const {
   K8sApi: { podsApi },
 } = Renderer;
 
-export interface SwiftGuestStopMenuItemProps extends GuestMenuItemProps {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestStopMenuItemProps = GuestMenuItemProps;
 
 /**
  * What the launcher pod actually is right now, as one request on the click.

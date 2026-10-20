@@ -147,4 +147,53 @@ describe("SwiftSnapshotSchedule (v1alpha1)", () => {
       expect(SwiftSnapshotSchedule.getActiveSnapshots(object)).toEqual([]);
     });
   });
+
+  // The Ready and Reason printer columns of KubeSwift v0.16.0 (SPEC-0019 T2).
+  describe("getReadiness", () => {
+    const condition = (status: "True" | "False" | "Unknown", reason: string, message = "") => ({
+      type: "Ready",
+      status,
+      reason,
+      message,
+      lastTransitionTime: "2026-10-19T10:00:00Z",
+    });
+
+    it("is undefined before the controller reports", () => {
+      expect(SwiftSnapshotSchedule.getReadiness(buildSwiftSnapshotSchedule(dailySpec))).toBeUndefined();
+      expect(
+        SwiftSnapshotSchedule.getReadiness(buildSwiftSnapshotSchedule(dailySpec, { conditions: [] })),
+      ).toBeUndefined();
+    });
+
+    it("reads Ready as a success", () => {
+      const object = buildSwiftSnapshotSchedule(dailySpec, { conditions: [condition("True", "Scheduled")] });
+
+      expect(SwiftSnapshotSchedule.getReadiness(object)).toEqual({ label: "Ready", className: "success" });
+    });
+
+    it("shows the reason of a schedule that is not ready, with its message", () => {
+      const object = buildSwiftSnapshotSchedule(dailySpec, {
+        conditions: [condition("False", "StorageLocationNotFound", "SwiftStorageLocation team not found")],
+      });
+
+      expect(SwiftSnapshotSchedule.getReadiness(object)).toEqual({
+        label: "StorageLocationNotFound",
+        className: "warning",
+        message: "SwiftStorageLocation team not found",
+      });
+    });
+
+    it("falls back to a word when there is no reason, and keeps Unknown neutral", () => {
+      expect(
+        SwiftSnapshotSchedule.getReadiness(
+          buildSwiftSnapshotSchedule(dailySpec, { conditions: [condition("False", "")] }),
+        )?.label,
+      ).toBe("Not ready");
+      expect(
+        SwiftSnapshotSchedule.getReadiness(
+          buildSwiftSnapshotSchedule(dailySpec, { conditions: [condition("Unknown", "")] }),
+        ),
+      ).toMatchObject({ label: "Unknown", className: "info" });
+    });
+  });
 });

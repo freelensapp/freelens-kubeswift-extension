@@ -1,0 +1,20 @@
+# Merge patch applied to the status subresource of the cluster-scoped
+# swiftclusterstoragelocation/e2e-cluster-location-default. See
+# swiftstoragelocation-e2e-location-team.yaml for why statuses are injected.
+#
+# The healthy branch: the cluster default, Ready and Reachable.
+status:
+  observedGeneration: 1
+  conditions:
+    - type: Reachable
+      status: "True"
+      reason: RegistryAnswered
+      message: The registry answered.
+      lastTransitionTime: "2026-10-19T08:00:00Z"
+      observedGeneration: 1
+    - type: Ready
+      status: "True"
+      reason: Validated
+      message: The location can be used.
+      lastTransitionTime: "2026-10-19T08:01:00Z"
+      observedGeneration: 1

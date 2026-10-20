@@ -3,6 +3,12 @@
 # the push has not finished, so there is no total size and no OCI reference yet.
 status:
   phase: Uploading
+  # KubeSwift v0.16.0 (SPEC-0019 T2): the registry of the snapshot's own spec,
+  # as the controller recorded it before the capture.
+  location:
+    source: Explicit
+    repository: ghcr.io/freelensapp/kubeswift-e2e/vm-snapshots
+    tag: kubeswift-e2e-nightly
   capturedAt: "2026-08-27T08:35:00Z"
   hypervisor: cloud-hypervisor
   memorySnapshot:

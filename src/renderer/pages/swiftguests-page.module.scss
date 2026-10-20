@@ -38,6 +38,10 @@ $create-button-clearance: 80px;
       flex-grow: 1;
     }
 
+    &.podIp {
+      flex-grow: 1;
+    }
+
     &.restarts {
       flex-grow: 0.5;
     }

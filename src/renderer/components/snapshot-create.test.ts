@@ -7,19 +7,29 @@ import {
   csiCaptureWaits,
   defaultSnapshotForm,
   defaultSnapshotName,
+  defaultStorageLocation,
   frozenVmWarning,
   memoryCaptureGuard,
+  ociReference,
   snapshotCreatePayload,
   snapshotDeleteConsequences,
   snapshotErrors,
   snapshotSuccessMessage,
   snapshotSummary,
   snapshotWarnings,
+  storageLocationRefusal,
+  storageLocationValue,
+  storageLocationWarning,
   submitBlockReason,
   submitIsAccented,
 } from "./snapshot-create";
 
-import type { SnapshotFormValues, SnapshotGuestFacts } from "./snapshot-create";
+import type {
+  SnapshotFormValues,
+  SnapshotGuestFacts,
+  StorageLocationChoice,
+  StorageLocationFacts,
+} from "./snapshot-create";
 
 const guest = (
   spec?: SnapshotGuestFacts["spec"],
@@ -244,28 +254,11 @@ describe("the validation that replaces the absent webhook", () => {
     expect(snapshotErrors(form({ name: "demo.snap-1" })).name).toBeUndefined();
   });
 
-  describe("the local backend", () => {
-    const local = (hostPath: string) => snapshotErrors(form({ backend: "local", hostPath })).hostPath;
-
-    it("requires a host path", () => {
-      expect(local("")).toContain("/var/lib/kubeswift/snapshots/");
-    });
-
-    it("requires the upstream prefix", () => {
-      expect(local("/tmp/snapshots/demo")).toContain("must be under /var/lib/kubeswift/snapshots/");
-      expect(local("/var/lib/kubeswift/snapshots/demo")).toBeUndefined();
-    });
-
-    it("refuses a path that climbs out of the prefix", () => {
-      expect(local("/var/lib/kubeswift/snapshots/../../demo")).toContain("'..'");
-    });
-
-    it("is silent about the host path on every other backend", () => {
-      expect(snapshotErrors(form({ backend: "csi-volume-snapshot" })).hostPath).toBeUndefined();
-      expect(
-        snapshotErrors(form({ backend: "s3", bucket: "b", s3CredentialsSecret: "s", region: "r" })).hostPath,
-      ).toBeUndefined();
-    });
+  // Since KubeSwift v0.15.0 the directory is derived, so the form has nothing
+  // to ask and nothing to validate (SPEC-0019 T1).
+  it("asks nothing of a local capture but its name", () => {
+    expect(snapshotErrors(form({ backend: "local" }))).toEqual({});
+    expect(submitBlockReason(form({ backend: "local" }))).toBeUndefined();
   });
 
   describe("the s3 backend", () => {
@@ -286,7 +279,8 @@ describe("the validation that replaces the absent webhook", () => {
   });
 
   describe("the oci backend", () => {
-    const oci = (patch: Partial<SnapshotFormValues>) => snapshotErrors(form({ backend: "oci", ...patch }));
+    const oci = (patch: Partial<SnapshotFormValues>) =>
+      snapshotErrors(form({ backend: "oci", destination: "explicit", ...patch }));
 
     it("requires a repository", () => {
       expect(oci({}).repository).toContain("required");
@@ -332,14 +326,14 @@ describe("the validation that replaces the absent webhook", () => {
 
 describe("the submit verdict", () => {
   it("names the field and the reason, never just refusing", () => {
-    const reason = submitBlockReason(form({ backend: "local", hostPath: "" }));
+    const reason = submitBlockReason(form({ backend: "s3", s3CredentialsSecret: "s", region: "r" }));
 
-    expect(reason).toContain("Host path");
-    expect(reason).toContain("/var/lib/kubeswift/snapshots/");
+    expect(reason).toContain("Bucket");
+    expect(reason).toContain("required");
   });
 
   it("reports the first offending field in a stable order", () => {
-    expect(submitBlockReason(form({ name: "", backend: "local", hostPath: "" }))).toContain("Name");
+    expect(submitBlockReason(form({ name: "", backend: "s3" }))).toContain("Name");
   });
 
   it("is silent when the form is valid", () => {
@@ -362,43 +356,73 @@ describe("the submit verdict", () => {
 // and the 409 path is what a warned submit runs into.
 describe("the collision warnings", () => {
   const existing = [
-    { name: "demo-20260830-120000", hostPath: "/var/lib/kubeswift/snapshots/demo-noon" },
-    { name: "other" },
+    { name: "demo-20260830-120000", namespace: "vms" },
+    { name: "demo-20260830-140509", namespace: "other-ns" },
+    { name: "pushed", namespace: "team-b", ociReference: "registry.example.com/vms:nightly" },
+    { name: "defaulted", namespace: "vms", ociReference: "registry.example.com/vms:vms-defaulted" },
   ];
 
-  it("warns about a name the store already holds, without making it an error", () => {
+  it("warns about a name the namespace already holds, without making it an error", () => {
     const values = form({ name: "demo-20260830-120000" });
 
-    expect(snapshotWarnings(values, existing).name).toContain("already exists");
+    expect(snapshotWarnings(runningGuest, values, existing).name).toContain("already exists");
     expect(snapshotErrors(values).name).toBeUndefined();
     expect(submitBlockReason(values)).toBeUndefined();
   });
 
-  it("says nothing about a name nothing holds, or when the store answered with nothing", () => {
-    expect(snapshotWarnings(form({ name: "demo-20260830-140509" }), existing).name).toBeUndefined();
-    expect(snapshotWarnings(form({ name: "demo-20260830-120000" }), []).name).toBeUndefined();
+  it("says nothing about a name only another namespace holds, or when the store answered with nothing", () => {
+    expect(snapshotWarnings(runningGuest, form(), existing).name).toBeUndefined();
+    expect(snapshotWarnings(runningGuest, form({ name: "demo-20260830-120000" }), []).name).toBeUndefined();
   });
 
-  // The capture wipes its destination directory before writing, so a reused path
-  // destroys the previous snapshot's artifacts while that object still reads
-  // Ready. Only a client holding the namespace's snapshots can see it coming.
-  it("warns that a reused host path destroys the other snapshot's artifacts", () => {
-    const values = form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/demo-noon" });
-    const warning = snapshotWarnings(values, existing).hostPath;
+  // Since KubeSwift v0.16.0 the second oci snapshot on a repository:tag is
+  // created and then fails with TagInUse, so the warning names the holder.
+  it("warns that an oci repository and tag another snapshot of the cluster pushes to fails with TagInUse", () => {
+    const values = form({
+      backend: "oci",
+      destination: "explicit",
+      repository: "registry.example.com/vms",
+      tag: "nightly",
+    });
+    const warning = snapshotWarnings(runningGuest, values, existing).tag;
 
-    expect(warning).toContain("demo-20260830-120000");
-    expect(warning).toContain("wipes the destination directory");
-    expect(snapshotErrors(values).hostPath).toBeUndefined();
+    expect(warning).toContain("team-b/pushed");
+    expect(warning).toContain("registry.example.com/vms:nightly");
+    expect(warning).toContain("TagInUse");
+    expect(submitBlockReason(values)).toBeUndefined();
   });
 
-  it("says nothing about a host path no other snapshot uses", () => {
+  it("compares the tag KubeSwift gives a snapshot whose spec names none", () => {
+    const defaulted = form({
+      name: "defaulted-again",
+      backend: "oci",
+      destination: "explicit",
+      repository: "registry.example.com/vms",
+      tag: "vms-defaulted",
+    });
+
+    expect(snapshotWarnings(runningGuest, defaulted, existing).tag).toContain("vms/defaulted");
     expect(
-      snapshotWarnings(form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/fresh" }), existing).hostPath,
+      snapshotWarnings(
+        runningGuest,
+        form({ backend: "oci", destination: "explicit", repository: "registry.example.com/vms" }),
+        existing,
+      ).tag,
     ).toBeUndefined();
   });
 
-  it("does not look for a host path collision on the other backends", () => {
-    expect(snapshotWarnings(form({ backend: "csi-volume-snapshot" }), existing).hostPath).toBeUndefined();
+  it("does not look for a tag collision on the other backends, or without a repository", () => {
+    expect(snapshotWarnings(runningGuest, form({ backend: "local", tag: "nightly" }), existing).tag).toBeUndefined();
+    expect(snapshotWarnings(runningGuest, form({ backend: "oci", tag: "nightly" }), existing).tag).toBeUndefined();
+  });
+});
+
+describe("ociReference", () => {
+  it("is the repository and the tag, or the tag KubeSwift derives", () => {
+    expect(ociReference("vms", "a", { type: "oci", oci: { repository: "r/x", tag: "t" } })).toBe("r/x:t");
+    expect(ociReference("vms", "a", { type: "oci", oci: { repository: "r/x" } })).toBe("r/x:vms-a");
+    expect(ociReference("vms", "a", { type: "local" })).toBeUndefined();
+    expect(ociReference("vms", "a", { type: "oci", oci: {} })).toBeUndefined();
   });
 });
 
@@ -420,32 +444,30 @@ describe("the payload", () => {
     });
   });
 
-  it("omits the VolumeSnapshotClass when the field is empty, so the cluster default applies", () => {
-    expect(snapshotCreatePayload(runningGuest, form({ volumeSnapshotClassName: " " })).spec.backend).toEqual({
-      type: "csi-volume-snapshot",
-    });
+  it("sends the VolumeSnapshotClass only for the explicit destination, so the defaults apply otherwise", () => {
+    expect(snapshotCreatePayload(runningGuest, form({ volumeSnapshotClassName: "csi-hostpath" })).spec.backend).toEqual(
+      {
+        type: "csi-volume-snapshot",
+      },
+    );
     expect(
-      snapshotCreatePayload(runningGuest, form({ volumeSnapshotClassName: "csi-hostpath" })).spec.backend
-        .csiVolumeSnapshot,
+      snapshotCreatePayload(runningGuest, form({ destination: "explicit", volumeSnapshotClassName: " csi-hostpath " }))
+        .spec.backend.csiVolumeSnapshot,
     ).toEqual({ volumeSnapshotClassName: "csi-hostpath" });
   });
 
-  it("sends the host path of a local capture, trimmed", () => {
-    const { spec } = snapshotCreatePayload(
-      runningGuest,
-      form({ backend: "local", hostPath: " /var/lib/kubeswift/snapshots/demo " }),
-    );
+  // Exactly the directory KubeSwift v0.15.0 and later derive, which the
+  // earlier versions accept too (SPEC-0019 T1).
+  it("sends the derived directory of a local capture", () => {
+    const { spec } = snapshotCreatePayload(runningGuest, form({ backend: "local", name: " demo-snap " }));
 
-    expect(spec.backend.local).toEqual({ hostPath: "/var/lib/kubeswift/snapshots/demo" });
+    expect(spec.backend.local).toEqual({ hostPath: "/var/lib/kubeswift/snapshots/vms_demo-snap" });
     expect(spec.resumeAfterSnapshot).toBe(true);
   });
 
   it("sends resumeAfterSnapshot only where the field means something", () => {
     expect(snapshotCreatePayload(runningGuest, form()).spec).not.toHaveProperty("resumeAfterSnapshot");
-    expect(
-      snapshotCreatePayload(runningGuest, form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/d" })).spec
-        .resumeAfterSnapshot,
-    ).toBe(true);
+    expect(snapshotCreatePayload(runningGuest, form({ backend: "local" })).spec.resumeAfterSnapshot).toBe(true);
     expect(
       snapshotCreatePayload(runningGuest, form({ backend: "oci", repository: "r", resumeAfterSnapshot: false })).spec
         .resumeAfterSnapshot,
@@ -488,13 +510,23 @@ describe("the payload", () => {
   it("sends the oci repository, and the tag only when one was typed", () => {
     const repository = "registry.example.com/snapshots/demo";
 
-    expect(snapshotCreatePayload(runningGuest, form({ backend: "oci", repository })).spec.backend.oci).toEqual({
+    expect(
+      snapshotCreatePayload(runningGuest, form({ backend: "oci", destination: "explicit", repository })).spec.backend
+        .oci,
+    ).toEqual({
       repository,
     });
     expect(
       snapshotCreatePayload(
         runningGuest,
-        form({ backend: "oci", repository, tag: "nightly", ociCredentialsSecret: "pull", signingKeySecret: "cosign" }),
+        form({
+          backend: "oci",
+          destination: "explicit",
+          repository,
+          tag: "nightly",
+          ociCredentialsSecret: "pull",
+          signingKeySecret: "cosign",
+        }),
       ).spec.backend.oci,
     ).toEqual({
       repository,
@@ -514,7 +546,7 @@ describe("the payload", () => {
         runningGuest,
         form({
           backend,
-          hostPath: "/var/lib/kubeswift/snapshots/demo",
+          destination: "explicit",
           volumeSnapshotClassName: "csi-hostpath",
           bucket: "backups",
           s3CredentialsSecret: "s3-creds",
@@ -548,11 +580,7 @@ describe("the write summary", () => {
 
   it("says what each backend captures", () => {
     expect(summaryText(snapshotSummary(runningGuest, form()))).toContain("root disk only");
-    expect(
-      summaryText(
-        snapshotSummary(runningGuest, form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/d" })),
-      ),
-    ).toContain("memory and device state");
+    expect(summaryText(snapshotSummary(runningGuest, form({ backend: "local" })))).toContain("memory and device state");
     expect(summaryText(snapshotSummary(runningGuest, form({ backend: "oci", repository: "r" })))).toContain(
       "pushes it to the registry",
     );
@@ -560,20 +588,22 @@ describe("the write summary", () => {
 
   it("names where the artifacts land, once the field says where", () => {
     expect(summaryText(snapshotSummary(runningGuest, form()))).toContain("default VolumeSnapshotClass");
-    expect(summaryText(snapshotSummary(runningGuest, form({ volumeSnapshotClassName: "csi-hostpath" })))).toContain(
-      "class csi-hostpath",
-    );
     expect(
       summaryText(
-        snapshotSummary(runningGuest, form({ backend: "local", hostPath: "/var/lib/kubeswift/snapshots/d" })),
+        snapshotSummary(runningGuest, form({ destination: "explicit", volumeSnapshotClassName: "csi-hostpath" })),
       ),
-    ).toContain("/var/lib/kubeswift/snapshots/d");
+    ).toContain("class csi-hostpath");
+    expect(summaryText(snapshotSummary(runningGuest, form({ backend: "local" })))).toContain(
+      "/var/lib/kubeswift/snapshots/vms_demo-20260830-140509",
+    );
     expect(
       summaryText(snapshotSummary(runningGuest, form({ backend: "s3", bucket: "backups", prefix: "nightly" }))),
     ).toContain("bucket backups, under nightly");
-    expect(summaryText(snapshotSummary(runningGuest, form({ backend: "oci", repository: "reg/demo" })))).toContain(
-      "tagged <namespace>-<name> by the server",
-    );
+    expect(
+      summaryText(
+        snapshotSummary(runningGuest, form({ backend: "oci", destination: "explicit", repository: "reg/demo" })),
+      ),
+    ).toContain("tagged <namespace>-<name> by the server");
   });
 
   // The pause is the fact a memory capture costs, and upstream's own three
@@ -630,8 +660,12 @@ describe("the write summary", () => {
   // other two - which is the only reason the note exists at all (C9).
   it("corrects the deletion policy exactly where it lies", () => {
     expect(summaryText(snapshotSummary(runningGuest, form()))).toContain("follows the VolumeSnapshotClass");
+    // KubeSwift v0.14.1 gave oci a cleanup by deletion policy (SPEC-0019 T1).
     expect(summaryText(snapshotSummary(runningGuest, form({ backend: "oci", repository: "r" })))).toContain(
-      "nothing purges registry artifacts",
+      "deletes its registry artifacts by the digest",
+    );
+    expect(summaryText(snapshotSummary(runningGuest, form({ backend: "oci", deletionPolicy: "Retain" })))).toContain(
+      "keeps its registry artifacts",
     );
 
     for (const backend of ["local", "s3"] as const) {
@@ -699,10 +733,132 @@ describe("the delete consequences", () => {
 
   // The gap upstream documents nowhere: the finalizer dispatcher covers local
   // and s3 only, so registry artifacts survive both policies.
-  it("keeps the registry artifacts on oci regardless of the policy", () => {
-    for (const policy of ["Delete", "Retain"] as const) {
-      expect(snapshotDeleteConsequences("oci", policy).join(" ")).toContain("stay regardless of the");
-    }
+  // KubeSwift v0.14.1 deletes oci artifacts under Delete, and v0.16.0 by the
+  // recorded digest (SPEC-0019 T1).
+  it("follows the policy on oci, deleting by the recorded digest", () => {
+    expect(snapshotDeleteConsequences("oci", "Delete").join(" ")).toContain("by the digest recorded at push time");
+    expect(snapshotDeleteConsequences("oci", "Retain").join(" ")).toContain("registry artifacts are kept");
+  });
+
+  describe("the storage-location destination (SPEC-0019 T4)", () => {
+    const location = (
+      patch: Partial<StorageLocationChoice> & Pick<StorageLocationChoice, "kind" | "name">,
+    ): StorageLocationChoice => ({ hasOci: true, hasCsi: true, isDefault: false, ...patch });
+    const team = location({
+      kind: "SwiftStorageLocation",
+      name: "team",
+      isDefault: true,
+      repository: "reg.example.com/team",
+      credentialsSecretName: "team-pull",
+    });
+    const central = location({
+      kind: "SwiftClusterStorageLocation",
+      name: "central",
+      isDefault: true,
+      repository: "reg.example.com/central",
+    });
+    const csiOnly = location({ kind: "SwiftClusterStorageLocation", name: "snapclass", hasOci: false });
+    const ready = (choices: StorageLocationChoice[]): StorageLocationFacts => ({ state: "ready", choices });
+
+    it("writes no backend.oci and no locationRef for the default destination", () => {
+      const { spec } = snapshotCreatePayload(runningGuest, form({ backend: "oci", repository: "ignored" }));
+
+      expect(spec.backend).toEqual({ type: "oci" });
+    });
+
+    it("writes the picked location, kind included, and never a carrier next to it", () => {
+      const values = form({
+        backend: "oci",
+        destination: "location",
+        location: storageLocationValue("SwiftClusterStorageLocation", "central"),
+        repository: "ignored",
+      });
+
+      expect(snapshotCreatePayload(runningGuest, values).spec.backend).toEqual({
+        type: "oci",
+        locationRef: { kind: "SwiftClusterStorageLocation", name: "central" },
+      });
+      expect(
+        snapshotCreatePayload(
+          runningGuest,
+          form({ destination: "location", location: storageLocationValue("SwiftStorageLocation", "team") }),
+        ).spec.backend,
+      ).toEqual({ type: "csi-volume-snapshot", locationRef: { kind: "SwiftStorageLocation", name: "team" } });
+    });
+
+    it("requires a location for that destination, and a class for an explicit csi one", () => {
+      expect(snapshotErrors(form({ backend: "oci", destination: "location" })).location).toContain("Choose");
+      expect(submitBlockReason(form({ backend: "oci", destination: "location" }))).toContain("Storage location");
+      expect(snapshotErrors(form({ destination: "explicit" })).volumeSnapshotClassName).toContain("required");
+      expect(snapshotErrors(form({ backend: "oci" })).repository).toBeUndefined();
+    });
+
+    it("resolves the namespace's default before the cluster's, and refuses two at one level", () => {
+      expect(defaultStorageLocation([central, team]).choice?.name).toBe("team");
+      expect(defaultStorageLocation([central]).choice?.name).toBe("central");
+      expect(defaultStorageLocation([team, { ...team, name: "other" }]).ambiguous).toBe(true);
+      expect(storageLocationWarning(form({ backend: "oci" }), ready([team, { ...team, name: "other" }]), [])).toContain(
+        "AmbiguousStorageLocation",
+      );
+    });
+
+    it("points an oci snapshot at the Registry destination when the locations cannot be listed", () => {
+      const unavailable: StorageLocationFacts = { state: "unavailable", choices: [] };
+
+      expect(storageLocationWarning(form({ backend: "oci" }), unavailable, [])).toContain("Registry destination");
+      expect(storageLocationWarning(form(), unavailable, [])).toBeUndefined();
+    });
+
+    it("warns about an oci snapshot with no default location, and is silent for csi", () => {
+      expect(storageLocationWarning(form({ backend: "oci" }), ready([csiOnly]), [])).toContain("NoStorageLocation");
+      expect(storageLocationWarning(form(), ready([]), [])).toBeUndefined();
+    });
+
+    it("refuses a location without the part the backend needs, and flags one that is not ready", () => {
+      expect(storageLocationRefusal(csiOnly, "oci")).toContain("no registry");
+      expect(storageLocationRefusal(csiOnly, "csi-volume-snapshot")).toBeUndefined();
+
+      const broken = location({ kind: "SwiftStorageLocation", name: "broken", ready: false, readyMessage: "bad" });
+
+      expect(
+        storageLocationWarning(
+          form({ backend: "oci", destination: "location", location: storageLocationValue(broken.kind, "broken") }),
+          ready([broken]),
+          [],
+        ),
+      ).toContain("is not ready: bad");
+    });
+
+    it("warns about a credentials or signing key Secret the namespace lacks, and not without the list", () => {
+      const values = form({ backend: "oci" });
+
+      expect(storageLocationWarning(values, ready([team]), [])).toContain("RegistryCredentialsMissing");
+      expect(storageLocationWarning(values, ready([team]), ["team-pull"])).toBeUndefined();
+      expect(storageLocationWarning(values, ready([team]), undefined)).toBeUndefined();
+      expect(
+        storageLocationWarning(values, ready([{ ...team, signingKeySecretName: "cosign" }]), ["team-pull"]),
+      ).toContain("SigningKeyMissing");
+    });
+
+    it("says where the artifact goes, with the repository of a cluster location under the namespace", () => {
+      expect(summaryText(snapshotSummary(runningGuest, form({ backend: "oci" }), ready([central])))).toContain(
+        "the storage location cluster/central (the default), to reg.example.com/central/vms/snapshots",
+      );
+      expect(summaryText(snapshotSummary(runningGuest, form({ backend: "oci" }), ready([team])))).toContain(
+        "to reg.example.com/team/snapshots",
+      );
+      expect(summaryText(snapshotSummary(runningGuest, form({ backend: "oci" })))).toContain(
+        "the default storage location (the namespace's, else the cluster's)",
+      );
+    });
+
+    it("skips the TagInUse check unless the registry is the snapshot's own", () => {
+      expect(
+        snapshotWarnings(runningGuest, form({ backend: "oci", repository: "reg/x", tag: "t" }), [
+          { name: "o", namespace: "vms", ociReference: "reg/x:t" },
+        ]).tag,
+      ).toBeUndefined();
+    });
   });
 
   it("says a delete is never blocked, whatever the backend", () => {

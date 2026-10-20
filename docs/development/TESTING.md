@@ -14,37 +14,50 @@ without its non-regression tests is not done (see
 - Fixtures are hand-written from the CRD schemas, never copied from
   KubeSwift code or docs verbatim.
 
-### 2. Integration tests (existing harness, `integration/`)
+### 2. Integration tests (`integration/`, `pnpm test:integration`)
 
-The harness downloads a real Freelens, installs the built extension, and
-drives it (`integration/__tests__/extensions.tests.ts`: the extension
-installs, is listed as enabled, and activates without errors). Keep it green
-on every PR.
+The suites run in this repository, under its own Vitest
+(`vitest.integration.config.ts`), against Freelens started with `pnpm dev`
+from a freelensapp/freelens checkout. They attach to it over the Chrome
+DevTools Protocol with Playwright's `chromium.connectOverCDP`, the pattern of
+freelensapp/freelens-example-extension (see "Checking the Extension in
+Freelens Dev" in [AGENTS.md](../../AGENTS.md)), so they need no package of
+Freelens and no file of its checkout.
 
-Both this suite and the E2E one run **inside a checkout of
-`freelensapp/freelens`**: their files are copied next to the Freelens ones,
-under `integration/__tests__` and `integration/helpers`, and are run by the
-Freelens `test:integration` script, which owns the Playwright/Electron launch
-helpers (`../helpers/utils`). That is why relative imports of `../helpers/*`
-resolve when the tests run but not inside this repository, and why
-`integration/` is outside the `tsconfig.json` include list.
+`integration/__tests__/extensions.tests.ts` is the integration test: it
+installs this checkout in place from the Extensions page (Freelens loads it
+from `dist/`, so build first), and checks that the extension is listed as
+enabled and activates without errors. Keep it green on every PR. The E2E
+suite (layer 3) and the pre-review pass (layer 4) are in the same directory;
+every file is a session of its own on the one app, and Vitest runs them one
+at a time.
 
-`integration/helpers/` holds what the two suites share: the error collector,
-the extension install flow, and the cluster, sidebar and table helpers.
+`integration/helpers/` holds what the suites share: the session layer
+(connecting to the app, the error collector, the extension install flow,
+navigation, the colour theme) and the cluster, sidebar and table helpers.
+`integration/tsconfig.json` compiles the directory
+(`pnpm type:check:integration`).
+
+The sessions read three settings from the environment: `FREELENS_CDP_URL`
+(`http://127.0.0.1:9223` by default), `FREELENS_MAIN_LOG`, the file that holds
+the output of Freelens dev, whose `error:` lines count as failures (without
+it only the renderer console is checked), and the `E2E_*` variables of
+`e2e/scripts/lib.sh`, which the scripts set. Outside CI a session skips with a
+warning when Freelens dev does not answer; in CI it fails.
 
 ### 3. E2E tests (Playwright, against a kind cluster)
 
 A disposable `kind` cluster with the KubeSwift CRDs applied and **fake
 resources with simulated statuses** written by our fixtures (no KVM, no real
-VMs), driven through a real Freelens by Playwright's Electron API.
+VMs), driven through Freelens dev by Playwright over CDP (layer 2).
 
 #### Prerequisites
 
 - A running Docker daemon, plus `kind` and `kubectl` on `PATH`.
-- A checkout of `freelensapp/freelens` in `./freelens` (gitignored), with the
-  app already built (`pnpm build` and the electron-builder step, as in
-  `.github/workflows/e2e-tests.yaml`). Point `FREELENS_DIR` elsewhere to use
-  another checkout.
+- A checkout of `freelensapp/freelens` at `main`, the only ref with the v2
+  extension API until Freelens 2.0.0 is released, in `./freelens`
+  (gitignored) or wherever `FREELENS_DIR` points, with `pnpm install` and
+  `pnpm build:resources` (kubectl and the cluster proxy) run there once.
 
 #### Commands
 
@@ -52,25 +65,66 @@ VMs), driven through a real Freelens by Playwright's Electron API.
 | --- | --- |
 | `pnpm e2e:cluster:up` | Creates the cluster, applies the CRDs, the fixtures and their statuses |
 | `pnpm e2e:cluster:down` | Deletes the cluster and its kubeconfig |
-| `pnpm e2e` | Cluster up, run the suite, cluster down |
+| `pnpm e2e:freelens` | Starts Freelens dev on a fresh profile that syncs the lab kubeconfigs alone |
+| `pnpm e2e` | Cluster up, build, run the suite, cluster down (Freelens dev running) |
+| `pnpm test:integration` | The integration test and the E2E suite, as CI runs them |
 
 `E2E_KEEP_CLUSTER=1 pnpm e2e` leaves the cluster running for inspection.
-`pnpm e2e:cluster:up` is idempotent, so it doubles as "re-apply the fixtures".
+`pnpm e2e:cluster:up` is idempotent, so it doubles as "re-apply the fixtures",
+with one exception: since KubeSwift v0.16.0 a SwiftSnapshot's spec is
+immutable except `deletionPolicy` and `ttl`, so a change to a snapshot
+fixture's spec is refused on a cluster that already holds it. Recreate the
+cluster then (`pnpm e2e:cluster:down`, or `pnpm demo:down` for the demo one).
+
+#### Running locally
+
+```bash
+pnpm e2e:cluster:up
+pnpm e2e:freelens > /tmp/freelens-dev.log 2>&1 &
+FREELENS_MAIN_LOG=/tmp/freelens-dev.log e2e/scripts/run-suite.sh
+```
+
+`pnpm e2e:freelens` (`e2e/scripts/freelens-dev.sh`) is what keeps a local run
+to the lab. Freelens dev otherwise syncs the developer's `~/.kube`, every
+context of which, production clusters included, is one click away from a
+suite that drives the UI. The script creates a fresh profile under the
+system's temporary directory (`FREELENS_INTEGRATION_TESTING_DIR`, which the app
+accepts only there), writes its preferences so that the only synced files are
+`.e2e/kubeconfig` and, when it exists, `.demo/kubeconfig`, refuses a
+kubeconfig whose server is not on this machine, and starts the `dev` task of
+the checkout with Turbo in loose environment mode: in strict mode Turbo does
+not pass that variable on, and the app would open the developer's own
+`FreelensDev` profile. The profile is created anew on every start.
+
+Start both again between two runs of the E2E suite: `pnpm e2e:cluster:down`
+and `pnpm e2e:cluster:up`, and a new `pnpm e2e:freelens`. The suite writes to
+its cluster and leaves the app as the last case left it (the dock, the
+namespace filter). The create cases name what they write after the clock, so a
+second run on a kept cluster does not collide, but the guests the first run
+created can push fixture rows out of the part of the Guests list that the
+table renders, and the second run then fails on rows it cannot find. CI runs
+on a new cluster and a new app every time.
 
 #### Layout
 
 - `e2e/scripts/` — cluster lifecycle. `lib.sh` is the single place where the
   KubeSwift version, the kind and Kubernetes versions, the cluster name and
   the kubeconfig path are pinned.
-- `e2e/fixtures/` — hand-written custom resources for the six M1 and the four
-  M2 CRDs, in numbered files applied together. `fixtures/status/` holds the
+- `e2e/fixtures/` — hand-written custom resources for every KubeSwift kind the
+  extension shows, in numbered files applied together, against the KubeSwift
+  v0.18.0 CRDs `lib.sh` pins (19 CRDs across 10 API groups).
+  `220-storage-locations.yaml` and `225-artifact-placements.yaml` cover the
+  four read-only kinds SPEC-0019 added (the storage locations at both scopes,
+  the artifact placements and the verification policies), each with one
+  healthy and one failing object. `fixtures/status/` holds the
   merge patches applied to the status subresources with `kubectl patch
   --subresource=status`, since no KubeSwift controller runs in the cluster.
   Each pair of fixtures is chosen to cover a state its views distinguish, so
   the suite can assert both branches (a Ready snapshot and an uploading one, a
   finished migration and one mid transfer, and so on).
-- `e2e/__tests__/kubeswift-e2e.tests.ts` — the suite: it installs the packed
-  extension, connects the cluster, points the namespace filter at the fixture
+- `integration/__tests__/kubeswift-e2e.tests.ts` — the suite: it installs
+  this checkout in place, opens the cluster from the catalog by its context
+  name, points the namespace filter at the fixture
   namespace, then opens every KubeSwift page and asserts the fixture rows and
   one detail panel per CRD.
 
@@ -273,6 +327,15 @@ renderer, so xterm uses its DOM renderer and the typed line is real text in
 compare the rows with every whitespace removed, which is what makes a path that
 wraps mid-token readable again.
 
+Before the first of them, the setup opens one plain host terminal and waits
+for its shell (`warmUpTerminal`). The first terminal of a new profile is where
+Freelens downloads the kubectl of the cluster's version, before it starts the
+shell, and the host's `sendCommand` stops waiting for the shell after 10
+seconds and sends the line anyway, before the main process listens for it: a
+download slower than that loses the console's command, and the tab shows a
+bare prompt. The warm-up types its own line and retries until the shell
+answers, so the console cases assert what the extension owns.
+
 The third is the transport case, and it is the reason this suite now pulls an
 image. `e2e/fixtures/215-console-transport.yaml` adds **one schedulable pod** -
 `docker.io/library/busybox` pinned by tag, in a container named `launcher`
@@ -372,21 +435,32 @@ cluster is created. Nothing from KubeSwift is vendored into this repository
 #### What the suite never touches
 
 - The developer's `~/.kube/config`: `kind` writes to a dedicated kubeconfig
-  under `.e2e/`, and the suite copies it into the sandboxed Freelens user data
-  directory (`<FREELENS_INTEGRATION_TESTING_DIR>/Freelens/kubeconfigs`), which
-  Freelens always watches. Freelens resolves `~/.kube` through
-  `os.userInfo().homedir`, which ignores `$HOME`, so a sandboxed HOME would
-  not have been enough.
-- The Freelens checkout's own tests: our files are copied in under their own
-  names and selected by name when the runner starts.
+  under `.e2e/`, and `pnpm e2e:freelens` gives Freelens dev a profile that
+  syncs that file alone (see "Running locally"). Freelens resolves `~/.kube`
+  through `os.userInfo().homedir`, which ignores `$HOME`, so a sandboxed HOME
+  would not have been enough. In CI the runner's `~/.kube/config` is a copy of
+  the lab kubeconfig.
+- The Freelens checkout: the suites only attach to the app it runs.
 
-Runs in CI on every PR through `.github/workflows/e2e-tests.yaml`.
+The activation case fails on any error either process logs, with one
+exception, `EXPECTED_FAILED_REQUESTS` in the suite. Freelens 2 sends the
+renderer's Kubernetes requests through Chromium, which reports every response
+that is not a success on the console, also one the code that sent it handles.
+The list names, by status and URL path, the ones the suite causes on purpose
+(the 404s of the guest deleted under an open Stop dialog, the 409s of the
+create forms' AlreadyExists cases) and the host's pod metrics, which the
+cluster has no server for. Any other failed request still fails the case: a
+wrong group or version would answer 404 too.
+
+Runs in CI on every PR through `.github/workflows/integration-tests.yaml`,
+together with the integration test.
 
 ### 4. Agent-driven testing during development, and the pre-review pass
 
 While developing, coding agents must verify their UI changes live, not just
-by compiling: launch Freelens with the extension and the kind fixture
-cluster, then drive it with Playwright to inspect the rendered pages
+by compiling: start Freelens dev on the kind fixture cluster
+(`pnpm e2e:freelens`) with the extension installed in place, then drive it
+with Playwright over CDP to inspect the rendered pages
 (assert the list shows the fixture guests, open the detail panel, screenshot
 for the PR). Findings go into the PR description.
 
@@ -398,6 +472,12 @@ checkable [DESIGN.md](DESIGN.md) rules, with a report handed to the
 reviewer. The human session covers only judgment calls and what cannot be
 automated (rule set by Roberto on 2026-08-28, after the first review
 session found that 4 of its 5 findings were automatable).
+
+The pass runs against Freelens dev with the demo cluster in its catalog: run
+`pnpm demo:up` before `pnpm e2e:freelens`, which then syncs `.demo/kubeconfig`
+too, and `pnpm pre-review` with `FREELENS_MAIN_LOG` set as for the E2E suite.
+It sets the Dark theme and then the Light one in the app's preferences, and
+screenshots every view in both.
 
 Nothing is verified only once: every check of the pass that can be
 codified graduates into the E2E suite (layer 3) as a permanent

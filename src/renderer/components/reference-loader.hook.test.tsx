@@ -6,7 +6,7 @@
  */
 
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { type LoadAllOptions, type LoadableStore, type ReferenceRequest, useReferenceStores } from "./reference-loader";
 
 // The hook's own behavior (retries, subscription, cleanup) against fake
@@ -71,7 +71,7 @@ function ResolvingProbe({ resolveStore }: { resolveStore: () => FakeStore | null
 
 const logged = () => infoSpy.mock.calls.map(([line]) => String(line));
 
-let infoSpy: ReturnType<typeof vi.spyOn>;
+let infoSpy: MockInstance<typeof console.info>;
 
 beforeEach(() => {
   vi.useFakeTimers();

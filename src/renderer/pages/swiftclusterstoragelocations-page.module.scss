@@ -1,0 +1,29 @@
+.page {
+  :global(.TableCell) {
+    &.defaultLocation {
+      flex-grow: 0.4;
+    }
+
+    // Registry prefixes are long, so this is the widest domain column and its
+    // cell truncates with a tooltip.
+    &.repository {
+      flex-grow: 1.5;
+    }
+
+    &.reachable {
+      flex-grow: 0.5;
+    }
+
+    &.condition {
+      flex-grow: 0.7;
+    }
+
+    &.status {
+      flex-grow: 1.5;
+    }
+
+    &.age {
+      flex-grow: 0.3;
+    }
+  }
+}

@@ -7,6 +7,7 @@
   verification stay open for a real-cluster session)
 - **Milestone:** M4
 - **KubeSwift version reviewed:** `v0.13.12`
+- **Revised for KubeSwift `v0.18.0`:** by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md): the sandbox's network, probes, drain period, pod metadata, artifacts and secret files, the pool's network and warming slots.
 - **Author / date:** Claude with Roberto, 2026-08-29
 
 ## Goal
@@ -598,7 +599,7 @@ did. The two judgement calls in the classifier table (`Completed` as success,
     affordance).
 - **Integration**: unchanged (the harness keeps asserting install, listing as
   enabled, and activation without errors).
-- **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`), three new cases plus one
+- **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`), three new cases plus one
   link case, each also asserting `headerCellsWithoutId(frame)` is empty for the
   view it opens:
   - "lists the SwiftSandboxes with their image, node and condition": the

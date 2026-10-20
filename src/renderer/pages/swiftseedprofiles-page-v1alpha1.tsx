@@ -1,11 +1,9 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftSeedProfile, type SwiftSeedProfileApi } from "../api/kubeswift/swiftseedprofile-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { createSeedProfileTitle } from "../components/seedprofile-create";
 import { openCreateSeedProfileDialog } from "../components/seedprofile-create-dialog";
 import styles from "./swiftseedprofiles-page.module.scss";
-import stylesInline from "./swiftseedprofiles-page.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -41,33 +39,28 @@ export interface SwiftSeedProfilesPageProps {
   extension: Renderer.LensExtension;
 }
 
-export const SwiftSeedProfilesPage = observer((props: SwiftSeedProfilesPageProps) =>
-  withErrorPage(props, () => {
-    const store = KubeObject.getStore<KubeObject>();
+export const SwiftSeedProfilesPage = observer((props: SwiftSeedProfilesPageProps) => {
+  const store = KubeObject.getStore<KubeObject>();
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <KubeObjectListLayout<KubeObject, KubeObjectApi>
-          tableId={`${KubeObject.crd.plural}Table`}
-          className={styles.page}
-          store={store}
-          sortingCallbacks={sortingCallbacks}
-          searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-          renderHeaderTitle={KubeObject.crd.title}
-          // The host's own floating "+", the same idiom the four pages that
-          // already carry a create surface use (DESIGN.md pillar 1).
-          addRemoveButtons={{ onAdd: openCreateSeedProfileDialog, addTooltip: createSeedProfileTitle }}
-          renderTableHeader={renderTableHeader}
-          renderTableContents={(object: KubeObject) => [
-            <WithTooltip>{object.getName()}</WithTooltip>,
-            <LinkToNamespace namespace={object.getNs()} />,
-            <WithTooltip>{KubeObject.getDatasource(object) ?? "N/A"}</WithTooltip>,
-            <WithTooltip>{getUserDataOrigin(object) ?? "N/A"}</WithTooltip>,
-            <KubeObjectAge object={object} key="age" />,
-          ]}
-        />
-      </>
-    );
-  }),
-);
+  return (
+    <KubeObjectListLayout<KubeObject, KubeObjectApi>
+      tableId={`${KubeObject.crd.plural}Table`}
+      className={styles.page}
+      store={store}
+      sortingCallbacks={sortingCallbacks}
+      searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+      renderHeaderTitle={KubeObject.crd.title}
+      // The host's own floating "+", the same idiom the four pages that
+      // already carry a create surface use (DESIGN.md pillar 1).
+      addRemoveButtons={{ onAdd: openCreateSeedProfileDialog, addTooltip: createSeedProfileTitle }}
+      renderTableHeader={renderTableHeader}
+      renderTableContents={(object: KubeObject) => [
+        <WithTooltip>{object.getName()}</WithTooltip>,
+        <LinkToNamespace namespace={object.getNs()} />,
+        <WithTooltip>{KubeObject.getDatasource(object) ?? "N/A"}</WithTooltip>,
+        <WithTooltip>{getUserDataOrigin(object) ?? "N/A"}</WithTooltip>,
+        <KubeObjectAge object={object} key="age" />,
+      ]}
+    />
+  );
+});

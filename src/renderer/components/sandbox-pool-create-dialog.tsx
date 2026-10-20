@@ -4,8 +4,8 @@
  */
 
 // The Create Sandbox Pool form (SPEC-0016, slice 1), Dialog B of that spec:
-// fourteen flat fields, two collapsed sections, and no admission webhook
-// anywhere behind it - which is why every refusal it makes is the only one an
+// every field of the pool's spec, three collapsed sections (the Network one of
+// SPEC-0019 T4 included), and no admission webhook anywhere behind it - which is why every refusal it makes is the only one an
 // operator will ever see.
 //
 // Every decision it renders belongs to `sandbox-create.ts`. What lives here is
@@ -26,9 +26,9 @@ import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
-import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
-import { SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
+import { SwiftGPUProfile, type SwiftGPUProfileStore } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
+import { SwiftKernel, type SwiftKernelStore } from "../api/kubeswift/swiftkernel-v1alpha1";
+import { SwiftSandboxPool, type SwiftSandboxPoolStore } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import {
   AddRowButton,
   CollapsibleSection,
@@ -40,7 +40,6 @@ import {
   WriteSummary,
 } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import { defaultNamespace } from "./guest-create";
 import { quantityGrammar } from "./guestclass-create";
@@ -81,6 +80,7 @@ import {
   slotShapeWarnings,
   updateNodeSelectorRow,
 } from "./sandbox-create";
+import { SandboxNetworkSection } from "./sandbox-network-section";
 
 import type { ObjectPickerFacts } from "./create-dialog";
 import type { GuestGpuProfileFacts } from "./guest-create";
@@ -121,9 +121,11 @@ export interface SandboxShapeOwner {
   /** The namespace's existing names, for the collision warning that never blocks. */
   existingNames: string[];
   existingNamesUnverified: boolean;
-  /** The two collapsed sections ship shut; these are what the user does about that. */
+  /** The collapsed sections ship shut; these are what the user does about that. */
   gpuOpen: boolean;
   registryOpen: boolean;
+  /** The Network section's (SPEC-0019 T4), which a sandbox's checkout does not render. */
+  networkOpen: boolean;
   /** Run inside the action that changed the values, so the submit verdict cannot drift. */
   onValuesChanged: () => void;
 }
@@ -173,10 +175,11 @@ export function createSandboxPoolDialogModel(
       // open or shut.
       gpuOpen: false,
       registryOpen: false,
+      networkOpen: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
       onValuesChanged: () => syncOkButton(model),
     },
-    { existingNames: Mobx.observable.ref, onValuesChanged: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef, onValuesChanged: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -274,7 +277,7 @@ export async function loadSecrets(model: SandboxShapeOwner, namespace: string): 
 /** The namespace's SwiftKernels, for the kernel-profile picker. */
 export async function loadKernels(model: SandboxShapeOwner, namespace: string): Promise<void> {
   try {
-    const kernels = await SwiftKernel.getStore<SwiftKernel>().api.list({ namespace });
+    const kernels = await SwiftKernel.getStore<SwiftKernel, SwiftKernelStore>().api.list({ namespace });
     const names = (kernels ?? []).map((kernel) => kernel.getName()).sort();
 
     Mobx.runInAction(() => {
@@ -302,7 +305,7 @@ export async function loadKernels(model: SandboxShapeOwner, namespace: string): 
  */
 export async function loadGpuProfiles(model: SandboxShapeOwner, namespace: string): Promise<void> {
   try {
-    const profiles = await SwiftGPUProfile.getStore<SwiftGPUProfile>().api.list({ namespace });
+    const profiles = await SwiftGPUProfile.getStore<SwiftGPUProfile, SwiftGPUProfileStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -332,7 +335,7 @@ export async function loadGpuProfiles(model: SandboxShapeOwner, namespace: strin
 /** The namespace's SwiftSandboxPool names, for the collision warning that never blocks. */
 export async function loadPoolNames(model: SandboxPoolDialogModel, namespace: string): Promise<void> {
   try {
-    const pools = await SwiftSandboxPool.getStore<SwiftSandboxPool>().api.list({ namespace });
+    const pools = await SwiftSandboxPool.getStore<SwiftSandboxPool, SwiftSandboxPoolStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       model.existingNames = (pools ?? []).map((pool) => pool.getName());
@@ -928,7 +931,6 @@ export const SandboxPoolCreateForm = observer(({ model }: { model: SandboxPoolDi
 
   return (
     <div className={styles.form} data-testid="swiftsandboxpool-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftSandboxPool</b>
@@ -948,6 +950,7 @@ export const SandboxPoolCreateForm = observer(({ model }: { model: SandboxPoolDi
 
       <WarmBufferFields model={model} />
 
+      <SandboxNetworkSection model={model} kind="pool" />
       <SlotGpuSection model={model} />
       <SlotRegistrySection model={model} />
 

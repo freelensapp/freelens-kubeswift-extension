@@ -1,9 +1,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftGPUProfile, type SwiftGPUProfileApi } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import styles from "./swiftgpuprofiles-page.module.scss";
-import stylesInline from "./swiftgpuprofiles-page.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -47,39 +45,34 @@ export interface SwiftGPUProfilesPageProps {
   extension: Renderer.LensExtension;
 }
 
-export const SwiftGPUProfilesPage = observer((props: SwiftGPUProfilesPageProps) =>
-  withErrorPage(props, () => {
-    const store = KubeObject.getStore<KubeObject>();
+export const SwiftGPUProfilesPage = observer((props: SwiftGPUProfilesPageProps) => {
+  const store = KubeObject.getStore<KubeObject>();
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <KubeObjectListLayout<KubeObject, KubeObjectApi>
-          tableId={`${KubeObject.crd.plural}Table`}
-          className={styles.page}
-          store={store}
-          sortingCallbacks={sortingCallbacks}
-          searchFilters={[(object: KubeObject) => object.getSearchFields()]}
-          renderHeaderTitle={KubeObject.crd.title}
-          renderTableHeader={renderTableHeader}
-          renderTableContents={(object: KubeObject) => [
-            <WithTooltip key="name">{object.getName()}</WithTooltip>,
-            <NamespaceSelectBadge key="namespace" namespace={object.getNs()} />,
-            <WithTooltip key="count">{KubeObject.getCount(object) ?? notAvailable}</WithTooltip>,
-            <WithTooltip key="model">{KubeObject.getModelLabel(object) ?? notAvailable}</WithTooltip>,
-            // The raw enum values, as `kubectl` shows them, with the schema's
-            // own explanation of the value in the cell tooltip; the humanized
-            // reading itself lives in the drawer.
-            <WithTooltip key="partitionMode" tooltip={KubeObject.getPartitionModeReading(object)}>
-              {KubeObject.getPartitionMode(object) ?? notAvailable}
-            </WithTooltip>,
-            <WithTooltip key="tier" tooltip={KubeObject.getTierReading(object)}>
-              {KubeObject.getTier(object) ?? notAvailable}
-            </WithTooltip>,
-            <KubeObjectAge object={object} key="age" />,
-          ]}
-        />
-      </>
-    );
-  }),
-);
+  return (
+    <KubeObjectListLayout<KubeObject, KubeObjectApi>
+      tableId={`${KubeObject.crd.plural}Table`}
+      className={styles.page}
+      store={store}
+      sortingCallbacks={sortingCallbacks}
+      searchFilters={[(object: KubeObject) => object.getSearchFields()]}
+      renderHeaderTitle={KubeObject.crd.title}
+      renderTableHeader={renderTableHeader}
+      renderTableContents={(object: KubeObject) => [
+        <WithTooltip key="name">{object.getName()}</WithTooltip>,
+        <NamespaceSelectBadge key="namespace" namespace={object.getNs()} />,
+        <WithTooltip key="count">{KubeObject.getCount(object) ?? notAvailable}</WithTooltip>,
+        <WithTooltip key="model">{KubeObject.getModelLabel(object) ?? notAvailable}</WithTooltip>,
+        // The raw enum values, as `kubectl` shows them, with the schema's
+        // own explanation of the value in the cell tooltip; the humanized
+        // reading itself lives in the drawer.
+        <WithTooltip key="partitionMode" tooltip={KubeObject.getPartitionModeReading(object)}>
+          {KubeObject.getPartitionMode(object) ?? notAvailable}
+        </WithTooltip>,
+        <WithTooltip key="tier" tooltip={KubeObject.getTierReading(object)}>
+          {KubeObject.getTier(object) ?? notAvailable}
+        </WithTooltip>,
+        <KubeObjectAge object={object} key="age" />,
+      ]}
+    />
+  );
+});

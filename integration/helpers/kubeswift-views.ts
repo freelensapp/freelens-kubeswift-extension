@@ -8,10 +8,9 @@
 // src/renderer/index.tsx, in menu order.
 //
 // This list is hand-maintained rather than imported from that file: it is
-// JSX bundled for the renderer process and is not reachable from the
-// Node/Playwright context that drives a *built* Freelens (this suite runs
-// inside a checkout of freelensapp/freelens, against the packed extension
-// tarball, not against this repository's TypeScript sources). Keeping the
+// JSX bundled for the renderer process, which the Node/Playwright context
+// that drives Freelens dev over CDP does not import: the suite checks the
+// built extension through the app, not the TypeScript sources. Keeping the
 // two in sync is a manual step for now - see "Notes and deviations" in
 // docs/specs/SPEC-0006-pre-review-agent-pass.md for the plan to close this
 // gap (e.g. a small views manifest emitted at build time).
@@ -58,4 +57,15 @@ export const KUBESWIFT_VIEWS: KubeSwiftView[] = [
   // all qualified so that neither the sidebar nor this pass's failure output is
   // ambiguous next to the host's own "Cluster" item (SPEC-0009).
   { menuId: "fleetclusters", title: "Member Clusters", fixtureObject: "e2e-fleet-edge-1" },
+  // The four read-only kinds KubeSwift added after v0.13.12 (SPEC-0019, T3),
+  // registered after the fleet page; the menu files them under Data
+  // Protection and Sandboxes.
+  { menuId: "swiftstoragelocations", title: "Storage Locations", fixtureObject: "e2e-location-team" },
+  {
+    menuId: "swiftclusterstoragelocations",
+    title: "Cluster Storage Locations",
+    fixtureObject: "e2e-cluster-location-default",
+  },
+  { menuId: "swiftartifactplacements", title: "Artifact Placements", fixtureObject: "e2e-placement-ready" },
+  { menuId: "swiftartifactverificationpolicies", title: "Verification Policies", fixtureObject: "e2e-policy-signed" },
 ];

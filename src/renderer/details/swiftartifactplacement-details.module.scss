@@ -1,0 +1,25 @@
+// Column sizing of the nested Nodes table, in the same shape the list pages
+// use for theirs; everything else comes from the host's own table styles.
+.nodes {
+  :global(.TableCell) {
+    &.name {
+      flex-grow: 1;
+    }
+
+    &.condition {
+      flex-grow: 0.8;
+    }
+
+    &.preparedAt {
+      flex-grow: 1;
+    }
+
+    &.failures {
+      flex-grow: 0.4;
+    }
+
+    &.message {
+      flex-grow: 1.5;
+    }
+  }
+}

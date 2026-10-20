@@ -27,8 +27,39 @@ status:
   nodeName: __NODE_NAME__
   podRef: e2e-sandbox-running-launcher
   startedAt: "2026-08-28T09:45:00Z"
+  # The v0.18.0 network status (SPEC-0019 T2): the launcher pod's own address
+  # next to the guest's, the guest's scope (always Pod for a sandbox), and the
+  # egress allowlist as the launcher enforces it, the Service resolved to an
+  # address.
   network:
     primaryIP: 10.244.3.17
+    primaryIPScope: Pod
+    podIP: 10.244.0.42
+    egressAllowed:
+      - cidr: 10.96.0.12/32
+        from: service kubeswift-e2e/e2e-sandbox-db
+        port: 5432
+        protocol: TCP
+      - cidr: 10.20.0.0/24
+        from: cidr 10.20.0.0/24
+        port: 53
+        protocol: UDP
+  # One entry per spec.artifacts entry: the required one mounted under
+  # e2e-policy-signed (225-artifact-placements.yaml), the optional one skipped
+  # before it resolved, so it has no digest.
+  artifacts:
+    - name: plugins
+      mountPath: /opt/plugins
+      digest: sha256:5d2a8f1c7e4b9036a1d8c5f2e7b4a9d03c6e1f8b5a2d7c4e9f1b6a3d8c5e2f7a
+      state: Mounted
+      policies:
+        - name: e2e-policy-signed
+          generation: 1
+    - name: cache
+      mountPath: /var/cache/app
+      state: Skipped
+      reason: FetchTimeout
+      message: The registry did not answer within the 30s fetch timeout; the workload started without the artifact.
   runtime:
     hypervisor: cloud-hypervisor
     pid: 8123

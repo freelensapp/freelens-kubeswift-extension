@@ -15,6 +15,10 @@ status:
   lastRestartTime: "2026-08-27T08:30:00Z"
   network:
     primaryIP: 10.244.1.21
+    # KubeSwift v0.15.0 (SPEC-0019 T2): the primary address is on a network
+    # outside the pod, and the launcher pod has its own.
+    primaryIPScope: Network
+    podIP: 10.244.1.121
     ready: true
     interface: eth0
     interfaces:

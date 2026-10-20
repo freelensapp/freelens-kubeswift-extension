@@ -8,7 +8,6 @@
 [![Release](https://img.shields.io/github/v/release/freelensapp/freelens-kubeswift-extension?display_name=tag&sort=semver)](https://github.com/freelensapp/freelens-kubeswift-extension/releases)
 [![Unit tests](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/unit-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/unit-tests.yaml)
 [![Integration tests](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/integration-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/integration-tests.yaml)
-[![E2E tests](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/e2e-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/e2e-tests.yaml)
 [![npm](https://img.shields.io/npm/v/@freelensapp/kubeswift-extension.svg)](https://www.npmjs.com/package/@freelensapp/kubeswift-extension)
 
 <!-- markdownlint-enable MD013 -->
@@ -19,7 +18,7 @@
 [KubeSwift](https://github.com/kubeswift-io/kubeswift), the Kubernetes-native
 virtual machine runtime.
 
-The extension covers every KubeSwift custom resource — all 15 kinds across 9
+The extension covers every KubeSwift custom resource — all 19 kinds across 10
 API groups — with list pages, detail drawers, lifecycle actions, creation
 forms, and consoles, grouped in the cluster sidebar under **Guests**, **Boot
 and Images**, **Data Protection**, **Migrations**, **GPU**, **Sandboxes**,
@@ -40,9 +39,9 @@ boundary).
 
 ## Requirements
 
-- **Freelens >= 1.10.3.**
+- **Freelens >= 2.0.0.** Version 1.x of the extension is for Freelens 1.x.
 - **Kubernetes >= 1.24.**
-- **KubeSwift v0.13.x.** The views track the v0.13.12 CRDs. The upstream API
+- **KubeSwift v0.18.x.** The views track the v0.18.0 CRDs. The upstream API
   is `v1alpha1` and may change between KubeSwift releases; the extension
   follows.
 - **Node.js** is required only when building the extension from source; it
@@ -51,6 +50,8 @@ boundary).
 ## Supported APIs
 
 All resources are `v1alpha1`.
+
+<!-- markdownlint-disable MD013 -->
 
 | API group | Kinds |
 | --- | --- |
@@ -61,25 +62,46 @@ All resources are `v1alpha1`.
 | `gpu.kubeswift.io` | SwiftGPUProfile, SwiftGPUNode |
 | `snapshot.kubeswift.io` | SwiftSnapshot, SwiftRestore, SwiftSnapshotSchedule |
 | `migration.kubeswift.io` | SwiftMigration |
-| `sandbox.kubeswift.io` | SwiftSandbox, SwiftSandboxPool |
+| `sandbox.kubeswift.io` | SwiftSandbox, SwiftSandboxPool, SwiftArtifactPlacement, SwiftArtifactVerificationPolicy |
+| `storage.kubeswift.io` | SwiftStorageLocation, SwiftClusterStorageLocation |
 | `fleet.kubeswift.io` | Cluster |
 
-## Installation
+<!-- markdownlint-enable MD013 -->
 
-Once published, install from the Freelens **Extensions** page
-(`ctrl`+`shift`+`E` or `cmd`+`shift`+`E`) by npm name:
+## Install
 
-```text
-@freelensapp/kubeswift-extension
-```
+Open Freelens and go to Extensions (`ctrl`+`shift`+`E` or
+`cmd`+`shift`+`E`). The field at the top takes a package name, the URL of a
+tarball, or the path to a tarball or a directory.
 
-Alternatively, download the `.tgz` from the
-[GitHub releases](https://github.com/freelensapp/freelens-kubeswift-extension/releases)
-page and drag it into the Freelens window, or provide its path on the
-Extensions page.
+### From the registry
 
-You can also build and pack the extension yourself — see
-[Build from the source](#build-from-the-source).
+Enter `@freelensapp/kubeswift-extension` and press Install.
+
+Alternatively, open the following URL in the browser to install directly:
+
+[freelens://app/extensions/install/%40freelensapp%2Fkubeswift-extension](freelens://app/extensions/install/%40freelensapp%2Fkubeswift-extension)
+
+### From a release tarball
+
+Each [release](https://github.com/freelensapp/freelens-kubeswift-extension/releases)
+has the extension as `freelensapp-kubeswift-extension-<version>.tgz`, with its
+checksum in `freelensapp-kubeswift-extension-<version>.tgz.sha256`. Use a
+release whose major version matches your Freelens version.
+
+- Enter the URL of the `.tgz` asset and press Install. Freelens downloads the
+  `.tgz.sha256` next to it and checks the tarball against it.
+- Or download both files into one directory and enter the path to the `.tgz`,
+  or drop the `.tgz` on the Freelens window. Freelens checks it against the
+  `.tgz.sha256` next to it.
+
+### From a directory
+
+Build the extension (see below), then enter the path to your checkout, the
+directory with `package.json`, and press Install. Freelens runs the extension
+from that directory, from the files in `dist/`, and lists it as unverified.
+This is how you work on the extension: see
+[Development loop](#development-loop).
 
 ## Getting started
 
@@ -112,7 +134,9 @@ what did and did not happen.
 
 Take Snapshot (with its four storage backends), Restore (in place or as a
 clone), snapshot schedules, and delete dialogs that read back what will
-actually happen to the data before you confirm.
+actually happen to the data before you confirm. Each snapshot names the
+storage location it resolved, and the namespaced and cluster-wide storage
+locations themselves have read-only views of their own.
 
 ### Migrations
 
@@ -162,14 +186,12 @@ The repository is developed spec-first, with the specs in the repository:
 
 ## Build from the source
 
-You can build the extension from this repository.
-
 ### Prerequisites
 
 Use [NVM](https://github.com/nvm-sh/nvm),
 [mise-en-place](https://mise.jdx.dev/), or
 [windows-nvm](https://github.com/coreybutler/nvm-windows) to install the
-required Node.js version.
+Node.js version in `.nvmrc`.
 
 From the root of this repository:
 
@@ -179,8 +201,8 @@ nvm install
 mise install
 # or
 winget install CoreyButler.NVMforWindows
-nvm install 24.15.0
-nvm use 24.15.0
+nvm install "$(cat .nvmrc)"
+nvm use "$(cat .nvmrc)"
 ```
 
 Install pnpm:
@@ -196,41 +218,83 @@ winget install pnpm.pnpm
 ### Build extension
 
 ```sh
-pnpm i
+pnpm install
 pnpm build
+```
+
+The extension is built into `dist/`. To pack it into a tarball:
+
+```sh
 pnpm pack
 ```
 
-One script to build and pack the extension for testing:
+One script to bump the prerelease version, build and pack the extension for
+testing:
 
 ```sh
 pnpm pack:dev
 ```
 
-### Install built extension
+The tarball is placed in the current directory. Install it as described in
+[From a release tarball](#from-a-release-tarball).
 
-The tarball will be placed in the current directory. In Freelens, navigate
-to the Extensions page and provide the path to the tarball, or drag and
-drop the `.tgz` file into the Freelens window.
+### Development loop
 
-### Check code statically
+Install the extension from your checkout once, as described in
+[From a directory](#from-a-directory), then run:
 
 ```sh
-pnpm lint:check
+pnpm dev
 ```
 
-or
+It rebuilds the extension whenever a source file changes, and Freelens
+reloads the extension after each rebuild, without a restart and without
+packing. Stop it with `ctrl`+`C`.
+
+Neither `pnpm build` nor `pnpm dev` type-checks; run `pnpm type:check` for
+that. A change to `main` or `renderer` in `package.json` needs Freelens
+restarted once.
+
+To check the extension in Freelens with an AI agent, see "Checking the
+Extension in Freelens Dev" in [AGENTS.md](AGENTS.md).
+
+### Check the code
+
+```sh
+pnpm type:check
+pnpm test:unit
+pnpm lint:check
+pnpm knip:check
+```
+
+and, for the formats that Biome does not cover:
 
 ```sh
 pnpm trunk:check
 ```
 
-and
+### Integration and E2E tests
+
+The integration test and the E2E suite drive Freelens dev, started from a
+[freelensapp/freelens](https://github.com/freelensapp/freelens) checkout,
+against a local [kind](https://kind.sigs.k8s.io/) cluster with the KubeSwift
+CRDs and simulated fixtures. With Docker, kind and kubectl installed, in the
+extension repository:
 
 ```sh
+pnpm e2e:cluster:up
+pnpm e2e:freelens > /tmp/freelens-dev.log 2>&1 &
 pnpm build
-pnpm knip:check
+FREELENS_MAIN_LOG=/tmp/freelens-dev.log pnpm test:integration
 ```
+
+`pnpm e2e:freelens` starts Freelens dev from `./freelens` (or `FREELENS_DIR`)
+on a fresh profile that sees the lab cluster alone, never your own
+kubeconfig. The suites install the checkout in place and write to the lab
+cluster; recreate both before running them again. Without Freelens dev the
+tests are skipped. [TESTING.md](docs/development/TESTING.md) has the details,
+the pre-review pass (`pnpm pre-review`) and the optional variables
+(`FREELENS_CDP_URL`, `FREELENS_MAIN_LOG`, `E2E_*`).
 
 ### Testing the extension with unpublished Freelens
 

@@ -158,6 +158,9 @@ export class FleetCluster extends Renderer.K8sApi.LensExtensionKubeObject<
   FleetClusterStatus,
   FleetClusterSpec
 > {
+  declare kind: "Cluster";
+  declare apiVersion: "fleet.kubeswift.io/v1alpha1";
+
   static readonly kind = "Cluster";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/fleet.kubeswift.io/v1alpha1/clusters";

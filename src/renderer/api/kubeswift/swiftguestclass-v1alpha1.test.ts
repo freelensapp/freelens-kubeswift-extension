@@ -105,4 +105,37 @@ describe("SwiftGuestClass (v1alpha1)", () => {
       expect(buildSwiftGuestClass({ cpu: "2", memory: "2Gi", rootDisk }).spec.storage).toBeUndefined();
     });
   });
+
+  // KubeSwift v0.14.0 placement fields (SPEC-0019 T2).
+  describe("placement", () => {
+    it("reports the CRD's defaults for a class that sets none", () => {
+      const object = buildSwiftGuestClass({ cpu: "2", memory: "2Gi", rootDisk });
+
+      expect(SwiftGuestClass.getCpuPinning(object)).toBe("none");
+      expect(SwiftGuestClass.getSmtPolicy(object)).toBeUndefined();
+      expect(SwiftGuestClass.getHugepages(object)).toBeUndefined();
+      expect(SwiftGuestClass.isSharedBaseDisk(object)).toBe(false);
+    });
+
+    it("reads the SMT policy only under static pinning, defaulting it to spread", () => {
+      const statik = buildSwiftGuestClass({ cpu: "4", memory: "4Gi", rootDisk, cpuPinning: "static" });
+      const ignored = buildSwiftGuestClass({ cpu: "4", memory: "4Gi", rootDisk, smtPolicy: "pack" });
+
+      expect(SwiftGuestClass.getSmtPolicy(statik)).toBe("spread");
+      expect(SwiftGuestClass.getSmtPolicy(ignored)).toBeUndefined();
+    });
+
+    it("reads hugepages and the shared base disk", () => {
+      const object = buildSwiftGuestClass({
+        cpu: "4",
+        memory: "4Gi",
+        rootDisk,
+        hugepages: "1Gi",
+        sharedBaseDisk: true,
+      });
+
+      expect(SwiftGuestClass.getHugepages(object)).toBe("1Gi");
+      expect(SwiftGuestClass.isSharedBaseDisk(object)).toBe(true);
+    });
+  });
 });

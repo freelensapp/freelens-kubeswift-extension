@@ -31,8 +31,21 @@ spec:
   minWarm: 2
   maxWarm: 4
   rootfsMode: block
+  # The v0.18.0 network (SPEC-0019 T2): one port, reachable from this namespace
+  # only, and one more egress destination.
   network:
     mode: restricted
+    ports:
+      - name: http
+        port: 8080
+    ingress:
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kubeswift-e2e
+    egress:
+      allow:
+        - cidr: 10.20.0.0/24
   nodeSelector:
     kubeswift.io/kernel: "true"
   kernelProfileRef:

@@ -18,7 +18,9 @@ This procedure backs the per-milestone manual review gate described in
   extension; `corepack install` provides the right pnpm, see the README's
   "Build from the source" section), and `pnpm install` already run once in
   the repo
-- The Freelens app installed (>= 1.10.3)
+- Freelens 2.0.0 or later installed. Until it is released, Freelens dev
+  from a checkout of `main` (`pnpm e2e:freelens`, see "Preparing the local
+  Freelens harness" below)
 
 ## Quick start (macOS and Linux)
 
@@ -34,7 +36,8 @@ When it finishes, the script prints the two paths you need:
    never touched.
 2. The packed extension (`freelensapp-kubeswift-extension-<version>.tgz` in
    the repo root). Install it from the Freelens Extensions page (paste the
-   path or pick the file).
+   path or pick the file). Freelens notes that nothing vouches for the
+   integrity of a local package: expected for a build of your own.
 
 Then connect to the cluster: the KubeSwift entry appears in the cluster
 sidebar and the fixture objects live in the `kubeswift-e2e` namespace.
@@ -47,7 +50,9 @@ pnpm demo:down
 
 Both commands are idempotent: `demo:up` re-applies CRDs and fixtures and
 repacks the extension on every run, and reuses the cluster if it already
-exists.
+exists. A snapshot fixture whose spec changed is the exception: KubeSwift
+v0.16.0 and later refuse to change a SwiftSnapshot's spec, so run
+`pnpm demo:down` first.
 
 ## Windows (via WSL2)
 
@@ -110,60 +115,30 @@ session), referenced from the spec of the feature it concerns; the spec's
 
 ## Preparing the local Freelens harness
 
-`pnpm e2e` and `pnpm pre-review` drive a real, locally built Freelens.
-CI builds it on every run; on a developer machine you build it once and
-reuse it. Budget 10-15 GB of disk and 20-40 minutes for the first build.
+`pnpm e2e` and `pnpm pre-review` drive Freelens dev, `pnpm dev` of a
+freelensapp/freelens checkout, over CDP, and `pnpm e2e:freelens` starts it on
+a fresh profile that sees the lab clusters alone (see "Running locally" in
+[TESTING.md](TESTING.md)). Prepare the checkout once:
 
-1. Clone the app at the version pinned in
-   `.github/workflows/e2e-tests.yaml` into `./freelens` (gitignored):
+```bash
+git clone --depth 1 https://github.com/freelensapp/freelens.git freelens
+cd freelens
+nvm install "$(cat .nvmrc)" && corepack enable
+pnpm install --frozen-lockfile
+pnpm build:resources
+```
 
-   ```bash
-   git clone --depth 1 --branch v1.10.3 \
-     https://github.com/freelensapp/freelens.git freelens
-   ```
+`./freelens` is gitignored; set `FREELENS_DIR` to use a checkout living
+elsewhere. Then, from the repo root, with the demo cluster up:
 
-2. Use the Node version the app wants (`freelens/.nvmrc`, currently 24.x
-   - newer than this extension's own toolchain), then install:
+```bash
+pnpm e2e:freelens > /tmp/freelens-dev.log 2>&1 &
+FREELENS_MAIN_LOG=/tmp/freelens-dev.log pnpm pre-review
+```
 
-   ```bash
-   nvm install "$(cat freelens/.nvmrc)" && corepack enable
-   cd freelens
-   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile
-   pnpx playwright install chromium
-   ```
-
-3. Build, in this order (it mirrors the E2E workflow):
-
-   ```bash
-   pnpm build
-   pnpm build:resources
-   pnpm electron-rebuild -a x64        # arm64 on Apple Silicon / arm Linux
-   ```
-
-4. Package the app. Resolve the electron-builder CLI path **before**
-   swapping in the production node_modules - electron-builder is a dev
-   dependency and disappears from the swapped tree (the resolved path
-   points into the root pnpm store, which survives the swap):
-
-   ```bash
-   EB_PATH=$(cd freelens && node -e "console.log(require.resolve('electron-builder/cli'))")
-   pnpm deploy --legacy --prod --filter=freelens freelens/node_modules_prod
-   mv freelens/node_modules freelens/node_modules_dev
-   mv freelens/node_modules_prod freelens/node_modules
-   (cd freelens && npm_config_user_agent=pnpm \
-     node "$EB_PATH" --publish never --mac dir --x64)   # --linux on Linux
-   rm -rf freelens/node_modules && mv freelens/node_modules_dev freelens/node_modules
-   ```
-
-   The app lands in `freelens/freelens/dist/mac/Freelens.app` (or
-   `dist/linux-*-unpacked`). Code signing is skipped - fine for testing.
-
-5. From the repo root, `pnpm e2e` and `pnpm pre-review` now work. Set
-   `FREELENS_DIR` to reuse a checkout living elsewhere.
-
-macOS note: the very first launch of the freshly built, unsigned app can
-be slowed by Gatekeeper's first-run scan; the install helper tolerates
-this (it waits up to 90 seconds), and later runs are fast.
+The same Freelens dev serves a review by hand: install the checkout in place
+from its Extensions page (the repository's directory, after `pnpm build`) and
+open `kind-kubeswift-demo` from the catalog.
 
 ## Limits
 

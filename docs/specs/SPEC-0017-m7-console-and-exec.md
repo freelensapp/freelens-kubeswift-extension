@@ -581,7 +581,7 @@ DESIGN.md section 6's four states, plus what is specific here.
   absent on an offered one and absent in the row kebab, and the host
   idiom the toolbar still needs (interactive, tooltip, ligature).
 - **Integration**: unchanged.
-- **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`), per slice. The honest
+- **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`), per slice. The honest
   split, stated once: **no KubeSwift controller runs in the E2E cluster
   and the shipped launcher-pod fixtures are deliberately unschedulable**
   (`e2e/fixtures/55-launcher-pods.yaml`), so a `kubectl exec` against

@@ -4,11 +4,9 @@ import { maybe } from "../../common/utils";
 import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { toKubeObjectRef } from "../api/kubeswift/types";
-import { withErrorPage } from "../components/error-page";
 import { objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
 import styles from "./swiftgpuprofile-details.module.scss";
-import stylesInline from "./swiftgpuprofile-details.module.scss?inline";
 
 const { observer } = MobxReact;
 
@@ -205,51 +203,46 @@ const GuestsUsingSection = observer(({ object }: SectionProps) => {
   );
 });
 
-export interface SwiftGPUProfileDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftGPUProfile> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGPUProfileDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftGPUProfile>;
 
-export const SwiftGPUProfileDetails = observer((props: SwiftGPUProfileDetailsProps) =>
-  withErrorPage(props, () => {
-    const { object } = props;
+export const SwiftGPUProfileDetails = observer((props: SwiftGPUProfileDetailsProps) => {
+  const { object } = props;
 
-    // No conditions drawer: the CRD declares `subresources: {}` and has no
-    // status property at all, so there is nothing to report (SPEC-0007).
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <DrawerTitle>GPU Profile</DrawerTitle>
-        <DrawerItem name="Count">
-          <WithTooltip>{SwiftGPUProfile.getCount(object) ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-        {/* An empty model filter means "any model matches", which is a fact
-            rather than a missing value. */}
-        <DrawerItem name="Model">
-          <WithTooltip>{SwiftGPUProfile.getModelLabel(object) ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="Tier">
-          <WithTooltip>
-            {withReading(SwiftGPUProfile.getTier(object), SwiftGPUProfile.getTierReading(object)) ?? notAvailable}
-          </WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="Partition Mode">
-          <WithTooltip>
-            {withReading(SwiftGPUProfile.getPartitionMode(object), SwiftGPUProfile.getPartitionModeReading(object)) ??
-              notAvailable}
-          </WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="Hugepages">
-          <WithTooltip>{SwiftGPUProfile.getHugepagesLabel(object) ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="vCPU Pinning" labelsOnly>
-          <BadgeBoolean value={SwiftGPUProfile.getVcpuPinning(object)} />
-        </DrawerItem>
+  // No conditions drawer: the CRD declares `subresources: {}` and has no
+  // status property at all, so there is nothing to report (SPEC-0007).
+  return (
+    <>
+      <DrawerTitle>GPU Profile</DrawerTitle>
+      <DrawerItem name="Count">
+        <WithTooltip>{SwiftGPUProfile.getCount(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      {/* An empty model filter means "any model matches", which is a fact
+          rather than a missing value. */}
+      <DrawerItem name="Model">
+        <WithTooltip>{SwiftGPUProfile.getModelLabel(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Tier">
+        <WithTooltip>
+          {withReading(SwiftGPUProfile.getTier(object), SwiftGPUProfile.getTierReading(object)) ?? notAvailable}
+        </WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Partition Mode">
+        <WithTooltip>
+          {withReading(SwiftGPUProfile.getPartitionMode(object), SwiftGPUProfile.getPartitionModeReading(object)) ??
+            notAvailable}
+        </WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Hugepages">
+        <WithTooltip>{SwiftGPUProfile.getHugepagesLabel(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="vCPU Pinning" labelsOnly>
+        <BadgeBoolean value={SwiftGPUProfile.getVcpuPinning(object)} />
+      </DrawerItem>
 
-        <PcieTopologySection object={object} />
-        <NumaTopologySection object={object} />
-        <FabricManagerSection object={object} />
-        <GuestsUsingSection object={object} />
-      </>
-    );
-  }),
-);
+      <PcieTopologySection object={object} />
+      <NumaTopologySection object={object} />
+      <FabricManagerSection object={object} />
+      <GuestsUsingSection object={object} />
+    </>
+  );
+});

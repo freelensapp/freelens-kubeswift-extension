@@ -1,0 +1,30 @@
+// Column sizing of the nested tables, in the same shape the list pages use for
+// theirs; everything else comes from the host's own table styles.
+.authorities {
+  :global(.TableCell) {
+    &.name {
+      flex-grow: 0.8;
+    }
+
+    &.algorithm {
+      flex-grow: 0.6;
+    }
+
+    // A 64-character hex digest: the cell truncates and the tooltip says what it is.
+    &.keyId {
+      flex-grow: 1.6;
+    }
+  }
+}
+
+.claims {
+  :global(.TableCell) {
+    &.key {
+      flex-grow: 0.8;
+    }
+
+    &.requirement {
+      flex-grow: 1.6;
+    }
+  }
+}

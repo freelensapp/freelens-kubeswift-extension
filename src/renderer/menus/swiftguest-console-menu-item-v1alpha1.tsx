@@ -30,7 +30,6 @@
 //   lives only in CSS is not a guard, so the click handler re-evaluates it
 //   against the live object before anything opens.
 
-import os from "node:os";
 import { Common, Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
@@ -40,7 +39,6 @@ import {
   guestConsoleTabTitle,
   guestConsoleTooltip,
 } from "../components/console-commands";
-import { withErrorPage } from "../components/error-page";
 import { ActionIcon } from "./action-icon";
 import { liveGuest } from "./guest-action-menu-item";
 
@@ -52,11 +50,7 @@ const {
   Component: { createTerminalTab, MenuItem, Notifications, terminalStore },
 } = Renderer;
 
-export interface SwiftGuestConsoleMenuItemProps {
-  object: SwiftGuest;
-  toolbar?: boolean;
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestConsoleMenuItemProps = Common.Types.KubeObjectMenuItemProps<SwiftGuest>;
 
 const title = "Serial Console";
 
@@ -82,70 +76,68 @@ function consoleTabId(guest: GuestConsoleFacts): string {
   return `kubeswift-console-${guest.namespace}-${guest.name}-${Date.now()}`;
 }
 
-export const SwiftGuestConsoleMenuItem = observer((props: SwiftGuestConsoleMenuItemProps) =>
-  withErrorPage(props, () => {
-    const { object, toolbar } = props;
+export const SwiftGuestConsoleMenuItem = observer((props: SwiftGuestConsoleMenuItemProps) => {
+  const { object, toolbar } = props;
 
-    // A terminating object is not a thing you act on, and the host's own
-    // delete-mode logic keys on the same field (W4's one stated exception:
-    // absent rather than disabled).
-    if (object.metadata?.deletionTimestamp) {
-      return <></>;
+  // A terminating object is not a thing you act on, and the host's own
+  // delete-mode logic keys on the same field (W4's one stated exception:
+  // absent rather than disabled).
+  if (object.metadata?.deletionTimestamp) {
+    return <></>;
+  }
+
+  const verdict = canOpenGuestConsole(guestConsoleFacts(object));
+  const tooltip = verdict.enabled
+    ? `${title}. ${guestConsoleTooltip(guestConsoleFacts(object), verdict)}`
+    : `${title}: ${guestConsoleTooltip(guestConsoleFacts(object), verdict)}`;
+
+  const onClick = async () => {
+    const guest = guestConsoleFacts(liveGuest(object));
+
+    // Re-evaluated against the live object before anything opens: `disabled`
+    // alone does not stop the click, and the render-time verdict may have been
+    // computed from an object the watch has since replaced (W4).
+    if (!canOpenGuestConsole(guest).enabled) {
+      return;
     }
 
-    const verdict = canOpenGuestConsole(guestConsoleFacts(object));
-    const tooltip = verdict.enabled
-      ? `${title}. ${guestConsoleTooltip(guestConsoleFacts(object), verdict)}`
-      : `${title}: ${guestConsoleTooltip(guestConsoleFacts(object), verdict)}`;
+    const tabId = consoleTabId(guest);
+    const command = guestConsoleCommand({
+      guest,
+      // Empty on a default install, in which case the bare name is used: the
+      // host's shell session has already put its bundled kubectl directory on
+      // the tab's PATH, along with the cluster's own proxy kubeconfig.
+      kubectlPath: Common.App.Preferences.getKubectlPath(),
+      platform: Common.App.isWindows ? "win32" : Common.App.isMac ? "darwin" : "linux",
+    });
 
-    const onClick = async () => {
-      const guest = guestConsoleFacts(liveGuest(object));
+    // The one failure that is OURS, and the only one that produces a
+    // notification (W9): getting the tab open and the line onto its stdin.
+    // Everything past that belongs to the terminal - a forbidden `pods/exec`,
+    // a pod that went away, a socket that never appeared all arrive as
+    // kubectl's own words on the user's own screen, which is what the rule
+    // asks for rather than an exception to it. The send is inside the same
+    // `try` so that a rejected promise is reported once here instead of
+    // surfacing as an unhandled rejection nobody attributes to this click.
+    try {
+      createTerminalTab({ title: guestConsoleTabTitle(guest), id: tabId });
+      await terminalStore.sendCommand(command, { enter: true, tabId });
+    } catch (error) {
+      Notifications.checkedError(error, `Could not open a serial console for ${guest.namespace}/${guest.name}.`);
+    }
+  };
 
-      // Re-evaluated against the live object before anything opens: `disabled`
-      // alone does not stop the click, and the render-time verdict may have been
-      // computed from an object the watch has since replaced (W4).
-      if (!canOpenGuestConsole(guest).enabled) {
-        return;
-      }
-
-      const tabId = consoleTabId(guest);
-      const command = guestConsoleCommand({
-        guest,
-        // Empty on a default install, in which case the bare name is used: the
-        // host's shell session has already put its bundled kubectl directory on
-        // the tab's PATH, along with the cluster's own proxy kubeconfig.
-        kubectlPath: Common.App.Preferences.getKubectlPath(),
-        platform: os.platform(),
-      });
-
-      // The one failure that is OURS, and the only one that produces a
-      // notification (W9): getting the tab open and the line onto its stdin.
-      // Everything past that belongs to the terminal - a forbidden `pods/exec`,
-      // a pod that went away, a socket that never appeared all arrive as
-      // kubectl's own words on the user's own screen, which is what the rule
-      // asks for rather than an exception to it. The send is inside the same
-      // `try` so that a rejected promise is reported once here instead of
-      // surfacing as an unhandled rejection nobody attributes to this click.
-      try {
-        createTerminalTab({ title: guestConsoleTabTitle(guest), id: tabId });
-        await terminalStore.sendCommand(command, { enter: true, tabId });
-      } catch (error) {
-        Notifications.checkedError(error, `Could not open a serial console for ${guest.namespace}/${guest.name}.`);
-      }
-    };
-
-    // The reason has to be reachable in BOTH surfaces (W4), and the toolbar
-    // hides the title span, so it is carried three ways: the host `Icon`'s own
-    // tooltip, which the toolbar renders; the item's native `title` attribute,
-    // which survives the `pointer-events: none` of a disabled item; and,
-    // durably, the drawer's own Serial Console row. `ActionIcon` adds the
-    // fourth, which needs no hover: the refusal is visible on the icon itself
-    // (M7 milestone review).
-    return (
-      <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid="swiftguest-console-action" title={tooltip}>
-        <ActionIcon material="terminal" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
-        <span className="title">{title}</span>
-      </MenuItem>
-    );
-  }),
-);
+  // The reason has to be reachable in BOTH surfaces (W4), and the toolbar
+  // hides the title span, so it is carried three ways: the host `Icon`'s own
+  // tooltip, which the toolbar renders; the item's native `title` attribute,
+  // which survives the `pointer-events: none` of a disabled item; and,
+  // durably, the drawer's own Serial Console row. `ActionIcon` adds the
+  // fourth, which needs no hover: the refusal is visible on the icon itself
+  // (M7 milestone review).
+  return (
+    <MenuItem onClick={onClick} disabled={!verdict.enabled} data-testid="swiftguest-console-action" title={tooltip}>
+      <ActionIcon material="terminal" toolbar={toolbar} tooltip={tooltip} disabled={!verdict.enabled} />
+      <span className="title">{title}</span>
+    </MenuItem>
+  );
+});

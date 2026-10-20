@@ -54,21 +54,40 @@
 // argument.
 
 import { formatBytes } from "../api/kubeswift/types";
+import { parseGoDurationMs } from "./go-duration";
 import { forbiddenStatusCode, notFoundStatusCode, writeFailurePrefix } from "./guest-actions";
 import { gpuProfileSummary, nextRowId } from "./guest-create";
 import { hasQuantityUnit, quantityError, unitlessQuantityWarning } from "./guestclass-create";
 import { conflictStatusCode, kernelNodeLabel, kernelNodeLabelValue } from "./migration-create";
+import {
+  defaultSandboxNetwork,
+  effectiveNetworkMode,
+  sandboxNetworkBlockingIssues,
+  sandboxNetworkFacts,
+  sandboxNetworkPayload,
+  sandboxNetworkWarnings,
+} from "./sandbox-network-create";
+import {
+  defaultSandboxWorkload,
+  sandboxWorkloadBlockingIssues,
+  sandboxWorkloadFacts,
+  sandboxWorkloadPayload,
+  sandboxWorkloadWarnings,
+} from "./sandbox-workload-create";
 
 import type {
   SwiftSandboxEnvVar,
   SwiftSandboxGpuResourceClaim,
   SwiftSandboxScratchDisk,
+  SwiftSandboxSecretKeySelector,
   SwiftSandboxSpec,
 } from "../api/kubeswift/swiftsandbox-v1alpha1";
 import type { SwiftSandboxPoolSpec } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import type { Quantity } from "../api/kubeswift/types";
 import type { ApiFailureFacts } from "./guest-actions";
 import type { GuestGpuProfileFacts, GuestPvcFacts } from "./guest-create";
+import type { SandboxNetworkValues } from "./sandbox-network-create";
+import type { SandboxWorkloadContext, SandboxWorkloadValues } from "./sandbox-workload-create";
 
 /** The verb, on the page's create control, on the OK button and in the failure sentences. */
 export const createSandboxPoolTitle = "Create Sandbox Pool";
@@ -195,6 +214,8 @@ export interface SlotShapeValues {
   rootfsMode: string;
   /** `spec.network.mode`. Empty is `restricted`. */
   networkMode: string;
+  /** `spec.network.ports`, `ingress` and `egress` (SPEC-0019 T4); a checkout leaves them to the pool. */
+  network: SandboxNetworkValues;
   /** `spec.kernelProfileRef.name`. Empty means the well-known `sandbox` kernel. */
   kernelProfile: string;
   /** `spec.nodeSelector`, merged by the controller with the kernel-node label. */
@@ -219,6 +240,7 @@ export function defaultSlotShape(): SlotShapeValues {
     memory: "",
     rootfsMode: "",
     networkMode: "",
+    network: defaultSandboxNetwork(),
     kernelProfile: "",
     nodeSelector: [],
     gpuProfile: "",
@@ -1064,6 +1086,8 @@ export function sandboxPoolBlockingIssues(
     }
   }
 
+  issues.push(...sandboxNetworkBlockingIssues(values.shape.networkMode, values.shape.network));
+
   return issues;
 }
 
@@ -1175,6 +1199,14 @@ export function slotShapePayload(shape: SlotShapeValues): SlotShapePayload {
 
   if (networkMode && networkMode !== defaultNetworkMode) {
     payload.network = { mode: networkMode };
+  }
+
+  // Ports, ingress and egress join the mode in one block, and an untouched
+  // Network section adds no key at all.
+  const network = sandboxNetworkPayload(shape.network);
+
+  if (Object.keys(network).length > 0) {
+    payload.network = { ...payload.network, ...network };
   }
 
   if (kernelProfile) {
@@ -1441,6 +1473,8 @@ export function sandboxPoolCreateSummary(
     notes.push(poolModelFact(values));
   }
 
+  notes.push(...sandboxNetworkFacts("pool", values.shape.network));
+
   if (nodeSelectorPayload(values.shape)) {
     notes.push(nodeSelectorMergeFact);
   }
@@ -1465,6 +1499,12 @@ export function sandboxPoolCreateSummary(
     const warning = shapeWarnings[field];
 
     if (warning) {
+      warnings.push(warning);
+    }
+  }
+
+  for (const warning of sandboxNetworkWarnings(values.shape.networkMode, values.shape.network)) {
+    if (warning && !warnings.includes(warning)) {
       warnings.push(warning);
     }
   }
@@ -1592,9 +1632,11 @@ export function sandboxRegistrySectionHint(shape: SlotShapeValues): string {
 
 /** What this form does NOT do, said rather than left to be discovered (G1's cousin). */
 export const sandboxPoolFooter =
-  "This form authors all fourteen fields of a SwiftSandboxPool, so nothing is left to the YAML editor here - but " +
-  "the editor is what EDITS a pool afterwards, since no edit path is offered: every field stays mutable and the " +
-  "slots that are already warm keep the shape they booted with. minWarm additionally moves through the scale " +
+  "This form authors all thirteen fields of a SwiftSandboxPool's spec. One part of them is narrower here than in " +
+  "the schema: an ingress source is an IP range, a namespace by name or pod labels of this namespace, so " +
+  "matchExpressions and a namespace selector combined with a pod selector are left to the YAML editor. The editor " +
+  "is also what EDITS a pool afterwards, since no edit path is offered: every field stays mutable and the slots " +
+  "that are already warm keep the shape they booted with. minWarm additionally moves through the scale " +
   "subresource, so `kubectl scale` and an HPA change it without touching the object's spec by hand.";
 
 // ===========================================================================
@@ -1624,9 +1666,10 @@ export const sandboxPoolFooter =
 //   launch is built only when the launcher pod is missing.
 // - `spec.scratchDisk: {}` makes the controller dereference a nil pointer. It is
 //   made UNBUILDABLE by the three-way control below rather than validated (S7).
-// - `env[].valueFrom` is schema-complete and behaviourally IGNORED: the merge
-//   takes the literal value only, because a microVM has no downward-API or
-//   Secret path, so a `secretKeyRef` variable reaches the guest EMPTY.
+// - `env[].valueFrom` takes one source since v0.18.0, `secretKeyRef`: the
+//   launcher reads the Secret with its own account and hands the value to the
+//   guest. Every other source is refused. This form writes a literal value or a
+//   Secret key, never both on one variable.
 // - `scratchDisk.blank.volumeMode` is a no-op on three legs: enum-allowed,
 //   webhook-rejected and controller-hardcoded to `Block`.
 //
@@ -1698,11 +1741,35 @@ export interface ArgvRow {
   value: string;
 }
 
-/** One literal entry of `spec.env`. `valueFrom` is not offered; see the footer. */
+/** Where one variable's value comes from: typed here, or one key of a Secret of this namespace. */
+export type EnvSource = "value" | "secret";
+
+/** The sources the row's select offers, in the order it offers them. */
+export const envSources: EnvSource[] = ["value", "secret"];
+
+export const envSourceLabels: Record<EnvSource, string> = {
+  value: "Literal value",
+  secret: "Secret key",
+};
+
+/**
+ * One entry of `spec.env`: a literal `value`, or a `valueFrom.secretKeyRef`.
+ *
+ * The two are mutually exclusive, so the row holds a source and the payload
+ * reads only the fields of that source. The other `valueFrom` sources are
+ * refused by KubeSwift and are not offered; see the footer.
+ */
 export interface EnvRow {
   id: string;
   name: string;
+  source: EnvSource;
   value: string;
+  /** `valueFrom.secretKeyRef.name`, a Secret of the sandbox's OWN namespace. */
+  secretName: string;
+  /** `valueFrom.secretKeyRef.key`, the one key the schema requires. */
+  secretKey: string;
+  /** `valueFrom.secretKeyRef.optional`, sent only when set. */
+  optional: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1784,7 +1851,7 @@ export interface SandboxFormValues {
   args: ArgvRow[];
   /** `spec.workingDir`, which overrides the image config's working directory. */
   workingDir: string;
-  /** `spec.env`, literal values only. */
+  /** `spec.env`, a literal value or a Secret key per variable. */
   env: EnvRow[];
   /** The shape slice 1 built, shared field for field with the pool form. */
   shape: SlotShapeValues;
@@ -1802,6 +1869,8 @@ export interface SandboxFormValues {
   /** A7, both Go durations, both validated positive. */
   timeout: string;
   ttl: string;
+  /** Probes, drain period, artifacts, Secret files and pod labels (SPEC-0019 T4), on both modes (D2). */
+  workload: SandboxWorkloadValues;
 }
 
 /**
@@ -1832,6 +1901,7 @@ export function defaultSandboxForm(namespace = ""): SandboxFormValues {
     gpuTier: "",
     timeout: "",
     ttl: "",
+    workload: defaultSandboxWorkload(),
   };
 }
 
@@ -1847,6 +1917,8 @@ export interface SandboxPoolFacts {
   cpu?: number;
   memory?: string;
   rootfsMode?: string;
+  /** `spec.network.mode`, which a checkout's probes depend on: the pool decides the network (D2). */
+  networkMode?: string;
 }
 
 /** One PersistentVolumeClaim of the namespace, as the existing-claim branch reads it. */
@@ -1874,9 +1946,9 @@ export function newArgvRow(id: string): ArgvRow {
   return { id, value: "" };
 }
 
-/** A fresh, empty environment row. */
+/** A fresh, empty environment row, with a literal value. */
 export function newEnvRow(id: string): EnvRow {
-  return { id, name: "", value: "" };
+  return { id, name: "", source: "value", value: "", secretName: "", secretKey: "", optional: false };
 }
 
 /** Which of the two argv lists a row helper is acting on. */
@@ -1907,6 +1979,34 @@ export function updateEnvRow(values: SandboxFormValues, id: string, patch: Parti
 }
 
 /**
+ * Moves one variable to another source, emptying the fields of the one it leaves.
+ *
+ * The same rule as the form's other mode switches: `value` and `valueFrom` are
+ * mutually exclusive, so a field left behind by the source the user moved away
+ * from would be visible in the form and absent from the object.
+ */
+export function setEnvRowSource(values: SandboxFormValues, id: string, source: EnvSource): SandboxFormValues {
+  return {
+    ...values,
+    env: values.env.map((row) =>
+      row.id !== id || row.source === source
+        ? row
+        : source === "secret"
+          ? { ...row, source, value: "" }
+          : { ...row, source, secretName: "", secretKey: "", optional: false },
+    ),
+  };
+}
+
+/**
+ * Empties every variable's Secret name, for a move to another namespace: each
+ * named a Secret of the namespace the form left and names nothing in the new one.
+ */
+export function clearEnvSecrets(rows: readonly EnvRow[]): EnvRow[] {
+  return rows.map((row) => (row.secretName ? { ...row, secretName: "" } : row));
+}
+
+/**
  * Moves the form between the two modes, emptying what the mode it leaves owned.
  *
  * The same rule as the Create Guest form's boot source, and for the same reason:
@@ -1914,9 +2014,10 @@ export function updateEnvRow(values: SandboxFormValues, id: string, patch: Parti
  * the user moved away from would be invisible in the stored object and visible
  * in the form - which is the one place this form must never be.
  *
- * What a checkout clears is the four fields whose control it does not render:
- * the pool decides the network mode, the kernel profile and the node the slot is
- * already on (O4), and GPU is inexpressible with a pool at all. The image, the
+ * What a checkout clears is the fields whose control it does not render: the
+ * pool decides the network (its mode, ports, ingress and egress; D2), the kernel
+ * profile and the node the slot is already on (O4), and GPU is inexpressible
+ * with a pool at all. The image, the
  * vCPUs and the memory are NOT cleared, because the degraded branch - a pool
  * list that could not be read - asks for them again.
  */
@@ -1932,7 +2033,14 @@ export function switchSandboxSource(values: SandboxFormValues, source: SandboxSo
   return {
     ...values,
     source,
-    shape: { ...values.shape, networkMode: "", kernelProfile: "", nodeSelector: [], gpuProfile: "" },
+    shape: {
+      ...values.shape,
+      networkMode: "",
+      network: defaultSandboxNetwork(),
+      kernelProfile: "",
+      nodeSelector: [],
+      gpuProfile: "",
+    },
     gpuBackend: "none",
     gpuClaimName: "",
     gpuClaimTemplateName: "",
@@ -2229,70 +2337,7 @@ export const sandboxGpuDroppedInCheckoutReason =
 // A7: the two expiries, as Go durations.
 // ---------------------------------------------------------------------------
 
-/** The unit suffixes Go's own duration parser accepts, longest first so `ms` beats `m`. */
-const goDurationUnits: [string, number][] = [
-  ["ns", 1e-6],
-  ["us", 1e-3],
-  ["µs", 1e-3],
-  ["μs", 1e-3],
-  ["ms", 1],
-  ["s", 1000],
-  ["m", 60_000],
-  ["h", 3_600_000],
-];
-
-const goDurationTokenPattern = /(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|μs|ms|s|m|h)/gy;
-
-/**
- * A Go duration as milliseconds, or `undefined` when it is not one at all.
- *
- * Written from Go's own grammar - a sign, then one or more decimal-and-unit
- * pairs, with a bare `0` as the one value that needs no unit - because neither
- * `spec.timeout` nor `spec.ttl` carries a schema pattern or a format, and the
- * rules refusing a non-positive one are webhook-only. A negative value is
- * returned as a negative number rather than rejected here: the sign is what the
- * two refusals below are about, and the consequence of each differs.
- */
-export function parseGoDurationMs(value: string): number | undefined {
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const sign = trimmed.startsWith("-") ? -1 : 1;
-  const body = trimmed.replace(/^[+-]/, "");
-
-  if (!body) {
-    return undefined;
-  }
-
-  // Go accepts a bare zero, with or without a unit, and nothing else unitless.
-  if (/^0+(\.0*)?$/.test(body)) {
-    return 0;
-  }
-
-  goDurationTokenPattern.lastIndex = 0;
-
-  let total = 0;
-  let consumed = 0;
-  let match = goDurationTokenPattern.exec(body);
-
-  while (match) {
-    const magnitude = Number(match[1]);
-    const unit = goDurationUnits.find(([suffix]) => suffix === match?.[2]);
-
-    if (!Number.isFinite(magnitude) || !unit) {
-      return undefined;
-    }
-
-    total += magnitude * unit[1];
-    consumed = goDurationTokenPattern.lastIndex;
-    match = goDurationTokenPattern.exec(body);
-  }
-
-  return consumed === body.length && consumed > 0 ? sign * total : undefined;
-}
+export { parseGoDurationMs } from "./go-duration";
 
 /** The grammar, as the hint under both duration fields states it. */
 export const goDurationGrammar =
@@ -2384,13 +2429,24 @@ export function argvErrors(rows: readonly ArgvRow[], list: ArgvList): ArgvMessag
 }
 
 /** The fields one environment row can carry a message on. */
-export type EnvField = "name" | "value";
+export type EnvField = "name" | "value" | "secretName" | "secretKey";
 
 export type EnvMessages = Partial<Record<EnvField, string>>;
 
-export const envFieldLabels: Record<EnvField, string> = { name: "Name", value: "Value" };
+export const envFieldLabels: Record<EnvField, string> = {
+  name: "Name",
+  value: "Value",
+  secretName: "Secret",
+  secretKey: "Key",
+};
 
-const envFieldOrder: EnvField[] = ["name", "value"];
+const envFieldOrder: EnvField[] = ["name", "value", "secretName", "secretKey"];
+
+/** What a Secret's data key may be: the API server refuses a Secret holding any other. */
+const secretDataKeyPattern = /^[-._a-zA-Z0-9]+$/;
+
+/** The longest a Secret's data key may be. */
+const maxSecretDataKeyLength = 253;
 
 /**
  * Everything that would make an environment row wrong.
@@ -2420,7 +2476,55 @@ export function envErrors(values: SandboxFormValues): EnvMessages[] {
       messages.name = `Another row already sets ${name}. The merge keeps one of the two and says nothing about the other.`;
     }
 
+    if (row.source === "secret") {
+      const secretName = row.secretName.trim();
+      const key = row.secretKey.trim();
+
+      if (!secretName) {
+        messages.secretName =
+          "A Secret is required: the value is read from one of its keys, and a reference with no name points at nothing.";
+      } else if (secretName.length > maxObjectNameLength || !dnsSubdomainPattern.test(secretName)) {
+        messages.secretName =
+          "A Secret name is at most 253 lowercase letters, digits, '-' and '.', starting and ending with a letter or a digit.";
+      }
+
+      if (!key) {
+        messages.secretKey = "A key is required: the schema needs it, and it names the entry whose value is used.";
+      } else if (key.length > maxSecretDataKeyLength || !secretDataKeyPattern.test(key)) {
+        messages.secretKey =
+          "A Secret key is at most 253 letters, digits, '-', '_' and '.': no Secret can hold any other, so the sandbox would wait for it forever.";
+      }
+    }
+
     return messages;
+  });
+}
+
+/**
+ * Per variable, a Secret the namespace read did not return - which never blocks.
+ *
+ * Nothing refuses the sandbox for it: a missing Secret or key keeps it Pending
+ * unless the reference is optional, and the list may simply be stale.
+ */
+export function envWarnings(inputs: SandboxCreateInputs, values: SandboxFormValues): (string | undefined)[] {
+  return values.env.map((row) => {
+    const secretName = row.secretName.trim();
+
+    if (row.source !== "secret" || !secretName) {
+      return undefined;
+    }
+
+    const consequence = row.optional
+      ? "The reference is optional, so a missing Secret or key does not hold the sandbox Pending."
+      : "Nothing refuses the sandbox for it: it waits Pending until the Secret and its key exist, or until the reference is made optional.";
+
+    if (inputs.secretsUnverified) {
+      return `The Secrets of this namespace could not be listed from here, so ${secretName} is unverified. ${consequence}`;
+    }
+
+    return inputs.secrets.includes(secretName)
+      ? undefined
+      : `No Secret named ${secretName} is in this namespace. ${consequence}`;
   });
 }
 
@@ -2752,6 +2856,33 @@ export function sandboxShapeErrors(inputs: SandboxFormInputs, values: SandboxFor
   return errors;
 }
 
+/**
+ * What the workload sections need to know beyond their own values (D2).
+ *
+ * On the cold path the network is the form's own. On a checkout it is the
+ * pool's: its mode comes from the pool the read returned, and is unknown when
+ * the read failed or did not return the pool; no port of the sandbox's own
+ * exists for a probe to name.
+ */
+export function sandboxWorkloadContext(inputs: SandboxFormInputs, values: SandboxFormValues): SandboxWorkloadContext {
+  const checkout = values.source === "checkout";
+  const pool = checkout ? pickedSandboxPool(inputs, values) : undefined;
+  const modelImage = values.shape.modelImageRef.trim();
+
+  return {
+    checkout,
+    networkMode: checkout
+      ? pool
+        ? effectiveNetworkMode(pool.networkMode ?? "")
+        : undefined
+      : effectiveNetworkMode(values.shape.networkMode),
+    portNames: checkout ? [] : values.shape.network.ports.map((row) => row.name.trim()).filter((name) => name !== ""),
+    secrets: inputs.secrets,
+    secretsUnverified: inputs.secretsUnverified,
+    modelMountPath: modelImage ? values.shape.modelMountPath.trim() || defaultModelMountPath : undefined,
+  };
+}
+
 /** The sandbox's own fields, keyed the way their messages are. */
 export type SandboxOwnField = "namespace" | "name" | "pool" | "workingDir" | "timeout" | "ttl";
 
@@ -2913,6 +3044,13 @@ export function sandboxBlockingIssues(inputs: SandboxFormInputs, values: Sandbox
     }
   }
 
+  // The Network section exists only on the cold path; a checkout's is the pool's.
+  if (values.source !== "checkout") {
+    issues.push(...sandboxNetworkBlockingIssues(values.shape.networkMode, values.shape.network));
+  }
+
+  issues.push(...sandboxWorkloadBlockingIssues(values.workload, sandboxWorkloadContext(inputs, values)));
+
   if (shape.modelMountPath) {
     issues.push({ label: slotShapeFieldLabels.modelMountPath, message: shape.modelMountPath });
   }
@@ -2967,21 +3105,50 @@ export function argvPayload(rows: readonly ArgvRow[]): string[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
-/** The environment as the CRD declares it: literal values only, and never an empty name. */
+/**
+ * The environment as the CRD declares it: a literal `value` or a
+ * `valueFrom.secretKeyRef` per variable, never both, never an empty name and
+ * never a reference with an empty Secret name or key.
+ */
 export function envPayload(values: SandboxFormValues): SwiftSandboxEnvVar[] | undefined {
-  const rows = values.env
-    .filter((row) => row.name.trim() !== "")
-    .map((row) => {
-      const entry: SwiftSandboxEnvVar = { name: row.name.trim() };
+  const rows: SwiftSandboxEnvVar[] = [];
 
-      // An empty value is a real environment variable - it is set, and it is
-      // empty - so it is sent as one rather than dropped.
-      if (row.value !== "") {
-        entry.value = row.value;
+  for (const row of values.env) {
+    const name = row.name.trim();
+
+    if (!name) {
+      continue;
+    }
+
+    if (row.source === "secret") {
+      const secretName = row.secretName.trim();
+      const key = row.secretKey.trim();
+
+      // Blocked by `envErrors` anyway; never sent as an empty-name reference.
+      if (!secretName || !key) {
+        continue;
       }
 
-      return entry;
-    });
+      const secretKeyRef: SwiftSandboxSecretKeySelector = { name: secretName, key };
+
+      if (row.optional) {
+        secretKeyRef.optional = true;
+      }
+
+      rows.push({ name, valueFrom: { secretKeyRef } });
+      continue;
+    }
+
+    const entry: SwiftSandboxEnvVar = { name };
+
+    // An empty value is a real environment variable - it is set, and it is
+    // empty - so it is sent as one rather than dropped.
+    if (row.value !== "") {
+      entry.value = row.value;
+    }
+
+    rows.push(entry);
+  }
 
   return rows.length > 0 ? rows : undefined;
 }
@@ -3167,6 +3334,14 @@ export function sandboxCreatePayload(
   // wrote `shape.gpuProfile`.
   delete spec.gpuProfileRef;
   Object.assign(spec, sandboxGpuPayload(values));
+
+  // A checkout sends no network at all: the pool decides it (D2), and the
+  // section that would author it is not rendered.
+  if (values.source === "checkout") {
+    delete spec.network;
+  }
+
+  Object.assign(spec, sandboxWorkloadPayload(values.workload));
 
   return { spec };
 }
@@ -3368,11 +3543,25 @@ export function sandboxWorkloadFact(values: SandboxFormValues): string {
     parts.push(`It runs in ${workingDir}, which overrides the image config's own working directory.`);
   }
 
-  const env = envPayload(values);
+  const env = envPayload(values) ?? [];
+  const literal = env.filter((entry) => !entry.valueFrom);
+  const fromSecret = env.flatMap((entry) => {
+    const ref = entry.valueFrom?.secretKeyRef;
 
-  if (env) {
+    return ref ? [`${entry.name} from ${ref.name}/${ref.key}${ref.optional ? " (optional)" : ""}`] : [];
+  });
+
+  if (literal.length > 0) {
     parts.push(
-      `${env.length} environment ${env.length === 1 ? "variable is" : "variables are"} merged over the image config's own environment, as literal values.`,
+      `${literal.length} environment ${literal.length === 1 ? "variable is" : "variables are"} merged over the image config's own environment, as literal values.`,
+    );
+  }
+
+  if (fromSecret.length > 0) {
+    parts.push(
+      `${fromSecret.length} ${fromSecret.length === 1 ? "variable reads" : "variables read"} a Secret key (${fromSecret.join(", ")}): ` +
+        "the launcher reads it with its own account and hands it to the guest without writing it to any object, " +
+        "log or node disk. A missing Secret or key keeps the sandbox Pending unless the reference is optional.",
     );
   }
 
@@ -3490,6 +3679,14 @@ export function sandboxCreateSummary(inputs: SandboxFormInputs, values: SandboxF
     notes.push(sandboxModelFact(values));
   }
 
+  const workloadContext = sandboxWorkloadContext(inputs, values);
+
+  if (values.source !== "checkout") {
+    notes.push(...sandboxNetworkFacts("sandbox", values.shape.network));
+  }
+
+  notes.push(...sandboxWorkloadFacts(values.workload, workloadContext));
+
   if (nodeSelectorPayload(values.shape)) {
     notes.push(nodeSelectorMergeFact);
   }
@@ -3520,6 +3717,12 @@ export function sandboxCreateSummary(inputs: SandboxFormInputs, values: SandboxF
     warnings.push(own.pool);
   }
 
+  for (const warning of envWarnings(inputs, values)) {
+    if (warning) {
+      warnings.push(warning);
+    }
+  }
+
   const scratchWarning = sandboxScratchWarnings(inputs, values).claim;
 
   if (scratchWarning) {
@@ -3534,6 +3737,15 @@ export function sandboxCreateSummary(inputs: SandboxFormInputs, values: SandboxF
     // The GPU profile's own warning is dropped with the section it belongs to,
     // for the reason the payload drops the reference: a checkout sends no GPU.
     if (warning && (field !== "gpuProfile" || sandboxGpuApplies(values))) {
+      warnings.push(warning);
+    }
+  }
+
+  const networkWarnings =
+    values.source === "checkout" ? [] : sandboxNetworkWarnings(values.shape.networkMode, values.shape.network);
+
+  for (const warning of [...networkWarnings, ...sandboxWorkloadWarnings(values.workload, workloadContext)]) {
+    if (warning && !warnings.includes(warning)) {
       warnings.push(warning);
     }
   }
@@ -3600,14 +3812,17 @@ export function sandboxCreateFailureMessage(
 /**
  * What this form does NOT author, said rather than left to be discovered (A10).
  *
- * Three leaves, each with the reason it is absent rather than a bare list: two
- * of them are no-ops the schema still declares, and the third is sixteen leaves
- * of boilerplate that the controller reads and then ignores.
+ * Each leaf with the reason it is absent rather than a bare list. Since v0.18.0
+ * env[].valueFrom is no longer ignored: a secretKeyRef is honoured, and offered
+ * above, and every other source is refused, which is why those are not offered.
  */
 export const sandboxCreateFooter =
-  "Three things this form deliberately does not author, each reachable in Freelens' own YAML editor. " +
-  "env[].valueFrom is schema-complete and behaviourally IGNORED: the merge takes the literal value only, because a " +
-  "microVM has no downward-API and no Secret path, so a secretKeyRef variable reaches the guest empty. " +
+  "What this form deliberately does not author, each reachable in Freelens' own YAML editor. " +
+  "env[].valueFrom's other sources - configMapKeyRef, fieldRef, resourceFieldRef and fileKeyRef - are refused by " +
+  "KubeSwift, so they are not offered; a Secret key is. " +
+  "podMetadata.annotations and readinessStartup are not offered either, nor matchExpressions and combined " +
+  "selectors in an ingress source. A probe is an HTTP GET or a TCP connect, the two KubeSwift supports; its HTTP " +
+  "headers and success threshold are left to the editor. " +
   "scratchDisk.blank.volumeMode is a no-op on three legs - the enum allows Filesystem, the webhook rejects it, and " +
   "the controller hardcodes Block - so the disk is ALWAYS Block and no control asks about it. " +
   "gpuResourceClaim.hugepages sizes the GPU memory hugepage backing and belongs with the cluster's own hugepage " +

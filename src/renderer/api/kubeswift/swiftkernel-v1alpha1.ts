@@ -47,6 +47,9 @@ export class SwiftKernel extends Renderer.K8sApi.LensExtensionKubeObject<
   SwiftKernelStatus,
   SwiftKernelSpec
 > {
+  declare kind: "SwiftKernel";
+  declare apiVersion: "kernel.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftKernel";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/kernel.kubeswift.io/v1alpha1/swiftkernels";

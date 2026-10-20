@@ -4,6 +4,7 @@
   main, E2E included)
 - **Milestone:** M2
 - **KubeSwift version reviewed:** v0.13.12
+- **Revised for KubeSwift `v0.18.0`:** by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md): the snapshot's Location column and section, its capture start and captured primary IP, the schedule's Ready column, the oci deletion consequence.
 - **Author / date:** Claude with Roberto, 2026-08-27
 
 ## Goal

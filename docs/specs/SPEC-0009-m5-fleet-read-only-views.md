@@ -581,7 +581,7 @@ gateway's own words in the Status column.
     extraction.
 - **Integration**: unchanged (the harness keeps asserting install, listing
   as enabled, and activation without errors).
-- **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`), two new cases, each also
+- **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`), two new cases, each also
   asserting `headerCellsWithoutId(frame)` is empty for the view it opens:
   - "lists the fleet Clusters with their server, version and condition": the
     healthy remote member (server, `v1.34.3`, 7 guests, the Ready badge),

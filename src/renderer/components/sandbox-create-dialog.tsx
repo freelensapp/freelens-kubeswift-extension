@@ -23,13 +23,17 @@
 // grouping: this form spends four collapsed sections where the pool spends two,
 // because A8 and A9 are two sections here and one there, and because a sandbox's
 // GPU section is a three-way backend control that a checkout removes entirely.
+//
+// SPEC-0019 T4 adds the Network section (shared with the pool form, rendered on
+// the cold path only: a checkout's network is the pool's, D2) and the five
+// workload sections of `sandbox-workload-sections.tsx`, offered on both modes.
 
 import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
-import { SwiftSandbox } from "../api/kubeswift/swiftsandbox-v1alpha1";
-import { SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
+import { SwiftSandbox, type SwiftSandboxStore } from "../api/kubeswift/swiftsandbox-v1alpha1";
+import { SwiftSandboxPool, type SwiftSandboxPoolStore } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import {
   AddRowButton,
   CollapsibleSection,
@@ -41,7 +45,6 @@ import {
   WriteSummary,
 } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
-import stylesInline from "./create-dialog.module.scss?inline";
 import { apiFailureFacts } from "./guest-actions";
 import { defaultNamespace } from "./guest-create";
 import { quantityGrammar } from "./guestclass-create";
@@ -50,6 +53,7 @@ import {
   addArgvRow,
   addEnvRow,
   argvErrors,
+  clearEnvSecrets,
   createSandboxTitle,
   defaultNetworkMode,
   defaultRootfsMode,
@@ -60,6 +64,9 @@ import {
   defaultSlotMemory,
   envErrors,
   envFieldLabels,
+  envSourceLabels,
+  envSources,
+  envWarnings,
   goDurationGrammar,
   imageEntrypointFact,
   nodeSelectorErrors,
@@ -107,7 +114,9 @@ import {
   sandboxSourceLabels,
   sandboxSources,
   sandboxSubmitBlockReason,
+  sandboxWorkloadContext,
   scratchVolumeModeFact,
+  setEnvRowSource,
   setSandboxGpuBackend,
   setSandboxScratchSource,
   slotShapeWarnings,
@@ -115,6 +124,7 @@ import {
   updateArgvRow,
   updateEnvRow,
 } from "./sandbox-create";
+import { SandboxNetworkSection } from "./sandbox-network-section";
 import {
   loadGpuProfiles,
   loadKernels,
@@ -128,6 +138,14 @@ import {
   sandboxCreateInputs,
   updateSandboxShape,
 } from "./sandbox-pool-create-dialog";
+import { clearWorkloadSecrets } from "./sandbox-workload-create";
+import {
+  SandboxArtifactsSection,
+  SandboxPodLabelsSection,
+  SandboxProbesSection,
+  SandboxSecretFilesSection,
+  SandboxTerminationSection,
+} from "./sandbox-workload-sections";
 
 import type { ObjectPickerFacts } from "./create-dialog";
 import type { GuestGpuProfileFacts } from "./guest-create";
@@ -135,7 +153,9 @@ import type { PickerFacts } from "./guest-create-dialog";
 import type {
   ArgvList,
   ArgvRow,
+  EnvMessages,
   EnvRow,
+  EnvSource,
   SandboxFormInputs,
   SandboxFormValues,
   SandboxGpuBackend,
@@ -145,11 +165,12 @@ import type {
   SandboxSource,
 } from "./sandbox-create";
 import type { SandboxShapeOwner, SlotShapeWording } from "./sandbox-pool-create-dialog";
+import type { SandboxWorkloadOwner } from "./sandbox-workload-sections";
 
 const { observer } = MobxReact;
 
 const {
-  Component: { ConfirmDialog, Input, NamespaceSelect, Notifications, Radio, RadioGroup, Select },
+  Component: { Checkbox, ConfirmDialog, Input, NamespaceSelect, Notifications, Radio, RadioGroup, Select },
   K8sApi: { namespaceStore, pvcApi },
 } = Renderer;
 
@@ -180,7 +201,7 @@ export const sandboxSlotShapeWording: SlotShapeWording = {
 };
 
 /** The form's state, for one opening of the dialog. */
-export interface SandboxDialogModel extends SandboxShapeOwner {
+export interface SandboxDialogModel extends SandboxShapeOwner, SandboxWorkloadOwner {
   values: SandboxFormValues;
   /** The namespace's SwiftSandboxPools, for the checkout picker and the derivation. */
   pools: PickerFacts<SandboxPoolFacts>;
@@ -236,10 +257,16 @@ export function createSandboxDialogModel(
       gpuOpen: false,
       registryOpen: false,
       modelOpen: false,
+      networkOpen: false,
+      probesOpen: false,
+      terminationOpen: false,
+      artifactsOpen: false,
+      secretFilesOpen: false,
+      podLabelsOpen: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
       onValuesChanged: () => syncOkButton(model),
     },
-    { existingNames: Mobx.observable.ref, onValuesChanged: Mobx.observable.ref },
+    { existingNames: Mobx.observableRef, onValuesChanged: Mobx.observableRef },
   );
 
   Mobx.runInAction(() => syncOkButton(model));
@@ -272,14 +299,17 @@ export const toggleSandboxFormSection = Mobx.action(
  * Moves the form to another namespace.
  *
  * Everything namespaced goes with it: the pool, the scratch claim, the kernel
- * and GPU profiles and the two Secrets all named objects of the previous
- * namespace and name nothing in this one, which is the stale-selection bug
- * upstream's own wizard carries across cluster switches.
+ * and GPU profiles, the two Secrets, the environment's Secrets and the workload's
+ * Secrets (the artifacts' pull and verification keys, the Secret files) all named
+ * objects of the previous namespace and name nothing in this one, which is the
+ * stale-selection bug upstream's own wizard carries across cluster switches.
  */
 export const changeSandboxNamespace = Mobx.action((model: SandboxDialogModel, namespace: string) => {
   model.values.namespace = namespace;
   model.values.pool = "";
   model.values.scratchClaim = "";
+  model.values.env = clearEnvSecrets(model.values.env);
+  model.values.workload = clearWorkloadSecrets(model.values.workload);
   Object.assign(model.values.shape, {
     kernelProfile: "",
     gpuProfile: "",
@@ -328,7 +358,7 @@ export async function loadSandboxNamespacedObjects(model: SandboxDialogModel): P
  */
 export async function loadSandboxPools(model: SandboxDialogModel, namespace: string): Promise<void> {
   try {
-    const pools = await SwiftSandboxPool.getStore<SwiftSandboxPool>().api.list({ namespace });
+    const pools = await SwiftSandboxPool.getStore<SwiftSandboxPool, SwiftSandboxPoolStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       if (model.values.namespace.trim() !== namespace) {
@@ -344,8 +374,10 @@ export async function loadSandboxPools(model: SandboxDialogModel, namespace: str
           claimed: pool.status?.claimedReplicas,
           image: pool.spec?.image,
           cpu: pool.spec?.cpu,
-          memory: pool.spec?.memory,
+          // A Quantity may be a number; the facts carry it as text.
+          memory: pool.spec?.memory === undefined ? undefined : String(pool.spec.memory),
           rootfsMode: pool.spec?.rootfsMode,
+          networkMode: pool.spec?.network?.mode,
         })),
       };
       // The derivation is a snapshot of an object nothing makes immutable, so
@@ -394,7 +426,7 @@ export async function loadScratchClaims(model: SandboxDialogModel, namespace: st
 /** The namespace's SwiftSandbox names, for the collision warning that never blocks. */
 export async function loadSandboxNames(model: SandboxDialogModel, namespace: string): Promise<void> {
   try {
-    const sandboxes = await SwiftSandbox.getStore<SwiftSandbox>().api.list({ namespace });
+    const sandboxes = await SwiftSandbox.getStore<SwiftSandbox, SwiftSandboxStore>().api.list({ namespace });
 
     Mobx.runInAction(() => {
       model.existingNames = (sandboxes ?? []).map((sandbox) => sandbox.getName());
@@ -585,9 +617,10 @@ const SandboxDerivedShapeFacts = observer(({ model }: { model: SandboxDialogMode
         {`Read from ${model.values.pool.trim()} ${derived.readAt ? `at ${derived.readAt}` : "as this dialog opened"} and SENT from it. These are the four upstream documents a claimant as having to match, and the four nothing on the cluster ever compares - a mismatched image silently runs this workload inside the pool image's rootfs, which is why they are not editable here. A different shape is what the other mode is for.`}
       </div>
       <div className={styles.hint}>
-        The network mode, the kernel profile and the node selector are not asked for on a checkout either: the slot is
-        already booted and already placed, and the documented match set is these four alone. The YAML editor is the
-        escape hatch if a claim ever needs more.
+        The network (its mode, ports, ingress and egress), the kernel profile and the node selector are not asked for on
+        a checkout either: the slot is already booted, placed and wired by the pool, and the documented match set is
+        these four alone. The workload sections below are still offered: they belong to this sandbox. The YAML editor is
+        the escape hatch if a claim ever needs more.
       </div>
     </div>
   );
@@ -686,28 +719,33 @@ const WorkingDirField = observer(({ model }: { model: SandboxDialogModel }) => (
 ));
 
 /**
- * The environment, as literal values only.
+ * The environment, one row per variable: a literal value or one key of a Secret.
  *
- * `valueFrom` is schema-complete and behaviourally ignored - the merge takes the
- * literal value, because a microVM has no downward-API and no Secret path - so a
- * `secretKeyRef` variable reaches the guest EMPTY. The control is not offered
- * and the fact stands in its place (W12 option dropping); the footer says it
- * again with the reason.
+ * Since v0.18.0 `valueFrom.secretKeyRef` is honoured (the launcher reads the
+ * Secret with its own account) and every other source is refused, so a row
+ * offers exactly those two sources and the footer says why the others are not.
  */
 const EnvSection = observer(({ model }: { model: SandboxDialogModel }) => {
   const messages = envErrors(model.values);
+  const warnings = envWarnings(sandboxFormInputs(model), model.values);
 
   return (
     <div className={styles.field} data-testid="sandbox-create-env">
       <div className={styles.label}>Environment</div>
       <div className={styles.hint}>
-        Merged over the image config's own environment. Literal values only: env[].valueFrom is declared in the schema
-        and IGNORED by the controller, which takes the literal value, so a secretKeyRef variable would reach the guest
-        empty.
+        Merged over the image config's own environment. Each variable is a literal value or one key of a Secret of this
+        namespace, which the launcher reads with its own account and hands to the guest.
       </div>
 
       {model.values.env.map((row, index) => (
-        <EnvFields key={row.id} model={model} row={row} index={index} messages={messages[index] ?? {}} />
+        <EnvFields
+          key={row.id}
+          model={model}
+          row={row}
+          index={index}
+          messages={messages[index] ?? {}}
+          warning={warnings[index]}
+        />
       ))}
 
       <AddRowButton
@@ -719,18 +757,22 @@ const EnvSection = observer(({ model }: { model: SandboxDialogModel }) => {
   );
 });
 
-/** One environment variable: a name and a literal value. */
+const envSecretUnverifiedHint = "The Secrets of this namespace could not be listed, so the name is not verified.";
+
+/** One environment variable: a name, and a literal value or a Secret key. */
 const EnvFields = observer(
   ({
     model,
     row,
     index,
     messages,
+    warning,
   }: {
     model: SandboxDialogModel;
     row: EnvRow;
     index: number;
-    messages: Partial<Record<"name" | "value", string>>;
+    messages: EnvMessages;
+    warning?: string;
   }) => {
     const prefix = `sandbox-create-env-${index}`;
     const update = (patch: Partial<EnvRow>) => applySandboxForm(model, updateEnvRow(model.values, row.id, patch));
@@ -752,14 +794,65 @@ const EnvFields = observer(
           />
         </Field>
 
-        <Field label={envFieldLabels.value} hint="Empty is a real value: the variable is set and it is empty.">
-          <Input
-            value={row.value}
-            placeholder="fast"
-            data-testid={`${prefix}-value`}
-            onChange={(value: string) => update({ value })}
+        <Field label="Source" hint="A value and a Secret key are mutually exclusive on one variable.">
+          <Select
+            id={`${prefix}-source`}
+            themeName="light"
+            menuClass={styles.selectMenu}
+            value={row.source}
+            options={envSources.map((source) => ({ value: source, label: envSourceLabels[source] }))}
+            onChange={(option: { value: EnvSource } | null) =>
+              option ? applySandboxForm(model, setEnvRowSource(model.values, row.id, option.value)) : undefined
+            }
           />
         </Field>
+
+        {row.source === "secret" ? (
+          <>
+            <ObjectPickerField
+              id={`${prefix}-secret`}
+              inputTestId={`${prefix}-secret-input`}
+              label={envFieldLabels.secretName}
+              hint="A Secret of this namespace. The launcher reads it with its own account and hands the value to the guest without writing it to any object, log or node disk."
+              unverifiedHint={envSecretUnverifiedHint}
+              placeholder="Pick a Secret"
+              value={row.secretName}
+              facts={model.secrets}
+              error={messages.secretName}
+              warning={warning}
+              onChange={(value: string) => update({ secretName: value })}
+            />
+
+            <Field label={envFieldLabels.secretKey} hint="The Secret's data key to read." error={messages.secretKey}>
+              <Input
+                value={row.secretKey}
+                placeholder="token"
+                data-testid={`${prefix}-key`}
+                onChange={(value: string) => update({ secretKey: value })}
+              />
+            </Field>
+
+            <div className={styles.checkboxRow} data-testid={`${prefix}-optional`}>
+              <Checkbox
+                label="Optional"
+                value={row.optional}
+                onChange={(value: boolean) => update({ optional: value })}
+              />
+              <div className={styles.hint}>
+                A missing Secret or key then does not keep the sandbox Pending, as it otherwise does.
+              </div>
+            </div>
+          </>
+        ) : (
+          <Field label={envFieldLabels.value} hint="Empty is a real value: the variable is set and it is empty.">
+            <Input
+              value={row.value}
+              placeholder="fast"
+              data-testid={`${prefix}-value`}
+              onChange={(value: string) => update({ value })}
+            />
+          </Field>
+        )}
       </FormRow>
     );
   },
@@ -1084,10 +1177,10 @@ export const SandboxCreateForm = observer(({ model }: { model: SandboxDialogMode
   const blocked = sandboxSubmitBlockReason(inputs, model.values);
   const asked = sandboxShapeIsAsked(inputs, model.values);
   const checkout = model.values.source === "checkout";
+  const workloadContext = sandboxWorkloadContext(inputs, model.values);
 
   return (
     <div className={styles.form} data-testid="swiftsandbox-create-form">
-      <style>{stylesInline}</style>
       <p className={styles.subject}>
         {"Create a "}
         <b>SwiftSandbox</b>
@@ -1143,6 +1236,12 @@ export const SandboxCreateForm = observer(({ model }: { model: SandboxDialogMode
 
       <ScratchDiskSection model={model} />
       <SandboxGpuSection model={model} />
+      {checkout ? null : <SandboxNetworkSection model={model} kind="sandbox" />}
+      <SandboxProbesSection model={model} context={workloadContext} />
+      <SandboxTerminationSection model={model} context={workloadContext} />
+      <SandboxArtifactsSection model={model} context={workloadContext} />
+      <SandboxSecretFilesSection model={model} context={workloadContext} />
+      <SandboxPodLabelsSection model={model} context={workloadContext} />
       <SandboxRegistrySection model={model} />
       <SandboxModelSection model={model} />
 

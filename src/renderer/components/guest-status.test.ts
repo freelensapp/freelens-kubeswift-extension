@@ -54,6 +54,29 @@ describe("classifyGuest", () => {
     expect(verdict.className).toBe("warning");
   });
 
+  // KubeSwift v0.15.0 and later keep a guest with a missing reference Pending,
+  // with Resolved=False, where it used to fail (SPEC-0019 T1).
+  it("explains a Pending guest with Resolved=False as waiting for a reference, and the column quotes it", () => {
+    const status = {
+      phase: "Pending",
+      conditions: [
+        { type: "Resolved", status: "False", message: "SwiftImage not found: ubuntu-2404" },
+        { type: "PodScheduled", status: "Unknown", message: "Waiting" },
+      ],
+    };
+    const verdict = classifyGuest({ runPolicy: "Running" }, status);
+
+    expect(verdict.state).toBe(guestStates.pending);
+    expect(verdict.className).toBe("warning");
+    expect(verdict.explanation).toContain("waits for an object it references");
+    expect(
+      classifyGuest({}, { phase: "Pending", conditions: [{ type: "Resolved", status: "True" }] }).explanation,
+    ).toBe("The controller has accepted the guest and is preparing what it needs to boot");
+    expect(guestMessage({}, { phase: "Pending", conditions: [status.conditions[0]] })).toBe(
+      "SwiftImage not found: ubuntu-2404",
+    );
+  });
+
   it("reports a failed guest as an error", () => {
     const verdict = classifyGuest({ runPolicy: "Running" }, { phase: "Failed" });
 

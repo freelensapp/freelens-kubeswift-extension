@@ -362,7 +362,7 @@ them requires a change to DESIGN.md.
     style the existing models test `formatBytes` through their own helpers.
 - **Integration**: unchanged (the harness keeps asserting install, listing as
   enabled, and activation without errors).
-- **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`), two new cases plus one
+- **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`), two new cases plus one
   link case, each also asserting `headerCellsWithoutId(frame)` is empty for
   the view it opens:
   - "lists the SwiftGPUProfiles with their count, model and tier": the two

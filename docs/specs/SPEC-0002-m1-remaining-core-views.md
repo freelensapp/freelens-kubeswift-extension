@@ -68,7 +68,7 @@ Guest Classes, Guest Pools, Images, Seed Profiles, Kernels.
   empty/missing status). Target: comparable coverage per CRD.
 - Integration: harness keeps asserting install + activation (extending to
   page assertions is tracked as an M1 follow-up together with SPEC-0001).
-- E2E: `e2e/__tests__/kubeswift-e2e.tests.ts`, one case per CRD, each
+- E2E: `integration/__tests__/kubeswift-e2e.tests.ts`, one case per CRD, each
   asserting the fixture rows and one detail panel: "lists the
   SwiftGuestClasses with their sizing" (CPU, memory, root disk), "lists the
   SwiftGuestPools with desired and ready replicas" (a pool mid-rollout,

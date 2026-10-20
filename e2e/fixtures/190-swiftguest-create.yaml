@@ -137,5 +137,5 @@ spec:
   backend:
     type: local
     local:
-      hostPath: /var/lib/kubeswift/snapshots/e2e-snapshot-create-orphan
+      hostPath: /var/lib/kubeswift/snapshots/kubeswift-e2e_e2e-snapshot-create-orphan
   deletionPolicy: Delete

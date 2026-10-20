@@ -18,6 +18,9 @@
 status:
   phase: Ready
   warmReplicas: 2
+  # No slot still booting (v0.18.0, SPEC-0019 T2): the buffer is full. A zero
+  # the controller writes is a value, and the drawer shows it.
+  warmingReplicas: 0
   claimedReplicas: 1
   observedGeneration: 1
   selector: sandbox.kubeswift.io/pool=e2e-sandbox-pool

@@ -63,6 +63,9 @@ export class SwiftSnapshotSchedule extends Renderer.K8sApi.LensExtensionKubeObje
   SwiftSnapshotScheduleStatus,
   SwiftSnapshotScheduleSpec
 > {
+  declare kind: "SwiftSnapshotSchedule";
+  declare apiVersion: "snapshot.kubeswift.io/v1alpha1";
+
   static readonly kind = "SwiftSnapshotSchedule";
   static readonly namespaced = true;
   static readonly apiBase = "/apis/snapshot.kubeswift.io/v1alpha1/swiftsnapshotschedules";
@@ -124,6 +127,33 @@ export class SwiftSnapshotSchedule extends Renderer.K8sApi.LensExtensionKubeObje
 
   static getActiveSnapshots(object: SwiftSnapshotSchedule): string[] {
     return object.status?.active ?? [];
+  }
+
+  /**
+   * The `Ready` condition, which the CRD publishes as its Ready and Reason
+   * printer columns since KubeSwift v0.16.0: a schedule reports there the
+   * reason its waiting snapshot gives, such as a storage location it cannot
+   * resolve (SPEC-0019 T2). Keyed on the type because the manifest names it,
+   * which is the exception SPEC-0009 allows. `undefined` before any report.
+   */
+  static getReadiness(
+    object: SwiftSnapshotSchedule,
+  ): { label: string; className: "success" | "warning" | "info"; message?: string } | undefined {
+    const ready = object.status?.conditions?.find((condition) => condition.type === "Ready");
+
+    if (!ready) {
+      return undefined;
+    }
+
+    if (ready.status === "True") {
+      return { label: "Ready", className: "success", message: ready.message || undefined };
+    }
+
+    return {
+      label: ready.reason || (ready.status === "False" ? "Not ready" : "Unknown"),
+      className: ready.status === "False" ? "warning" : "info",
+      message: ready.message || undefined,
+    };
   }
 }
 

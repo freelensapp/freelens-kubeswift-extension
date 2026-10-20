@@ -1,7 +1,6 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { SwiftGuestClass } from "../api/kubeswift/swiftguestclass-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 
 const { observer } = MobxReact;
 
@@ -11,48 +10,56 @@ const {
 
 const notAvailable = "N/A";
 
-export interface SwiftGuestClassDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftGuestClass> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestClassDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftGuestClass>;
 
-export const SwiftGuestClassDetails = observer((props: SwiftGuestClassDetailsProps) =>
-  withErrorPage(props, () => {
-    const { object } = props;
-    const spec = object.spec;
-    const storage = spec?.storage;
+export const SwiftGuestClassDetails = observer((props: SwiftGuestClassDetailsProps) => {
+  const { object } = props;
+  const spec = object.spec;
+  const storage = spec?.storage;
 
-    return (
-      <>
-        <DrawerTitle>Resources</DrawerTitle>
-        <DrawerItem name="CPU">
-          <WithTooltip>{SwiftGuestClass.getCpu(object) ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="Memory">
-          <WithTooltip>{SwiftGuestClass.getMemory(object) ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="Core Scheduling">
-          <WithTooltip>{SwiftGuestClass.getCoreScheduling(object)}</WithTooltip>
-        </DrawerItem>
+  return (
+    <>
+      <DrawerTitle>Resources</DrawerTitle>
+      <DrawerItem name="CPU">
+        <WithTooltip>{SwiftGuestClass.getCpu(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Memory">
+        <WithTooltip>{SwiftGuestClass.getMemory(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Core Scheduling">
+        <WithTooltip>{SwiftGuestClass.getCoreScheduling(object)}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="CPU Pinning">
+        <WithTooltip>{SwiftGuestClass.getCpuPinning(object)}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="SMT Policy" hidden={!SwiftGuestClass.getSmtPolicy(object)}>
+        <WithTooltip>{SwiftGuestClass.getSmtPolicy(object)}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Hugepages" hidden={!SwiftGuestClass.getHugepages(object)}>
+        <WithTooltip>{SwiftGuestClass.getHugepages(object)}</WithTooltip>
+      </DrawerItem>
 
-        <DrawerTitle>Root Disk</DrawerTitle>
-        <DrawerItem name="Size">
-          <WithTooltip>{SwiftGuestClass.getRootDiskSize(object) ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="Format">
-          <WithTooltip>{SwiftGuestClass.getRootDiskFormat(object) ?? notAvailable}</WithTooltip>
-        </DrawerItem>
+      <DrawerTitle>Root Disk</DrawerTitle>
+      <DrawerItem name="Size">
+        <WithTooltip>{SwiftGuestClass.getRootDiskSize(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Format">
+        <WithTooltip>{SwiftGuestClass.getRootDiskFormat(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Shared Base Disk" hidden={!SwiftGuestClass.isSharedBaseDisk(object)}>
+        <WithTooltip>Yes: node-local, not replicated, never migrated</WithTooltip>
+      </DrawerItem>
 
-        <DrawerTitle>Storage Defaults</DrawerTitle>
-        <DrawerItem name="Access Mode">
-          <WithTooltip>{storage?.accessMode ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="Volume Mode">
-          <WithTooltip>{storage?.volumeMode ?? notAvailable}</WithTooltip>
-        </DrawerItem>
-        <DrawerItem name="Storage Class" hidden={!storage?.storageClassName}>
-          <LinkToStorageClass name={storage?.storageClassName} />
-        </DrawerItem>
-      </>
-    );
-  }),
-);
+      <DrawerTitle>Storage Defaults</DrawerTitle>
+      <DrawerItem name="Access Mode">
+        <WithTooltip>{storage?.accessMode ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Volume Mode">
+        <WithTooltip>{storage?.volumeMode ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Storage Class" hidden={!storage?.storageClassName}>
+        <LinkToStorageClass name={storage?.storageClassName} />
+      </DrawerItem>
+    </>
+  );
+});

@@ -1,0 +1,23 @@
+# Merge patch applied to the status subresource of the cluster-scoped
+# swiftartifactverificationpolicy/e2e-policy-signed. No KubeSwift controller
+# runs in the E2E cluster, so the status a real controller would write is
+# injected here.
+#
+# The valid policy: both keys parsed, one namespace selected.
+status:
+  observedGeneration: 1
+  namespaces: 1
+  authorities:
+    - name: release
+      algorithm: ECDSA-P256
+      keyID: 803632e966b8d2c57d35c5cb0ba5736263c8c169e6959de6e2f2bf5a4afea1ed
+    - name: rotation
+      algorithm: Ed25519
+      keyID: 0cbbaa0cac1568694c5dd23c146bc45ed7fed6277232311a703cfbe1683f3950
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Valid
+      message: The policy is enforced in 1 namespace.
+      lastTransitionTime: "2026-10-19T08:00:00Z"
+      observedGeneration: 1

@@ -69,7 +69,6 @@ import {
   storageSectionHint,
   switchImagePinBy,
   switchImageSource,
-  uploadDroppedFact,
   volumeSnapshotClassRequiredMessage,
 } from "./image-create";
 import { storageClassNameMessage } from "./kube-storage";
@@ -797,7 +796,7 @@ describe("imageCreatePayload", () => {
   });
 
   it("never sends an upload or a pvcClone source, whatever the form held", () => {
-    expect(imageCreatePayload(values()).spec.source.upload).toBeUndefined();
+    expect(imageCreatePayload(values()).spec.source).not.toHaveProperty("upload");
     expect(imageCreatePayload(values()).spec.source.pvcClone).toBeUndefined();
   });
 
@@ -1023,15 +1022,14 @@ describe("the sentences the form carries", () => {
     expect(formatFilenameWarning("qcow2", "raw")).toContain("not a check of the content");
   });
 
-  it("names the three dropped fields in the footer, each with what it claims to control", () => {
-    expect(imageDroppedFieldsFacts).toHaveLength(3);
-    expect(imageDroppedFieldsFacts[0]).toContain("upload");
-    expect(imageDroppedFieldsFacts[1]).toContain("pvcClone");
-    expect(imageDroppedFieldsFacts[2]).toContain("cloneStorageClassName");
-  });
-
-  it("says of upload that it exists on no side at all", () => {
-    expect(uploadDroppedFact).toContain("not-implemented");
+  // upload left the CRD in KubeSwift v0.14.0, so the footer no longer names it
+  // (SPEC-0019 T1).
+  it("names the two dropped fields in the footer, each with what it claims to control", () => {
+    expect(imageDroppedFieldsFacts).toHaveLength(2);
+    expect(imageDroppedFieldsFacts[0]).toContain("pvcClone");
+    expect(imageDroppedFieldsFacts[0]).toContain("v0.16.0");
+    expect(imageDroppedFieldsFacts[1]).toContain("cloneStorageClassName");
+    expect(imageDroppedFieldsFacts.join(" ")).not.toContain("upload");
   });
 });
 

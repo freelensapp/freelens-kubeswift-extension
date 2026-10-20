@@ -12,12 +12,11 @@ import {
 } from "../api/kubeswift/swiftsandbox-v1alpha1";
 import { noWarmCapTooltip, SwiftSandboxPool } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
 import { formatQuantity } from "../api/kubeswift/types";
-import { withErrorPage } from "../components/error-page";
 import { existingObjectRef, objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
+import { SandboxNetworkSection } from "../components/sandbox-network-drawer";
 import { classifySandbox, classifySandboxPool } from "../components/sandbox-status";
 import styles from "./swiftsandboxpool-details.module.scss";
-import stylesInline from "./swiftsandboxpool-details.module.scss?inline";
 
 import type { ReferenceRequest } from "../components/reference-loader";
 
@@ -66,6 +65,10 @@ const gpuSizingTooltip =
   "A warm GPU pool pre-boots each slot with its own native SwiftGPU allocation, so minWarm should not exceed the " +
   "number of GPUs the cluster can give it";
 
+/** Why a warming slot is not counted as warm. */
+const warmingTooltip =
+  "Unclaimed slots that are not ready yet. A checkout never takes one: with no ready slot it boots cold";
+
 /** What the image environment is for, said once rather than per row. */
 const imageEnvTooltip =
   "The pool image's own config environment, resolved once at materialize. A checkout merges the claiming " +
@@ -110,6 +113,12 @@ function PoolSection({ object }: SectionProps) {
       </DrawerItem>
       <DrawerItem name="Warm">
         <WithTooltip>{SwiftSandboxPool.getWarmReplicas(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      {/* Unclaimed slots still being scheduled, materialized or booted
+          (v0.18.0). A checkout never takes one, so they are counted apart
+          from Warm rather than in it. */}
+      <DrawerItem name="Warming" hidden={SwiftSandboxPool.getWarmingReplicas(object) === undefined}>
+        <WithTooltip tooltip={warmingTooltip}>{SwiftSandboxPool.getWarmingReplicas(object)}</WithTooltip>
       </DrawerItem>
       <DrawerItem name="Claimed">
         <WithTooltip>{SwiftSandboxPool.getClaimedReplicas(object) ?? notAvailable}</WithTooltip>
@@ -400,69 +409,65 @@ const SandboxesUsingSection = observer(({ object }: SectionProps) => {
   );
 });
 
-export interface SwiftSandboxPoolDetailsProps extends Renderer.Component.KubeObjectDetailsProps<SwiftSandboxPool> {
-  extension: Renderer.LensExtension;
-}
+export type SwiftSandboxPoolDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftSandboxPool>;
 
-export const SwiftSandboxPoolDetails = observer((props: SwiftSandboxPoolDetailsProps) =>
-  withErrorPage(props, () => {
-    const { object } = props;
-    const namespace = object.getNs();
-    const secretNames = SwiftSandboxPool.getSecretNames(object);
-    const kernelName = object.spec?.kernelProfileRef?.name;
-    const gpuProfileName = object.spec?.gpuProfileRef?.name;
-    const kernelStore = maybe(() => SwiftKernel.getStore<SwiftKernel>());
-    const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
+export const SwiftSandboxPoolDetails = observer((props: SwiftSandboxPoolDetailsProps) => {
+  const { object } = props;
+  const namespace = object.getNs();
+  const secretNames = SwiftSandboxPool.getSecretNames(object);
+  const kernelName = object.spec?.kernelProfileRef?.name;
+  const gpuProfileName = object.spec?.gpuProfileRef?.name;
+  const kernelStore = maybe(() => SwiftKernel.getStore<SwiftKernel>());
+  const gpuProfileStore = maybe(() => SwiftGPUProfile.getStore<SwiftGPUProfile>());
 
-    // Assembled conditionally, exactly as the SwiftSandbox drawer assembles
-    // its own: a store whose references are all absent contributes no request,
-    // so a pool with no secrets, no kernel profile and no GPU asks for nothing
-    // here at all. The SwiftSandbox store the last section needs is declared by
-    // that section itself, because it is a listing rather than a set of names
-    // known in advance.
-    const requests: ReferenceRequest<unknown>[] = [];
+  // Assembled conditionally, exactly as the SwiftSandbox drawer assembles
+  // its own: a store whose references are all absent contributes no request,
+  // so a pool with no secrets, no kernel profile and no GPU asks for nothing
+  // here at all. The SwiftSandbox store the last section needs is declared by
+  // that section itself, because it is a listing rather than a set of names
+  // known in advance.
+  const requests: ReferenceRequest<unknown>[] = [];
 
-    if (secretNames.length > 0) {
-      requests.push({
-        label: "secrets",
-        store: secretsStore,
-        namespaces: [namespace],
-        lookups: secretNames.map((name) => ({ name, namespace })),
-      });
-    }
+  if (secretNames.length > 0) {
+    requests.push({
+      label: "secrets",
+      store: secretsStore,
+      namespaces: [namespace],
+      lookups: secretNames.map((name) => ({ name, namespace })),
+    });
+  }
 
-    if (kernelName) {
-      requests.push({
-        label: SwiftKernel.crd.plural,
-        store: kernelStore,
-        namespaces: [namespace],
-        lookups: [{ name: kernelName, namespace }],
-      });
-    }
+  if (kernelName) {
+    requests.push({
+      label: SwiftKernel.crd.plural,
+      store: kernelStore,
+      namespaces: [namespace],
+      lookups: [{ name: kernelName, namespace }],
+    });
+  }
 
-    if (gpuProfileName) {
-      requests.push({
-        label: SwiftGPUProfile.crd.plural,
-        store: gpuProfileStore,
-        namespaces: [namespace],
-        lookups: [{ name: gpuProfileName, namespace }],
-      });
-    }
+  if (gpuProfileName) {
+    requests.push({
+      label: SwiftGPUProfile.crd.plural,
+      store: gpuProfileStore,
+      namespaces: [namespace],
+      lookups: [{ name: gpuProfileName, namespace }],
+    });
+  }
 
-    useReferenceStores(requests);
+  useReferenceStores(requests);
 
-    return (
-      <>
-        <style>{stylesInline}</style>
-        <PoolSection object={object} />
-        <SlotShapeSection object={object} />
-        <RootfsSection object={object} />
-        <ModelSection object={object} />
-        <GpuSection object={object} />
-        <ImageEnvironmentSection object={object} />
-        <SandboxesUsingSection object={object} />
-        <KubeObjectConditionsDrawer object={object} />
-      </>
-    );
-  }),
-);
+  return (
+    <>
+      <PoolSection object={object} />
+      <SlotShapeSection object={object} />
+      <SandboxNetworkSection network={object.spec?.network} />
+      <RootfsSection object={object} />
+      <ModelSection object={object} />
+      <GpuSection object={object} />
+      <ImageEnvironmentSection object={object} />
+      <SandboxesUsingSection object={object} />
+      <KubeObjectConditionsDrawer object={object} />
+    </>
+  );
+});

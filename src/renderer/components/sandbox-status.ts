@@ -269,3 +269,60 @@ export function sandboxMessage(status?: SandboxStatusFacts): string {
 export function sandboxPoolMessage(status?: SandboxPoolStatusFacts): string {
   return conditionMessage(status) ?? classifySandboxPool(status).explanation;
 }
+
+/** The states one `status.artifacts` entry can be in, as the v0.18.0 schema's enum lists them. */
+export const sandboxArtifactStates = {
+  resolved: "Resolved",
+  fetching: "Fetching",
+  dispatched: "Dispatched",
+  mounted: "Mounted",
+  skipped: "Skipped",
+  failed: "Failed",
+} as const;
+
+/**
+ * Classifies one artifact of a sandbox (SPEC-0019 T2).
+ *
+ * The three states on the way to a mount are in progress; a skipped artifact is
+ * an optional one the workload runs without, which is a degradation rather than
+ * a failure; a failed one is what failed the sandbox. An entry with no state was
+ * written by a release that did not record one, and the schema says such an
+ * artifact was mounted, so it reads as `Mounted` rather than as unknown. A state
+ * this extension does not know passes through as it arrived.
+ */
+export function classifySandboxArtifact(state?: string, reason?: string): SandboxCondition {
+  const because = reason ? ` (${reason})` : "";
+
+  switch (state ?? sandboxArtifactStates.mounted) {
+    case sandboxArtifactStates.mounted:
+      return {
+        state: sandboxArtifactStates.mounted,
+        className: "success",
+        explanation: state
+          ? `The artifact is mounted read-only in the guest${because}`
+          : "No state was recorded, which the schema reads as mounted by an earlier release",
+      };
+    case sandboxArtifactStates.resolved:
+    case sandboxArtifactStates.fetching:
+    case sandboxArtifactStates.dispatched:
+      return {
+        state: String(state),
+        className: "warning",
+        explanation: `The artifact is on its way to the guest: ${String(state).toLowerCase()}${because}`,
+      };
+    case sandboxArtifactStates.skipped:
+      return {
+        state: sandboxArtifactStates.skipped,
+        className: "warning",
+        explanation: `The artifact is optional and the workload runs without it: nothing is mounted at its path${because}`,
+      };
+    case sandboxArtifactStates.failed:
+      return {
+        state: sandboxArtifactStates.failed,
+        className: "error",
+        explanation: `The artifact failed the sandbox${because}`,
+      };
+    default:
+      return { state: String(state), className: "info", explanation: `The controller reports ${state}${because}` };
+  }
+}

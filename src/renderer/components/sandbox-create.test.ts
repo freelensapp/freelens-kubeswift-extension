@@ -23,6 +23,7 @@ import {
   addNodeSelectorRow,
   argvErrors,
   argvPayload,
+  clearEnvSecrets,
   commandlessCheckoutWarning,
   createSandboxPoolTitle,
   createSandboxTitle,
@@ -39,6 +40,7 @@ import {
   effectiveMinWarm,
   envErrors,
   envPayload,
+  envWarnings,
   goDurationFormatMessage,
   goDurationGrammar,
   hgxProfileRefusal,
@@ -53,6 +55,7 @@ import {
   minWarmZeroFact,
   modelMountPathError,
   modelMountPathRelativeMessage,
+  newEnvRow,
   newNodeSelectorRow,
   nodeSelectorErrors,
   nodeSelectorKeyError,
@@ -113,6 +116,7 @@ import {
   sandboxPoolCreatePayload,
   sandboxPoolCreateSuccessMessage,
   sandboxPoolCreateSummary,
+  sandboxPoolFieldLabels,
   sandboxPoolFooter,
   sandboxPoolNameError,
   sandboxPoolNameWarning,
@@ -140,10 +144,12 @@ import {
   sandboxTimeoutFact,
   sandboxTtlError,
   sandboxTtlFact,
+  sandboxWorkloadContext,
   sandboxWorkloadFact,
   scratchClaimSuffix,
   scratchDiskPayload,
   scratchVolumeModeFact,
+  setEnvRowSource,
   setSandboxGpuBackend,
   setSandboxScratchSource,
   slotCpuError,
@@ -169,9 +175,12 @@ import {
   warmBufferFoldMessage,
   warmCount,
 } from "./sandbox-create";
+import { defaultSandboxNetwork } from "./sandbox-network-create";
+import { defaultSandboxProbe, defaultSandboxWorkload, probeWithPoolModeNoneMessage } from "./sandbox-workload-create";
 
 import type { GuestGpuProfileFacts } from "./guest-create";
 import type {
+  EnvRow,
   SandboxCreateInputs,
   SandboxFormInputs,
   SandboxFormValues,
@@ -1201,7 +1210,8 @@ describe("the outcome (W9)", () => {
 
 describe("the footer", () => {
   it("says the form authors every field, and what the YAML editor is still for", () => {
-    expect(sandboxPoolFooter).toContain("all fourteen fields");
+    expect(sandboxPoolFooter).toContain("all thirteen fields");
+    expect(sandboxPoolFooter).toContain("matchExpressions");
     expect(sandboxPoolFooter).toContain("EDITS a pool afterwards");
     expect(sandboxPoolFooter).toContain("kubectl scale");
   });
@@ -1253,6 +1263,16 @@ function sandboxInputs(overrides: Partial<SandboxFormInputs> = {}): SandboxFormI
     pvcsUnverified: false,
     ...overrides,
   };
+}
+
+/** One literal environment row. */
+function envRow(id: string, name: string, value: string): EnvRow {
+  return { ...newEnvRow(id), name, value };
+}
+
+/** One environment row read from a key of a Secret. */
+function secretEnvRow(id: string, name: string, secretName: string, secretKey: string, optional = false): EnvRow {
+  return { ...newEnvRow(id), name, source: "secret", secretName, secretKey, optional };
 }
 
 /** A sandbox form that would submit, so each case can break exactly one thing. */
@@ -1540,10 +1560,7 @@ describe("the submit verdict (W4)", () => {
         { id: "command-1", value: "/bin/sh" },
         { id: "command-2", value: "" },
       ],
-      env: [
-        { id: "env-1", name: "MODE", value: "fast" },
-        { id: "env-2", name: "", value: "x" },
-      ],
+      env: [envRow("env-1", "MODE", "fast"), envRow("env-2", "", "x")],
     });
     const labels = sandboxBlockingIssues(sandboxInputs(), values).map((issue) => issue.label);
 
@@ -1566,14 +1583,13 @@ describe("the submit verdict (W4)", () => {
       sandboxForm({ shape: shape({ modelImageRef: "ghcr.io/example/model:v1", modelMountPath: "weights" }) }),
       sandboxForm({ command: [{ id: "command-1", value: "" }] }),
       sandboxForm({ args: [{ id: "args-1", value: "  " }] }),
-      sandboxForm({ env: [{ id: "env-1", name: "", value: "x" }] }),
-      sandboxForm({ env: [{ id: "env-1", name: "A B", value: "x" }] }),
+      sandboxForm({ env: [envRow("env-1", "", "x")] }),
+      sandboxForm({ env: [envRow("env-1", "A B", "x")] }),
       sandboxForm({
-        env: [
-          { id: "env-1", name: "MODE", value: "fast" },
-          { id: "env-2", name: "MODE", value: "slow" },
-        ],
+        env: [envRow("env-1", "MODE", "fast"), envRow("env-2", "MODE", "slow")],
       }),
+      sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "", "")] }),
+      sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "Bad_Name", "a/b")] }),
       sandboxForm({ scratchSource: "blank" }),
       sandboxForm({ scratchSource: "blank", scratchSize: "0" }),
       sandboxForm({ scratchSource: "blank", scratchSize: "100Gi", scratchStorageClass: "Bad Class" }),
@@ -1737,20 +1753,17 @@ describe("the workload rows", () => {
   });
 
   it("requires an environment variable's name, and refuses what corrupts the merge", () => {
-    expect(envErrors(sandboxForm({ env: [{ id: "env-1", name: "", value: "x" }] }))[0].name).toContain("needs a name");
-    expect(envErrors(sandboxForm({ env: [{ id: "env-1", name: "A B", value: "x" }] }))[0].name).toContain(
+    expect(envErrors(sandboxForm({ env: [envRow("env-1", "", "x")] }))[0].name).toContain("needs a name");
+    expect(envErrors(sandboxForm({ env: [envRow("env-1", "A B", "x")] }))[0].name).toContain(
       "no whitespace and no '='",
     );
-    expect(envErrors(sandboxForm({ env: [{ id: "env-1", name: "A=B", value: "x" }] }))[0].name).toBeDefined();
+    expect(envErrors(sandboxForm({ env: [envRow("env-1", "A=B", "x")] }))[0].name).toBeDefined();
   });
 
   it("refuses a duplicate variable, because the merge keeps one and says nothing", () => {
     const messages = envErrors(
       sandboxForm({
-        env: [
-          { id: "env-1", name: "MODE", value: "fast" },
-          { id: "env-2", name: "MODE", value: "slow" },
-        ],
+        env: [envRow("env-1", "MODE", "fast"), envRow("env-2", "MODE", "slow")],
       }),
     );
 
@@ -1760,26 +1773,151 @@ describe("the workload rows", () => {
 
   it("sends an empty value as a real variable, and drops a nameless row from the payload", () => {
     const values = sandboxForm({
-      env: [
-        { id: "env-1", name: "MODE", value: "" },
-        { id: "env-2", name: "", value: "orphan" },
-      ],
+      env: [envRow("env-1", "MODE", ""), envRow("env-2", "", "orphan")],
     });
 
     expect(envPayload(values)).toEqual([{ name: "MODE" }]);
   });
 
-  it("sends the literal values it was given, and never a valueFrom", () => {
+  it("sends the literal values it was given, never with a valueFrom", () => {
     const values = sandboxForm({
-      env: [
-        { id: "env-1", name: "MODE", value: "fast" },
-        { id: "env-2", name: "SEED", value: "7" },
-      ],
+      env: [envRow("env-1", "MODE", "fast"), envRow("env-2", "SEED", "7")],
     });
 
     for (const entry of envPayload(values) ?? []) {
       expect(Object.keys(entry).sort()).toEqual(["name", "value"]);
     }
+  });
+
+  it("opens a variable on a literal value, with no Secret fields set", () => {
+    expect(newEnvRow("env-1")).toEqual({
+      id: "env-1",
+      name: "",
+      source: "value",
+      value: "",
+      secretName: "",
+      secretKey: "",
+      optional: false,
+    });
+  });
+
+  it("empties the fields of the source a variable leaves, because value and valueFrom are exclusive", () => {
+    const toSecret = setEnvRowSource(sandboxForm({ env: [envRow("env-1", "MODE", "fast")] }), "env-1", "secret");
+
+    expect(toSecret.env[0]).toMatchObject({ source: "secret", value: "" });
+
+    const toValue = setEnvRowSource(
+      sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "e2e-sandbox-registry", "token", true)] }),
+      "env-1",
+      "value",
+    );
+
+    expect(toValue.env[0]).toMatchObject({ source: "value", secretName: "", secretKey: "", optional: false });
+
+    const same = sandboxForm({ env: [envRow("env-1", "MODE", "fast")] });
+
+    expect(setEnvRowSource(same, "env-1", "value").env[0]).toBe(same.env[0]);
+  });
+
+  it("empties every variable's Secret name on a move to another namespace, and keeps the rest", () => {
+    const rows = clearEnvSecrets([
+      secretEnvRow("env-1", "TOKEN", "e2e-sandbox-registry", "token", true),
+      envRow("env-2", "MODE", "fast"),
+    ]);
+
+    expect(rows[0]).toMatchObject({ name: "TOKEN", secretName: "", secretKey: "token", optional: true });
+    expect(rows[1]).toEqual(envRow("env-2", "MODE", "fast"));
+  });
+
+  it("requires a Secret and a key on a Secret-sourced variable, and nothing of a literal one", () => {
+    const missing = envErrors(sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "", "")] }))[0];
+
+    expect(missing.secretName).toContain("A Secret is required");
+    expect(missing.secretKey).toContain("A key is required");
+    expect(missing.name).toBeUndefined();
+    expect(envErrors(sandboxForm({ env: [envRow("env-1", "MODE", "")] }))[0]).toEqual({});
+    expect(
+      envErrors(sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "e2e-sandbox-registry", "token")] }))[0],
+    ).toEqual({});
+  });
+
+  it("refuses a key no Secret can hold, and a Secret name no object can carry", () => {
+    for (const key of ["a/b", "a b", "k:v", "x".repeat(254)]) {
+      expect(envErrors(sandboxForm({ env: [secretEnvRow("env-1", "T", "app", key)] }))[0].secretKey).toContain(
+        "letters, digits, '-', '_' and '.'",
+      );
+    }
+
+    for (const key of ["token", "TLS.crt", "a-b_c.d", "x".repeat(253)]) {
+      expect(envErrors(sandboxForm({ env: [secretEnvRow("env-1", "T", "app", key)] }))[0].secretKey).toBeUndefined();
+    }
+
+    expect(envErrors(sandboxForm({ env: [secretEnvRow("env-1", "T", "Bad_Name", "token")] }))[0].secretName).toContain(
+      "A Secret name is at most 253",
+    );
+  });
+
+  it("names the row and the field of a Secret-sourced variable's refusal", () => {
+    const values = sandboxForm({ env: [envRow("env-1", "MODE", "fast"), secretEnvRow("env-2", "TOKEN", "", "")] });
+    const labels = sandboxBlockingIssues(sandboxInputs(), values).map((issue) => issue.label);
+
+    expect(labels).toEqual(["Variable 2 secret", "Variable 2 key"]);
+  });
+
+  it("warns, never blocks, on a Secret the namespace read did not return", () => {
+    const required = sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "e2e-missing", "token")] });
+    const optional = sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "e2e-missing", "token", true)] });
+
+    expect(envWarnings(sandboxInputs(), required)[0]).toContain("No Secret named e2e-missing is in this namespace");
+    expect(envWarnings(sandboxInputs(), required)[0]).toContain("waits Pending");
+    expect(envWarnings(sandboxInputs(), optional)[0]).toContain("does not hold the sandbox Pending");
+    expect(envWarnings(sandboxInputs({ secretsUnverified: true }), required)[0]).toContain(
+      "could not be listed from here, so e2e-missing is unverified",
+    );
+    expect(sandboxBlockingIssues(sandboxInputs(), required)).toEqual([]);
+    expect(sandboxCreateSummary(sandboxInputs(), required).warnings.join(" ")).toContain("e2e-missing");
+  });
+
+  it("says nothing of a Secret that is listed, of a literal variable, or of an empty name", () => {
+    const values = sandboxForm({
+      env: [
+        secretEnvRow("env-1", "TOKEN", "e2e-sandbox-registry", "token"),
+        envRow("env-2", "MODE", "fast"),
+        secretEnvRow("env-3", "OTHER", "", "token"),
+      ],
+    });
+
+    expect(envWarnings(sandboxInputs(), values)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("sends a Secret-sourced variable as a secretKeyRef only, and optional only when set", () => {
+    const values = sandboxForm({
+      env: [
+        envRow("env-1", "MODE", "fast"),
+        { ...secretEnvRow("env-2", " TOKEN ", " e2e-sandbox-registry ", " token "), value: "stale" },
+        secretEnvRow("env-3", "MAYBE", "e2e-sandbox-cosign", "cosign.pub", true),
+      ],
+    });
+
+    expect(envPayload(values)).toEqual([
+      { name: "MODE", value: "fast" },
+      { name: "TOKEN", valueFrom: { secretKeyRef: { name: "e2e-sandbox-registry", key: "token" } } },
+      { name: "MAYBE", valueFrom: { secretKeyRef: { name: "e2e-sandbox-cosign", key: "cosign.pub", optional: true } } },
+    ]);
+    expect(sandboxCreatePayload(sandboxInputs(), values).spec.env).toEqual(envPayload(values));
+  });
+
+  it("never sends a reference with an empty Secret name or key", () => {
+    expect(envPayload(sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "", "token")] }))).toBeUndefined();
+    expect(envPayload(sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "app", " ")] }))).toBeUndefined();
+  });
+
+  it("sends a Secret-sourced variable on a checkout too", () => {
+    const values = checkoutForm({ env: [secretEnvRow("env-1", "TOKEN", "e2e-sandbox-registry", "token")] });
+
+    expect(sandboxCreatePayload(sandboxInputs(), values).spec.env).toEqual([
+      { name: "TOKEN", valueFrom: { secretKeyRef: { name: "e2e-sandbox-registry", key: "token" } } },
+    ]);
   });
 });
 
@@ -2007,7 +2145,7 @@ describe("sandboxCreatePayload", () => {
         { id: "args-2", value: "http.server" },
       ],
       workingDir: "/workspace",
-      env: [{ id: "env-1", name: "MODE", value: "fast" }],
+      env: [envRow("env-1", "MODE", "fast")],
       timeout: "30m",
       ttl: "1h",
     });
@@ -2103,7 +2241,7 @@ describe("sandboxCreatePayload", () => {
       command: [{ id: "command-1", value: "python" }],
       args: [{ id: "args-1", value: "-V" }],
       workingDir: "/workspace",
-      env: [{ id: "env-1", name: "MODE", value: "fast" }],
+      env: [envRow("env-1", "MODE", "fast")],
       shape: shape({
         cpu: "4",
         memory: "8Gi",
@@ -2167,7 +2305,7 @@ describe("sandboxCreatePayload", () => {
     const values = sandboxForm({
       command: [{ id: "command-1", value: "  python  " }],
       workingDir: "  /workspace  ",
-      env: [{ id: "env-1", name: "  MODE  ", value: "fast" }],
+      env: [envRow("env-1", "  MODE  ", "fast")],
       timeout: "  30m  ",
       ttl: "  1h  ",
       scratchSource: "existing",
@@ -2340,7 +2478,7 @@ describe("the sandbox write summary", () => {
         command: [{ id: "command-1", value: "python" }],
         args: [{ id: "args-1", value: "-V" }],
         workingDir: "/workspace",
-        env: [{ id: "env-1", name: "MODE", value: "fast" }],
+        env: [envRow("env-1", "MODE", "fast")],
       }),
     );
 
@@ -2348,6 +2486,35 @@ describe("the sandbox write summary", () => {
     expect(fact).toContain("nothing is split on whitespace");
     expect(fact).toContain("/workspace");
     expect(fact).toContain("1 environment variable is merged");
+  });
+
+  it("says which variables read a Secret key, and what a missing one does", () => {
+    const fact = sandboxWorkloadFact(
+      sandboxForm({
+        env: [
+          envRow("env-1", "MODE", "fast"),
+          envRow("env-2", "SEED", "7"),
+          secretEnvRow("env-3", "TOKEN", "e2e-sandbox-registry", "token"),
+          secretEnvRow("env-4", "MAYBE", "e2e-sandbox-cosign", "cosign.pub", true),
+        ],
+      }),
+    );
+
+    expect(fact).toContain(
+      "2 environment variables are merged over the image config's own environment, as literal values.",
+    );
+    expect(fact).toContain(
+      "2 variables read a Secret key (TOKEN from e2e-sandbox-registry/token, MAYBE from e2e-sandbox-cosign/cosign.pub (optional))",
+    );
+    expect(fact).toContain("without writing it to any object, log or node disk");
+    expect(fact).toContain("keeps the sandbox Pending unless the reference is optional");
+
+    const secretOnly = sandboxWorkloadFact(
+      sandboxForm({ env: [secretEnvRow("env-1", "TOKEN", "e2e-sandbox-registry", "token")] }),
+    );
+
+    expect(secretOnly).toContain("1 variable reads a Secret key");
+    expect(secretOnly).not.toContain("literal values");
   });
 
   it("says the image's own entrypoint runs when no command is given", () => {
@@ -2530,9 +2697,14 @@ describe("the sandbox outcome", () => {
 });
 
 describe("the sandbox footer", () => {
-  it("names the three leaves it does not author, each with its reason", () => {
-    expect(sandboxCreateFooter).toContain("env[].valueFrom");
-    expect(sandboxCreateFooter).toContain("reaches the guest empty");
+  it("names the leaves it does not author, each with its reason", () => {
+    expect(sandboxCreateFooter).toContain("env[].valueFrom's other sources");
+    expect(sandboxCreateFooter).toContain("configMapKeyRef, fieldRef, resourceFieldRef and fileKeyRef");
+    expect(sandboxCreateFooter).toContain("refused by KubeSwift, so they are not offered; a Secret key is");
+    expect(sandboxCreateFooter).not.toContain("secretKeyRef");
+    expect(sandboxCreateFooter).not.toContain("literal values only");
+    expect(sandboxCreateFooter).not.toContain("IGNORED");
+    expect(sandboxCreateFooter).toContain("podMetadata.annotations and readinessStartup");
     expect(sandboxCreateFooter).toContain("scratchDisk.blank.volumeMode");
     expect(sandboxCreateFooter).toContain("no-op on three legs");
     expect(sandboxCreateFooter).toContain("gpuResourceClaim.hugepages");
@@ -2606,5 +2778,202 @@ describe("the wording records", () => {
 
     expect(issue.label).toBe("Node selector 1 label");
     expect(issue.message).toBe(sandboxSlotRefusalWording.nodeSelectorKeyName);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPEC-0019 T4: the Network section on both forms and the workload sections on
+// the sandbox form, wired into the payloads, the verdicts and the summaries.
+// The sections' own rules are tested in their modules; these are the seams.
+// ---------------------------------------------------------------------------
+
+const exposedNetwork = {
+  ...defaultSandboxNetwork(),
+  ports: [{ id: "port-1", name: "http", port: "8080" }],
+  egress: [{ id: "egress-1", kind: "service" as const, cidr: "", serviceName: "db", serviceNamespace: "", ports: [] }],
+};
+
+describe("the Network section on the pool form (T4)", () => {
+  it("adds no network key while the section is untouched", () => {
+    expect(sandboxPoolCreatePayload(form()).spec.network).toBeUndefined();
+    expect(defaultSlotShape().network).toEqual(defaultSandboxNetwork());
+  });
+
+  it("writes ports and egress next to a non-default mode, and without one", () => {
+    expect(slotShapePayload(shape({ network: exposedNetwork })).network).toEqual({
+      ports: [{ name: "http", port: 8080 }],
+      egress: { allow: [{ service: { name: "db" } }] },
+    });
+    expect(
+      sandboxPoolCreatePayload(
+        form({ shape: shape({ networkMode: "open", network: { ...exposedNetwork, egress: [] } }) }),
+      ).spec.network,
+    ).toEqual({ mode: "open", ports: [{ name: "http", port: 8080 }] });
+  });
+
+  it("blocks on the section's own rules, after the warm buffer", () => {
+    const issues = sandboxPoolBlockingIssues(
+      inputs(),
+      form({ minWarm: "-1", shape: shape({ networkMode: "none", network: exposedNetwork }) }),
+    );
+
+    expect(issues.map((issue) => issue.label)).toEqual([sandboxPoolFieldLabels.minWarm, "Ports", "Egress"]);
+  });
+
+  it("says what the slots expose, in the pool's words", () => {
+    const { notes } = sandboxPoolCreateSummary(inputs(), form({ shape: shape({ network: exposedNetwork }) }));
+
+    expect(notes.some((note) => note.includes("every warm slot's launcher pod"))).toBe(true);
+    expect(notes.some((note) => note.includes("warm slots holding an older address are replaced"))).toBe(true);
+  });
+
+  it("repeats the metadata-range warning in the summary", () => {
+    const network = {
+      ...defaultSandboxNetwork(),
+      egress: [
+        {
+          id: "egress-1",
+          kind: "cidr" as const,
+          cidr: "169.254.0.0/16",
+          serviceName: "",
+          serviceNamespace: "",
+          ports: [],
+        },
+      ],
+    };
+
+    expect(sandboxPoolCreateSummary(inputs(), form({ shape: shape({ network }) })).warnings.join(" ")).toContain(
+      "cloud metadata range",
+    );
+  });
+});
+
+describe("the Network and workload sections on the sandbox form (T4)", () => {
+  const probe = { ...defaultSandboxProbe(), enabled: true, path: "/healthz", port: "http" };
+
+  it("adds no key while every new section is untouched", () => {
+    const { spec } = sandboxCreatePayload(sandboxInputs(), sandboxForm());
+
+    for (const key of [
+      "network",
+      "readinessProbe",
+      "livenessProbe",
+      "termination",
+      "artifacts",
+      "secretFiles",
+      "podMetadata",
+    ]) {
+      expect(spec).not.toHaveProperty(key);
+    }
+
+    expect(defaultSandboxForm().workload).toEqual(defaultSandboxWorkload());
+  });
+
+  it("merges the network and the workload into the cold path's spec", () => {
+    const values = sandboxForm({
+      shape: shape({ network: exposedNetwork }),
+      workload: {
+        ...defaultSandboxWorkload(),
+        readiness: probe,
+        drainPeriod: "15s",
+        podLabels: [{ id: "pod-label-1", key: "app", value: "web" }],
+      },
+    });
+    const { spec } = sandboxCreatePayload(sandboxInputs(), values);
+
+    expect(spec.network?.ports).toEqual([{ name: "http", port: 8080 }]);
+    expect(spec.readinessProbe).toEqual({ httpGet: { path: "/healthz", port: "http" } });
+    expect(spec.termination).toEqual({ drainPeriod: "15s" });
+    expect(spec.podMetadata).toEqual({ labels: { app: "web" } });
+  });
+
+  it("resets the network on a move to a checkout, and never sends one there", () => {
+    const moved = switchSandboxSource(sandboxForm({ shape: shape({ network: exposedNetwork }) }), "checkout");
+
+    expect(moved.shape.network).toEqual(defaultSandboxNetwork());
+    expect(
+      sandboxCreatePayload(sandboxInputs(), checkoutForm({ shape: shape({ network: exposedNetwork }) })).spec,
+    ).not.toHaveProperty("network");
+  });
+
+  it("keeps the workload on a checkout (D2)", () => {
+    const workload = { ...defaultSandboxWorkload(), podLabels: [{ id: "pod-label-1", key: "app", value: "web" }] };
+    const moved = switchSandboxSource(sandboxForm({ workload }), "checkout");
+
+    expect(moved.workload).toEqual(workload);
+    expect(sandboxCreatePayload(sandboxInputs(), checkoutForm({ workload })).spec.podMetadata).toEqual({
+      labels: { app: "web" },
+    });
+  });
+
+  it("reads the network a checkout runs under from the pool", () => {
+    const noneInputs = sandboxInputs({ pools: [{ ...warmPool, networkMode: "none" }, coldPool] });
+
+    expect(sandboxWorkloadContext(sandboxInputs(), checkoutForm()).networkMode).toBe("restricted");
+    expect(sandboxWorkloadContext(noneInputs, checkoutForm()).networkMode).toBe("none");
+    expect(
+      sandboxWorkloadContext(sandboxInputs({ poolsUnverified: true, pools: [] }), checkoutForm()).networkMode,
+    ).toBe(undefined);
+    expect(sandboxWorkloadContext(sandboxInputs(), checkoutForm()).portNames).toEqual([]);
+    expect(
+      sandboxWorkloadContext(sandboxInputs(), sandboxForm({ shape: shape({ network: exposedNetwork }) })).portNames,
+    ).toEqual(["http"]);
+  });
+
+  it("refuses a probe on a checkout of a pool without a network", () => {
+    const noneInputs = sandboxInputs({ pools: [{ ...warmPool, networkMode: "none" }, coldPool] });
+    const values = checkoutForm({ workload: { ...defaultSandboxWorkload(), liveness: { ...probe, port: "8080" } } });
+
+    expect(sandboxBlockingIssues(noneInputs, values)).toEqual([
+      { label: "Liveness probe", message: probeWithPoolModeNoneMessage },
+    ]);
+    expect(sandboxSubmitBlockReason(sandboxInputs(), values)).toBeUndefined();
+  });
+
+  it("blocks on the network on the cold path only, then on the workload", () => {
+    const values = sandboxForm({
+      shape: shape({ networkMode: "none", network: exposedNetwork }),
+      workload: { ...defaultSandboxWorkload(), drainPeriod: "1h" },
+    });
+
+    expect(sandboxBlockingIssues(sandboxInputs(), values).map((issue) => issue.label)).toEqual([
+      "Ports",
+      "Egress",
+      "Drain period",
+    ]);
+  });
+
+  it("states the network, workload facts and warnings in the summary", () => {
+    const values = sandboxForm({
+      shape: shape({ network: exposedNetwork }),
+      workload: {
+        ...defaultSandboxWorkload(),
+        readiness: probe,
+        secretFiles: [
+          {
+            id: "secret-file-1",
+            secretName: "e2e-missing",
+            mode: "",
+            optional: false,
+            items: [{ id: "secret-item-1", key: "token", path: "/etc/app/token", mode: "" }],
+          },
+        ],
+      },
+    });
+    const { notes, warnings } = sandboxCreateSummary(sandboxInputs(), values);
+
+    expect(notes.some((note) => note.includes("the launcher pod, forwarded"))).toBe(true);
+    expect(notes.some((note) => note.startsWith("The readiness probe runs GET /healthz on port http"))).toBe(true);
+    expect(notes.some((note) => note.includes("token is written to /etc/app/token"))).toBe(true);
+    expect(warnings.some((warning) => warning.includes("No Secret named e2e-missing"))).toBe(true);
+  });
+
+  it("leaves the network out of a checkout's summary", () => {
+    const { notes } = sandboxCreateSummary(
+      sandboxInputs(),
+      checkoutForm({ shape: shape({ network: exposedNetwork }) }),
+    );
+
+    expect(notes.some((note) => note.includes("forwarded to the same guest ports"))).toBe(false);
   });
 });

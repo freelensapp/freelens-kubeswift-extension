@@ -9,7 +9,6 @@ import {
   telemetryConsumerLabel,
   telemetryConsumerTooltip,
 } from "../api/kubeswift/fleetcluster-v1alpha1";
-import { withErrorPage } from "../components/error-page";
 import { classifyFleetCluster } from "../components/fleet-status";
 import { objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
@@ -197,44 +196,40 @@ function TelemetrySection({ object }: SectionProps) {
   );
 }
 
-export interface FleetClusterDetailsProps extends Renderer.Component.KubeObjectDetailsProps<FleetCluster> {
-  extension: Renderer.LensExtension;
-}
+export type FleetClusterDetailsProps = Renderer.Component.KubeObjectDetailsProps<FleetCluster>;
 
-export const FleetClusterDetails = observer((props: FleetClusterDetailsProps) =>
-  withErrorPage(props, () => {
-    const { object } = props;
-    const namespace = object.getNs();
-    const credentialSecret = FleetCluster.getCredentialSecretName(object);
+export const FleetClusterDetails = observer((props: FleetClusterDetailsProps) => {
+  const { object } = props;
+  const namespace = object.getNs();
+  const credentialSecret = FleetCluster.getCredentialSecretName(object);
 
-    // The smallest reference table in the extension - the schema declares
-    // exactly one reference, a `LocalObjectReference` with no namespace of its
-    // own - and the request is still assembled conditionally: a `spec.local`
-    // entry names no Secret and therefore issues no request at all (DESIGN.md
-    // section 3, issue #38). The store is asked for the object's own namespace
-    // rather than for whatever the namespace filter happens to hold.
-    const requests: ReferenceRequest<unknown>[] = [];
+  // The smallest reference table in the extension - the schema declares
+  // exactly one reference, a `LocalObjectReference` with no namespace of its
+  // own - and the request is still assembled conditionally: a `spec.local`
+  // entry names no Secret and therefore issues no request at all (DESIGN.md
+  // section 3, issue #38). The store is asked for the object's own namespace
+  // rather than for whatever the namespace filter happens to hold.
+  const requests: ReferenceRequest<unknown>[] = [];
 
-    if (credentialSecret) {
-      requests.push({
-        label: "secrets",
-        store: secretsStore,
-        namespaces: [namespace],
-        lookups: [{ name: credentialSecret, namespace }],
-      });
-    }
+  if (credentialSecret) {
+    requests.push({
+      label: "secrets",
+      store: secretsStore,
+      namespaces: [namespace],
+      lookups: [{ name: credentialSecret, namespace }],
+    });
+  }
 
-    useReferenceStores(requests);
+  useReferenceStores(requests);
 
-    return (
-      <>
-        <MemberClusterSection object={object} />
-        <TelemetrySection object={object} />
-        {/* Where Ready, Reachable and PrometheusEndpointResolved appear in full
-            with their reasons and transition times, which is why no section
-            above restates a condition's raw fields. */}
-        <KubeObjectConditionsDrawer object={object} />
-      </>
-    );
-  }),
-);
+  return (
+    <>
+      <MemberClusterSection object={object} />
+      <TelemetrySection object={object} />
+      {/* Where Ready, Reachable and PrometheusEndpointResolved appear in full
+          with their reasons and transition times, which is why no section
+          above restates a condition's raw fields. */}
+      <KubeObjectConditionsDrawer object={object} />
+    </>
+  );
+});

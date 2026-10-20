@@ -14,6 +14,7 @@
   upstream `main` `d66cff5`, so there is no unreleased schema drift either;
   controller, webhook, `swiftctl` and docs recon run at `d66cff5` on
   2026-08-30). UX reference kubeswift-ui `main` `c4e53ce` (2026-08-30).
+- **Revised for KubeSwift `v0.18.0`:** by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md): the derived local directory, the TagInUse warning, the storage-location destination, the oci deletion policy.
 - **Author / date:** Claude with Roberto, 2026-08-30
 
 ## Goal
@@ -685,7 +686,7 @@ implementation PR opens, verdicts recorded here.
     surface is the pure modules above (the SPEC-0010 stance).
 - **Integration**: unchanged (install, listed as enabled, activation
   without errors).
-- **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`), same honest split as
+- **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`), same honest split as
   SPEC-0010: no controller runs, so a created snapshot stays phaseless
   and a created restore stays phaseless - which the cases assert as the
   proof that the extension wrote exactly the object it enumerated and

@@ -1,6 +1,5 @@
 declare const classNames: {
   readonly gpus: "gpus";
-  readonly tableCell: "tableCell";
   readonly index: "index";
   readonly model: "model";
   readonly vendor: "vendor";

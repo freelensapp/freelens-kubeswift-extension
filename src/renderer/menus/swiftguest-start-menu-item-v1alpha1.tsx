@@ -34,9 +34,7 @@ const {
   Component: { Notifications },
 } = Renderer;
 
-export interface SwiftGuestStartMenuItemProps extends GuestMenuItemProps {
-  extension: Renderer.LensExtension;
-}
+export type SwiftGuestStartMenuItemProps = GuestMenuItemProps;
 
 /**
  * The sizing the start will ask for, when the guest class happens to be in the

@@ -6,9 +6,7 @@
 // Helpers for the pre-review agent pass (docs/specs/SPEC-0006-pre-review-agent-pass.md):
 // screenshotting every KubeSwift view in both themes and running the DOM-level
 // asserts of the statically checkable DESIGN.md rules. Reuses the cluster and
-// extension helpers of kubeswift-cluster.ts / kubeswift-extension.ts; see the
-// latter for why these files live next to the Freelens integration helpers at
-// run time.
+// session helpers of kubeswift-cluster.ts / kubeswift-extension.ts.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
@@ -49,6 +47,28 @@ export async function openDrawer(frame: Frame, objectName: string): Promise<void
   await row.waitFor({ state: "visible", timeout: 60_000 });
   await row.locator(".TableCell", { hasText: objectName }).first().click();
   await frame.waitForSelector(".Drawer.KubeObjectDetails", { state: "visible", timeout: 60_000 });
+  await waitForDrawerToSettle(frame);
+}
+
+/**
+ * Waits until the drawer stops sliding in, so that a screenshot shows it where
+ * it stays. Freelens 2 animates the entrance, and the light pass of a view
+ * that opened its drawer right after the theme switch caught it halfway.
+ */
+async function waitForDrawerToSettle(frame: Frame): Promise<void> {
+  const drawer = frame.locator(".Drawer.KubeObjectDetails").first();
+  let previous: number | undefined;
+
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const x = (await drawer.boundingBox())?.x;
+
+    if (x !== undefined && x === previous) {
+      return;
+    }
+
+    previous = x;
+    await frame.waitForTimeout(100);
+  }
 }
 
 /** A `DrawerItem` row of the open detail drawer: label, rendered text, and the href of its link if it has one. */

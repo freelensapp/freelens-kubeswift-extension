@@ -1,6 +1,7 @@
 *.d.ts
 *.gz
 *.lock
+!mise.lock
 *.log
 *.map
 *.out
@@ -18,32 +19,22 @@
 
 /freelens/
 
-# Kubeconfig and state of the disposable E2E cluster (e2e/scripts/lib.sh)
-/.e2e/
-
-# Screenshots taken when an E2E assertion fails
-/e2e-artifacts/
-
 .turbo
 
 /coverage/
 /node_modules/
-/out/
+
+# Scratch space of the CI agent, which checks out Freelens at tmp/freelens.
+/tmp/
 
 /.nyc_output/
+
+# Snapshots, screenshots and console logs written by the Playwright MCP server.
+/.playwright-mcp/
 
 *.DS_Store
 /.idea
 /.vscode
-
-# Kubeconfig and state of the local demo cluster (e2e/scripts/demo-up.sh)
-/.demo/
-
-# Agent worktrees (transient, managed by the coding agent harness)
-/.claude/worktrees/
-
-# TypeScript incremental build info, a local build artifact
-tsconfig.tsbuildinfo
 
 # Credentials and keys. Keep in sync with the Security section of AGENTS.md
 # and the permissions.deny rules in .claude/settings.json.
@@ -57,3 +48,15 @@ tsconfig.tsbuildinfo
 *.pfx
 *.pem
 *.key
+
+# Kubeconfig and state of the disposable E2E cluster (e2e/scripts/lib.sh)
+/.e2e/
+
+# Kubeconfig and state of the local demo cluster (e2e/scripts/demo-up.sh)
+/.demo/
+
+# Screenshots and reports of the E2E suite and the pre-review pass
+/e2e-artifacts/
+
+# Agent worktrees (transient, managed by the coding agent harness)
+/.claude/worktrees/

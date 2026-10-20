@@ -329,6 +329,16 @@ export function startDialogFacts(guest: GuestActionFacts, guestClassSummary?: st
 }
 
 /**
+ * Why a stop both patches the policy and deletes the pod. KubeSwift v0.15.0 and
+ * later delete the launcher pod themselves once the policy says `Stopped`; the
+ * versions before only stop recreating it. Deleting it too stops the guest on
+ * both, and on the later ones it changes nothing (SPEC-0019 T1).
+ */
+export const stopTwoWritesNote =
+  "Both writes are made: KubeSwift v0.15.0 and later delete the launcher pod themselves once the run policy says " +
+  "Stopped, and earlier versions only stop recreating it, so the deletion stops the guest on every version.";
+
+/**
  * The facts the Stop dialog is built from.
  *
  * `reading` is what the click-time `GET` on the launcher pod returned, and it is
@@ -375,6 +385,10 @@ export function stopDialogFacts(guest: GuestActionFacts, reading?: LauncherPodRe
         "The guest still reports the phase Running, so if it really is running, this action will not stop it.",
       );
     }
+  }
+
+  if (plan.patchRunPolicy && plan.deletePod) {
+    notes.push(stopTwoWritesNote);
   }
 
   if (plan.deletePod) {

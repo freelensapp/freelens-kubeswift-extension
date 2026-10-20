@@ -456,7 +456,7 @@ never hiding a required field).
   the non-Ready image selectable with the will-wait line; osType
   synced from a windows fixture image and the GPU section absent;
   DNS-1123 and collision warnings; cancel writes nothing. Slice 2, as
-  shipped (`e2e/__tests__/kubeswift-e2e.tests.ts`): "creates a
+  shipped (`integration/__tests__/kubeswift-e2e.tests.ts`): "creates a
   kernel-boot guest, and refuses the node that cannot run one";
   "offers a kernel that is not Ready, and says the guest waits for the
   resync"; "clones a local memory snapshot, with the MAC lock and the
