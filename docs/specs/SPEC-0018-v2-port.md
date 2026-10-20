@@ -114,7 +114,7 @@ which `pnpm pre-review` sets. The scripts of `e2e/scripts/` build the checkout,
 which the suites install in place, instead of packing it and copying the
 suites into a Freelens checkout. Locally Freelens dev is started by
 `pnpm e2e:freelens`, on a fresh profile that syncs the lab kubeconfigs alone.
-`integration-tests.yaml` (proposed in `github-workflow-fix/`) is the
+`integration-tests.yaml` is the
 template's workflow with the lab of `pnpm e2e:cluster:up` instead of
 `helm/kind-action`, and replaces `e2e-tests.yaml`.
 
