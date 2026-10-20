@@ -393,7 +393,7 @@ its three conditions met each time.
     reason. The bar: proportional to SPEC-0013's, itself proportional to
     SPEC-0012's 223.
 - **Integration**: unchanged.
-- **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`), writing for real. No
+- **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`), writing for real. No
   controller runs there, so a created pool fans out into nothing, which
   is what makes the readback a proof of what the form sent.
   1. *"creates a pool and reads back its template key-exact"*: replicas

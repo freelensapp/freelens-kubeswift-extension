@@ -68,7 +68,7 @@ environment-tests/           the per-environment type checks of the template
   from `Common.Types.KubeObjectMenuItemProps`.
 - Every page, details panel and menu item inside the template's error
   boundary; an error shows the extension's error page in its own place.
-- `customResources`: the 15 models, each has its own page and sidebar entry.
+- `customResources`: the 15 models, each has its own page and sidebar entry. SPEC-0019 adds four more kinds, for nineteen.
 - `clusterPageMenus` unchanged: the root "KubeSwift", seven groups, 15 leaves.
 
 ### Data layer (feature A)
@@ -188,3 +188,5 @@ To be run before the PR leaves draft; results recorded here (date, tester).
     screenshot.
   - The workflow runs the suites once, as the template does: the E2E suite changes its cluster, so the
     retry of `e2e-tests.yaml` would need a new cluster and a new app.
+- **Test file paths (2026-10-20).** Feature E moved the suites from `e2e/__tests__/` to `integration/__tests__/`;
+  the earlier specs name the two suites by their new paths. Spike suites deleted at the time keep their old ones.

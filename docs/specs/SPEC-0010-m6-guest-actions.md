@@ -938,7 +938,7 @@ org is the **combination**.
     another kind ignored; no owners at all).
 - **Integration**: unchanged (install, listed as enabled, activation without
   errors).
-- **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`). This suite has only ever
+- **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`). This suite has only ever
   read; these cases are the first that write, and the split between what they
   can honestly prove and what they cannot is the point:
 

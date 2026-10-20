@@ -72,7 +72,7 @@ Excluded:
 
 ## Design
 
-- New Playwright suite `e2e/__tests__/pre-review.tests.ts` (or a script
+- New Playwright suite `integration/__tests__/pre-review.tests.ts` (or a script
   under `e2e/scripts/pre-review.sh` orchestrating it), reusing the
   SPEC-0003 helpers: extension install flow, cluster connect, sidebar and
   table helpers. Theme switching goes through the Freelens preferences
@@ -226,7 +226,7 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   permanent test once it has proven itself, not only once a milestone review
   confirms it. The drawer-link check above just did, against a real
   regression rather than a hypothetical one, so it graduated immediately
-  instead of waiting: `e2e/__tests__/kubeswift-e2e.tests.ts` gained
+  instead of waiting: `integration/__tests__/kubeswift-e2e.tests.ts` gained
   "navigates the SwiftGuest drawer's Node and Pod links to objects that
   actually exist", which imports `checkDrawerLink`/`openDrawer`/
   `inspectDrawerRows` straight from `integration/helpers/pre-review.ts`
@@ -238,12 +238,12 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
   header cell carries an `id`", motivating finding #27, fixed by #31) has
   now stayed green for five consecutive pre-review pass runs, so per the
   same standing rule it graduates too (issue #28):
-  `e2e/__tests__/kubeswift-e2e.tests.ts` folds
+  `integration/__tests__/kubeswift-e2e.tests.ts` folds
   `expect(await pr.headerCellsWithoutId(frame)).toEqual([])` into each of
   its ten existing per-view "lists the ..." tests, right after the
   `openKubeSwiftPage` call each of them already makes, so the check costs no
   extra navigation and does not become an eleventh test. It also stays part
-  of `e2e/__tests__/pre-review.tests.ts`'s own `ViewAssertResults` and
+  of `integration/__tests__/pre-review.tests.ts`'s own `ViewAssertResults` and
   REPORT.md output - graduating an assert into the permanent suite does not
   retire it from the pass, the same as the drawer-link case above.
 - **Byte-humanization regex** flags digit runs of 5+ with a word boundary

@@ -599,7 +599,7 @@ did. The two judgement calls in the classifier table (`Completed` as success,
     affordance).
 - **Integration**: unchanged (the harness keeps asserting install, listing as
   enabled, and activation without errors).
-- **E2E** (`e2e/__tests__/kubeswift-e2e.tests.ts`), three new cases plus one
+- **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`), three new cases plus one
   link case, each also asserting `headerCellsWithoutId(frame)` is empty for the
   view it opens:
   - "lists the SwiftSandboxes with their image, node and condition": the
