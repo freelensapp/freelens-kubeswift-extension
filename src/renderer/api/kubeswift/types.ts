@@ -73,6 +73,37 @@ export function formatMebibytes(value?: number): string | undefined {
   return formatBytes(value * 1024 * 1024);
 }
 
+const pemBlockPattern = /-----BEGIN ([A-Z0-9 ]+)-----/g;
+
+/**
+ * One line saying what a PEM text holds, for example `1 public key` or
+ * `2 certificates`, so that a drawer row can state it without dumping the
+ * blocks (the whole text goes to a read-only editor below the sections).
+ *
+ * The blocks are counted by their `BEGIN` label and never decoded. A text with
+ * no PEM block at all is reported as such rather than hidden, since it is what
+ * the controller was given; an empty or unset one maps to `undefined`.
+ */
+export function summarizePem(value?: string): string | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const counts = new Map<string, number>();
+
+  for (const match of value.matchAll(pemBlockPattern)) {
+    const label = match[1].toLowerCase();
+
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  if (counts.size === 0) {
+    return "No PEM block";
+  }
+
+  return [...counts.entries()].map(([label, count]) => `${count} ${label}${count === 1 ? "" : "s"}`).join(", ");
+}
+
 /** Reference to another KubeSwift object living in the same namespace. */
 export interface LocalObjectReference {
   name?: string;

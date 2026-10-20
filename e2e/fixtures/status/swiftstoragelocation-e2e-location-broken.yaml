@@ -1,0 +1,15 @@
+# Merge patch applied to the status subresource of
+# swiftstoragelocation/e2e-location-broken. See
+# swiftstoragelocation-e2e-location-team.yaml for why statuses are injected.
+#
+# The failing branch: the credentials Secret the location names does not
+# exist, so Ready is False and the Status column quotes the condition.
+status:
+  observedGeneration: 1
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: CredentialsNotFound
+      message: Secret e2e-location-missing was not found in namespace kubeswift-e2e.
+      lastTransitionTime: "2026-10-19T08:10:00Z"
+      observedGeneration: 1

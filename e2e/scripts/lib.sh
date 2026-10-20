@@ -185,6 +185,17 @@ E2E_STATUS_PATCHES=(
   # no `status.console.serialSocket`: it is what proves the derived convention
   # is what the command line carries when the cluster published nothing.
   "swiftguests.swift.kubeswift.io/e2e-guest-console=swiftguest-e2e-guest-console.yaml"
+  # The four kinds KubeSwift added after v0.13.12 (SPEC-0019, T3), two objects
+  # each: a healthy one and a failing one. Two of the four kinds are
+  # cluster-scoped, which this format covers unchanged (see the note above).
+  "swiftstoragelocations.storage.kubeswift.io/e2e-location-team=swiftstoragelocation-e2e-location-team.yaml"
+  "swiftstoragelocations.storage.kubeswift.io/e2e-location-broken=swiftstoragelocation-e2e-location-broken.yaml"
+  "swiftclusterstoragelocations.storage.kubeswift.io/e2e-cluster-location-default=swiftclusterstoragelocation-e2e-cluster-location-default.yaml"
+  "swiftclusterstoragelocations.storage.kubeswift.io/e2e-cluster-location-down=swiftclusterstoragelocation-e2e-cluster-location-down.yaml"
+  "swiftartifactverificationpolicies.sandbox.kubeswift.io/e2e-policy-signed=swiftartifactverificationpolicy-e2e-policy-signed.yaml"
+  "swiftartifactverificationpolicies.sandbox.kubeswift.io/e2e-policy-invalid=swiftartifactverificationpolicy-e2e-policy-invalid.yaml"
+  "swiftartifactplacements.sandbox.kubeswift.io/e2e-placement-ready=swiftartifactplacement-e2e-placement-ready.yaml"
+  "swiftartifactplacements.sandbox.kubeswift.io/e2e-placement-refused=swiftartifactplacement-e2e-placement-refused.yaml"
 )
 
 # Readback assertions proving that the injected statuses survived the API
@@ -315,6 +326,18 @@ E2E_STATUS_ASSERTIONS=(
   # what keeps them from provisioning anything on a cluster nothing runs on.
   "persistentvolumeclaims/e2e-data-block={.spec.volumeMode}=Block"
   "persistentvolumeclaims/e2e-data-filesystem={.spec.volumeMode}=Filesystem"
+  # The SPEC-0019 kinds (T3), in the condition-keyed shape their own printer
+  # columns use, plus the two counts of a placement: the refused one reads back
+  # a literal 0, which keeps a dropped zero from looking like an absent value.
+  'swiftstoragelocations.storage.kubeswift.io/e2e-location-team={.status.conditions[?(@.type=="Ready")].status}=True'
+  'swiftstoragelocations.storage.kubeswift.io/e2e-location-broken={.status.conditions[?(@.type=="Ready")].status}=False'
+  'swiftclusterstoragelocations.storage.kubeswift.io/e2e-cluster-location-default={.status.conditions[?(@.type=="Reachable")].status}=True'
+  'swiftclusterstoragelocations.storage.kubeswift.io/e2e-cluster-location-down={.status.conditions[?(@.type=="Reachable")].status}=False'
+  "swiftartifactverificationpolicies.sandbox.kubeswift.io/e2e-policy-signed={.status.namespaces}=1"
+  'swiftartifactverificationpolicies.sandbox.kubeswift.io/e2e-policy-invalid={.status.conditions[?(@.type=="Ready")].status}=False'
+  "swiftartifactplacements.sandbox.kubeswift.io/e2e-placement-ready={.status.preparedNodes}=1"
+  "swiftartifactplacements.sandbox.kubeswift.io/e2e-placement-refused={.status.preparedNodes}=0"
+  'swiftartifactplacements.sandbox.kubeswift.io/e2e-placement-refused={.status.conditions[?(@.type=="Prepared")].reason}=ArtifactRefused'
 )
 
 # Fields whose fixture spells the cluster's real (single) node name as the
@@ -357,6 +380,10 @@ E2E_NODE_NAME_FIELDS=(
   # names this node where the target node picker would otherwise be, so the
   # substitution is what makes that sentence true rather than fictional.
   "swiftsnapshots.snapshot.kubeswift.io/e2e-snapshot-create-orphan={.status.nodeName}"
+  # The first target node of each artifact placement (SPEC-0019, T3): the
+  # drawer's Nodes table links it, so it has to be a node this cluster has.
+  "swiftartifactplacements.sandbox.kubeswift.io/e2e-placement-ready={.status.nodes[0].name}"
+  "swiftartifactplacements.sandbox.kubeswift.io/e2e-placement-refused={.status.nodes[0].name}"
 )
 
 log() {

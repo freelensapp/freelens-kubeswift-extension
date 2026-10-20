@@ -103,6 +103,10 @@ export function fixturesReady(): boolean {
     // (SPEC-0010). Probing one of them keeps a cluster left over from an older
     // checkout from being reported as ready.
     ["swiftguests.swift.kubeswift.io", "e2e-guest-action-running"],
+    // SPEC-0019: the kinds of KubeSwift v0.18.0. Probing the placement keeps a
+    // cluster still carrying the v0.13.12 CRDs, which have no such kind, from
+    // being reported as ready.
+    ["swiftartifactplacements.sandbox.kubeswift.io", "e2e-placement-ready"],
   ];
 
   return probes.every(([resource, name]) => {

@@ -56,7 +56,10 @@ import { objectNameError } from "./snapshot-create";
 import type {
   SwiftGuestClassAccessMode,
   SwiftGuestClassCoreScheduling,
+  SwiftGuestClassCpuPinning,
   SwiftGuestClassDiskFormat,
+  SwiftGuestClassHugepages,
+  SwiftGuestClassSmtPolicy,
   SwiftGuestClassSpec,
   SwiftGuestClassStorage,
   SwiftGuestClassVolumeMode,
@@ -75,6 +78,17 @@ export const guestClassCoreSchedulingPolicies: SwiftGuestClassCoreScheduling[] =
 
 /** The policy the schema stamps when the field is absent, and therefore the one never sent (F17). */
 export const defaultCoreScheduling: SwiftGuestClassCoreScheduling = "off";
+
+/** The CPU pinning modes, the CRD's default first (SPEC-0019 T4). */
+export const guestClassCpuPinnings: SwiftGuestClassCpuPinning[] = ["none", "static"];
+export const defaultCpuPinning: SwiftGuestClassCpuPinning = "none";
+
+/** The SMT policies, the CRD's default first; read only with `static` pinning. */
+export const guestClassSmtPolicies: SwiftGuestClassSmtPolicy[] = ["spread", "pack"];
+export const defaultSmtPolicy: SwiftGuestClassSmtPolicy = "spread";
+
+/** The hugepage sizes, ordinary pages (empty) first. */
+export const guestClassHugepages: SwiftGuestClassHugepages[] = ["", "2Mi", "1Gi"];
 
 /** The access modes the storage block offers. An empty value sends no access mode at all. */
 export const guestClassAccessModes: SwiftGuestClassAccessMode[] = ["ReadWriteOnce", "ReadWriteMany"];
@@ -98,6 +112,10 @@ export interface GuestClassFormValues {
   storageVolumeMode: string;
   storageClassName: string;
   coreScheduling: SwiftGuestClassCoreScheduling;
+  cpuPinning: SwiftGuestClassCpuPinning;
+  smtPolicy: SwiftGuestClassSmtPolicy;
+  hugepages: SwiftGuestClassHugepages;
+  sharedBaseDisk: boolean;
 }
 
 /**
@@ -136,6 +154,10 @@ export function defaultGuestClassForm(): GuestClassFormValues {
     storageVolumeMode: "",
     storageClassName: "",
     coreScheduling: defaultCoreScheduling,
+    cpuPinning: defaultCpuPinning,
+    smtPolicy: defaultSmtPolicy,
+    hugepages: "",
+    sharedBaseDisk: false,
   };
 }
 
@@ -253,6 +275,10 @@ export const guestClassFieldLabels: Record<GuestClassCreateField, string> = {
   storageVolumeMode: "Volume mode",
   storageClassName: "Storage class",
   coreScheduling: "Core scheduling",
+  cpuPinning: "CPU pinning",
+  smtPolicy: "SMT policy",
+  hugepages: "Hugepages",
+  sharedBaseDisk: "Shared base disk",
 };
 
 /** The reading order of the form, which is the order the blocked sentence names fields in. */
@@ -328,6 +354,33 @@ export function coreSchedulingNote(policy: SwiftGuestClassCoreScheduling): strin
     "not sent."
   );
 }
+
+/** What `static` pinning does, and the one way it refuses to start. */
+export const cpuPinningStaticFact =
+  "Each vCPU is pinned to its own host CPU, taken from the launcher pod's cpuset. The launcher refuses to start " +
+  "when the cpuset holds fewer CPUs than the class's vCPUs, rather than pin some of them.";
+
+/** What each SMT policy does under `static` pinning. */
+export function smtPolicyNote(policy: SwiftGuestClassSmtPolicy): string {
+  return policy === "pack"
+    ? "pack places the vCPUs on sibling hyperthreads of the same cores."
+    : "spread places the vCPUs on different cores before using sibling hyperthreads.";
+}
+
+/** What hugepages cost on the node. */
+export function hugepagesNote(size: SwiftGuestClassHugepages): string | undefined {
+  return size
+    ? `The guest's memory is backed by ${size} hugepages: the launcher pod requests hugepages-${size} equal to the ` +
+        "memory instead of ordinary memory, so the node must have that many pages reserved, or the guest does not " +
+        "schedule."
+    : undefined;
+}
+
+/** What a shared base disk trades away, which is the whole reason it is a warning. */
+export const sharedBaseDiskWarning =
+  "Shared base disk: the root disk of each guest is a copy-on-write layer over a node-local base, not a PVC. It is " +
+  "not replicated, so losing the node loses the guest; the guest cannot be migrated in any mode; CSI and " +
+  "full-state snapshots are refused (memory snapshots work); and the setting cannot be changed on this class later.";
 
 /** The storage of a guest of this class, as the class's own block resolves it. */
 export function guestClassResolvedStorage(values: GuestClassFormValues): ResolvedStorage {
@@ -543,6 +596,24 @@ export function guestClassCreatePayload(values: GuestClassFormValues): { spec: S
     spec.coreScheduling = values.coreScheduling;
   }
 
+  // The four fields of KubeSwift v0.14.0 and later, sent only when they differ
+  // from what the CRD stamps (SPEC-0019 T4).
+  if (values.cpuPinning !== defaultCpuPinning) {
+    spec.cpuPinning = values.cpuPinning;
+
+    if (values.smtPolicy !== defaultSmtPolicy) {
+      spec.smtPolicy = values.smtPolicy;
+    }
+  }
+
+  if (values.hugepages) {
+    spec.hugepages = values.hugepages;
+  }
+
+  if (values.sharedBaseDisk) {
+    spec.sharedBaseDisk = true;
+  }
+
   return { spec };
 }
 
@@ -592,7 +663,25 @@ export function guestClassCreateSummary(
     notes.push(`Its root-disk PVC asks for the StorageClass ${storageClassName}, unless the guest names another.`);
   }
 
-  notes.push(guestClassLiveMigrationFact(values));
+  // A shared base disk refuses migration in every mode, which overrides what
+  // the storage block alone would allow.
+  if (!values.sharedBaseDisk) {
+    notes.push(guestClassLiveMigrationFact(values));
+  }
+
+  if (values.cpuPinning !== defaultCpuPinning) {
+    notes.push(`${cpuPinningStaticFact} ${smtPolicyNote(values.smtPolicy)}`);
+  }
+
+  const hugepages = hugepagesNote(values.hugepages);
+
+  if (hugepages) {
+    notes.push(hugepages);
+  }
+
+  if (values.sharedBaseDisk) {
+    warnings.push(sharedBaseDiskWarning);
+  }
 
   if (values.coreScheduling !== defaultCoreScheduling) {
     notes.push(

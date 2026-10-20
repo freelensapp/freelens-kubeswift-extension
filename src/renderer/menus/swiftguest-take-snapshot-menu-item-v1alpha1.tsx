@@ -27,6 +27,7 @@ import {
   existingSnapshotFacts,
   loadExistingSnapshots,
   loadSecretNames,
+  loadStorageLocations,
   openTakeSnapshotDialog,
   takeSnapshotTitle,
 } from "../components/snapshot-create-dialog";
@@ -98,6 +99,7 @@ export const SwiftGuestTakeSnapshotMenuItem = observer((props: SwiftGuestTakeSna
     // answer sharpens the form, what they refuse degrades one sentence.
     void loadSecretNames(model, guest.namespace);
     void loadExistingSnapshots(model);
+    void loadStorageLocations(model);
 
     openTakeSnapshotDialog(model);
   };

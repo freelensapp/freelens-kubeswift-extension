@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import {
   coreSchedulingNote,
+  cpuPinningStaticFact,
   createGuestClassTitle,
   defaultCoreScheduling,
   defaultGuestClassForm,
@@ -41,6 +42,7 @@ import {
   quantityGrammar,
   quantityNegativeMessage,
   quantityZeroMessage,
+  sharedBaseDiskWarning,
 } from "./guestclass-create";
 import { guestClassStorageCelRule, liveAccessMode, liveVolumeMode } from "./kube-storage";
 
@@ -513,6 +515,54 @@ describe("guestClassCreatePayload", () => {
     expect(spec.memory).not.toBe("");
     expect(spec.rootDisk.size).not.toBe("");
     expect(spec.rootDisk.format).not.toBe("");
+  });
+});
+
+// The four fields of KubeSwift v0.14.0 and later (SPEC-0019 T4): each is sent
+// only when it differs from what the CRD stamps, so an untouched form writes
+// what it wrote before them.
+describe("the placement fields", () => {
+  it("opens on the CRD's defaults and sends none of them", () => {
+    const form = defaultGuestClassForm();
+
+    expect([form.cpuPinning, form.smtPolicy, form.hugepages, form.sharedBaseDisk]).toEqual([
+      "none",
+      "spread",
+      "",
+      false,
+    ]);
+    expect(Object.keys(guestClassCreatePayload(values()).spec).sort()).toEqual(["cpu", "memory", "rootDisk"]);
+  });
+
+  it("sends static pinning, and the SMT policy only with it and only when it is pack", () => {
+    expect(guestClassCreatePayload(values({ cpuPinning: "static" })).spec).toMatchObject({ cpuPinning: "static" });
+    expect(guestClassCreatePayload(values({ cpuPinning: "static" })).spec).not.toHaveProperty("smtPolicy");
+    expect(guestClassCreatePayload(values({ cpuPinning: "static", smtPolicy: "pack" })).spec.smtPolicy).toBe("pack");
+    expect(guestClassCreatePayload(values({ smtPolicy: "pack" })).spec).not.toHaveProperty("smtPolicy");
+  });
+
+  it("sends hugepages and a shared base disk when chosen", () => {
+    const { spec } = guestClassCreatePayload(values({ hugepages: "1Gi", sharedBaseDisk: true }));
+
+    expect(spec.hugepages).toBe("1Gi");
+    expect(spec.sharedBaseDisk).toBe(true);
+  });
+
+  it("says what pinning and hugepages cost, and warns about the shared base disk instead of the migration fact", () => {
+    const plain = guestClassCreateSummary(inputs(), values());
+    const placed = guestClassCreateSummary(
+      inputs(),
+      values({ cpuPinning: "static", smtPolicy: "pack", hugepages: "2Mi", sharedBaseDisk: true }),
+    );
+
+    expect(plain.notes.join(" ")).not.toContain("pinned");
+    expect(plain.warnings).not.toContain(sharedBaseDiskWarning);
+    expect(placed.notes.join(" ")).toContain(cpuPinningStaticFact);
+    expect(placed.notes.join(" ")).toContain("sibling hyperthreads");
+    expect(placed.notes.join(" ")).toContain("hugepages-2Mi");
+    expect(placed.warnings).toContain(sharedBaseDiskWarning);
+    expect(placed.notes.length).toBe(plain.notes.length + 1);
+    expect(sharedBaseDiskWarning).toContain("cannot be migrated in any mode");
   });
 });
 

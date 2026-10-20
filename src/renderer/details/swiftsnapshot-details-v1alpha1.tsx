@@ -1,13 +1,17 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
+import { SwiftClusterStorageLocation } from "../api/kubeswift/swiftclusterstoragelocation-v1alpha1";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftImage } from "../api/kubeswift/swiftimage-v1alpha1";
 import { SwiftSnapshot } from "../api/kubeswift/swiftsnapshot-v1alpha1";
+import { SwiftStorageLocation } from "../api/kubeswift/swiftstoragelocation-v1alpha1";
 import { formatBytes } from "../api/kubeswift/types";
 import { objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
 import { snapshotDeleteConsequences } from "../components/snapshot-create";
+
+import type { ReferenceRequest } from "../components/reference-loader";
 
 const { observer } = MobxReact;
 
@@ -39,6 +43,11 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
   const guestRef = SwiftSnapshot.getGuestRef(object);
   const capturedImageRef = SwiftSnapshot.getCapturedImageRef(object);
   const guestSpec = status?.guestSpec;
+  const location = status?.location;
+  const locationLabel = SwiftSnapshot.getLocationLabel(object);
+  const storageLocation = SwiftSnapshot.getStorageLocation(object);
+  const storageLocationRef = SwiftSnapshot.getStorageLocationRef(object);
+  const isClusterLocation = storageLocation?.kind === SwiftClusterStorageLocation.kind;
   const capturedDataDisks = guestSpec?.dataDisks ?? [];
   const deleteConsequences = snapshotDeleteConsequences(
     SwiftSnapshot.getBackendType(object),
@@ -67,11 +76,18 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
   // per-kind `getStore()`.
   const imageStore = maybe(() => SwiftImage.getStore<SwiftImage>());
 
+  // The storage location the snapshot used (SPEC-0019) may have been deleted
+  // since, like every reference above. A namespaced one lives in the
+  // snapshot's namespace; a cluster one is cluster-scoped. Only the store of
+  // the kind the snapshot names is loaded, and only when it names one.
+  const storageLocationStore = maybe(() => SwiftStorageLocation.getStore<SwiftStorageLocation>());
+  const clusterStorageLocationStore = maybe(() => SwiftClusterStorageLocation.getStore<SwiftClusterStorageLocation>());
+
   // The namespaced stores are asked for the namespaces these references
   // actually live in (the ref's own namespace, or this snapshot's when the
   // ref does not carry one) instead of relying on the namespace filter;
   // `nodesStore` and `storageClassStore` are cluster-scoped (issue #38).
-  useReferenceStores([
+  const references: ReferenceRequest<unknown>[] = [
     {
       label: SwiftGuest.crd.plural,
       store: guestStore,
@@ -90,13 +106,33 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
       store: storageClassStore,
       lookups: [{ name: guestSpec?.storage?.storageClassName }],
     },
-  ]);
+  ];
+
+  if (storageLocation && isClusterLocation) {
+    references.push({
+      label: SwiftClusterStorageLocation.crd.plural,
+      store: clusterStorageLocationStore,
+      lookups: [{ name: storageLocation.name }],
+    });
+  } else if (storageLocation) {
+    references.push({
+      label: SwiftStorageLocation.crd.plural,
+      store: storageLocationStore,
+      namespaces: [object.getNs()],
+      lookups: [{ name: storageLocation.name, namespace: object.getNs() }],
+    });
+  }
+
+  useReferenceStores(references);
 
   const guestIsLinkable = objectExists(guestStore, guestRef?.name, guestRef?.namespace);
   const nodeIsLinkable = objectExists(nodesStore, status?.nodeName);
   const capturedImageIsLinkable = objectExists(imageStore, capturedImageRef?.name, capturedImageRef?.namespace);
   // StorageClass is cluster-scoped: no namespace argument.
   const capturedStorageClassIsLinkable = objectExists(storageClassStore, guestSpec?.storage?.storageClassName);
+  const storageLocationIsLinkable = isClusterLocation
+    ? objectExists(clusterStorageLocationStore, storageLocation?.name)
+    : objectExists(storageLocationStore, storageLocation?.name, object.getNs());
 
   return (
     <>
@@ -149,7 +185,47 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
         <WithTooltip>{deleteConsequences.join(" ")}</WithTooltip>
       </DrawerItem>
 
+      {/* KubeSwift v0.16.0 (SPEC-0019 T2): where an oci snapshot is stored,
+          or the class a csi one uses, as the controller resolved it once
+          before the capture, else the location the spec asks for. */}
+      {location || locationLabel ? (
+        <>
+          <DrawerTitle>Location</DrawerTitle>
+          <DrawerItem name="Location" hidden={!locationLabel}>
+            {storageLocationRef && storageLocationIsLinkable ? (
+              <LinkToObject objectRef={storageLocationRef} object={object} />
+            ) : (
+              <WithTooltip>{locationLabel}</WithTooltip>
+            )}
+          </DrawerItem>
+          <DrawerItem name="Repository" hidden={!location?.repository}>
+            <WithTooltip>{location?.repository}</WithTooltip>
+          </DrawerItem>
+          <DrawerItem name="Tag" hidden={!location?.tag}>
+            <WithTooltip>{location?.tag}</WithTooltip>
+          </DrawerItem>
+          <DrawerItem name="VolumeSnapshotClass" hidden={!location?.volumeSnapshotClassName}>
+            <WithTooltip>{location?.volumeSnapshotClassName}</WithTooltip>
+          </DrawerItem>
+          <DrawerItem name="Credentials Secret" hidden={!location?.repository}>
+            <WithTooltip>{location?.credentialsSecretName || "None: anonymous"}</WithTooltip>
+          </DrawerItem>
+          <DrawerItem name="Signing Key Secret" hidden={!location?.repository}>
+            <WithTooltip>{location?.signingKeySecretName || "None: unsigned"}</WithTooltip>
+          </DrawerItem>
+          <DrawerItem name="Insecure" hidden={!location?.insecure}>
+            <WithTooltip>Yes: a plaintext (http) registry</WithTooltip>
+          </DrawerItem>
+          <DrawerItem name="CA Bundle" hidden={!location?.caBundle}>
+            <WithTooltip>Recorded at resolution</WithTooltip>
+          </DrawerItem>
+        </>
+      ) : null}
+
       <DrawerTitle>Capture</DrawerTitle>
+      <DrawerItem name="Capture Started" hidden={!status?.captureStartedAt}>
+        {status?.captureStartedAt ? <LocaleDate date={status.captureStartedAt} /> : null}
+      </DrawerItem>
       <DrawerItem name="Captured At" hidden={!status?.capturedAt}>
         {status?.capturedAt ? <LocaleDate date={status.capturedAt} /> : null}
       </DrawerItem>
@@ -227,6 +303,9 @@ export const SwiftSnapshotDetails = observer((props: SwiftSnapshotDetailsProps) 
             ) : (
               <WithTooltip>{guestSpec.imageName}</WithTooltip>
             )}
+          </DrawerItem>
+          <DrawerItem name="Primary IP" hidden={!guestSpec.primaryIP}>
+            <WithTooltip>{guestSpec.primaryIP}</WithTooltip>
           </DrawerItem>
           <DrawerItem name="OS Type" hidden={!guestSpec.osType}>
             <WithTooltip>{guestSpec.osType}</WithTooltip>

@@ -26,7 +26,19 @@
 import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
 import * as MobxReact from "mobx-react";
+import {
+  SwiftClusterStorageLocation,
+  type SwiftClusterStorageLocationStore,
+} from "../api/kubeswift/swiftclusterstoragelocation-v1alpha1";
 import { SwiftSnapshot, type SwiftSnapshotStore } from "../api/kubeswift/swiftsnapshot-v1alpha1";
+import {
+  type StorageLocationSpec,
+  type StorageLocationStatus,
+  SwiftStorageLocation,
+  type SwiftStorageLocationStore,
+  storageLocationConditionValue,
+  storageLocationCredentialsSecret,
+} from "../api/kubeswift/swiftstoragelocation-v1alpha1";
 import { dialogReopenDelay, Field, WriteSummary } from "./create-dialog";
 import styles from "./create-dialog.module.scss";
 import { apiFailureFacts } from "./guest-actions";
@@ -45,13 +57,25 @@ import {
   snapshotSuccessMessage,
   snapshotSummary,
   snapshotWarnings,
+  storageLocationLabel,
+  storageLocationRefusal,
+  storageLocationValue,
+  storageLocationWarning,
   submitBlockReason,
   submitIsAccented,
+  usesDestination,
 } from "./snapshot-create";
 
 import type { SwiftSnapshotBackendType, SwiftSnapshotDeletionPolicy } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import type { FieldProps } from "./create-dialog";
-import type { ExistingSnapshotFacts, SnapshotFormValues, SnapshotGuestFacts } from "./snapshot-create";
+import type {
+  ExistingSnapshotFacts,
+  SnapshotDestination,
+  SnapshotFormValues,
+  SnapshotGuestFacts,
+  StorageLocationChoice,
+  StorageLocationFacts,
+} from "./snapshot-create";
 
 const { observer } = MobxReact;
 
@@ -83,6 +107,8 @@ export interface SnapshotDialogModel {
   /** The namespace's snapshots as the store holds them, for the two collision warnings. */
   existing: ExistingSnapshotFacts[];
   secrets: SecretPickerFacts;
+  /** The storage locations the oci and csi destinations can name (SPEC-0019 T4). */
+  locations: StorageLocationFacts;
   /** Read by the host's own render, so it must be observable to have any effect at all. */
   okButtonProps: { disabled: boolean; primary: boolean; accent: boolean };
 }
@@ -113,6 +139,7 @@ export function createSnapshotDialogModel(
       values: defaultSnapshotForm(guest, now),
       existing,
       secrets: { state: "loading", names: [] } as SecretPickerFacts,
+      locations: { state: "loading", choices: [] } as StorageLocationFacts,
       okButtonProps: { disabled: false, primary: true, accent: false },
     },
     { guest: Mobx.observableRef, existing: Mobx.observableRef },
@@ -152,6 +179,67 @@ export async function loadSecretNames(model: SnapshotDialogModel, namespace: str
   } catch {
     Mobx.runInAction(() => {
       model.secrets.state = "unavailable";
+    });
+  }
+}
+
+/** What the destination checks read from a location of either kind. */
+function storageLocationChoice(
+  kind: StorageLocationChoice["kind"],
+  name: string,
+  spec: StorageLocationSpec | undefined,
+  status: StorageLocationStatus | undefined,
+): StorageLocationChoice {
+  const ready = status?.conditions?.find((condition) => condition.type === "Ready");
+
+  return {
+    kind,
+    name,
+    hasOci: Boolean(spec?.oci),
+    hasCsi: Boolean(spec?.csi),
+    isDefault: spec?.default === true,
+    ready: storageLocationConditionValue(status, "Ready"),
+    readyMessage: ready?.message || undefined,
+    credentialsSecretName: storageLocationCredentialsSecret(spec),
+    signingKeySecretName: spec?.oci?.signingKeySecretName || undefined,
+    repository: spec?.oci?.repository || undefined,
+  };
+}
+
+/**
+ * The guest namespace's SwiftStorageLocations and the cluster's
+ * SwiftClusterStorageLocations, as two list calls on open (SPEC-0019 T4).
+ *
+ * Never awaited and never allowed to throw: a refused list, or a cluster
+ * before KubeSwift v0.16.0 that has no such kinds, leaves the "Storage
+ * location" destination with a sentence, and the other two work.
+ */
+export async function loadStorageLocations(model: SnapshotDialogModel): Promise<void> {
+  try {
+    const [namespaced, cluster] = await Promise.all([
+      SwiftStorageLocation.getStore<SwiftStorageLocation, SwiftStorageLocationStore>().api.list({
+        namespace: model.guest.namespace,
+      }),
+      SwiftClusterStorageLocation.getStore<SwiftClusterStorageLocation, SwiftClusterStorageLocationStore>().api.list(
+        {},
+      ),
+    ]);
+    const choices = [
+      ...(namespaced ?? []).map((location) =>
+        storageLocationChoice(SwiftStorageLocation.kind, location.getName(), location.spec, location.status),
+      ),
+      ...(cluster ?? []).map((location) =>
+        storageLocationChoice(SwiftClusterStorageLocation.kind, location.getName(), location.spec, location.status),
+      ),
+    ];
+
+    Mobx.runInAction(() => {
+      model.locations.choices = choices;
+      model.locations.state = "ready";
+    });
+  } catch {
+    Mobx.runInAction(() => {
+      model.locations.state = "unavailable";
     });
   }
 }
@@ -305,9 +393,94 @@ const BackendField = observer(({ model }: { model: SnapshotDialogModel }) => {
   );
 });
 
+/** The three destinations, in the words each backend gives the third. */
+function destinationOptions(backend: SwiftSnapshotBackendType): { value: SnapshotDestination; label: string }[] {
+  return [
+    { value: "default", label: "Default storage location" },
+    { value: "location", label: "Storage location" },
+    { value: "explicit", label: backend === "oci" ? "Registry" : "VolumeSnapshotClass" },
+  ];
+}
+
+/** Where an oci or csi snapshot goes, and the location picker when it goes to one (SPEC-0019 T4). */
+const DestinationField = observer(({ model }: { model: SnapshotDialogModel }) => {
+  const { values, locations } = model;
+  const errors = snapshotErrors(values);
+  const warning = storageLocationWarning(
+    values,
+    locations,
+    model.secrets.state === "ready" ? model.secrets.names : undefined,
+  );
+
+  return (
+    <>
+      <Field
+        label="Destination"
+        hint={
+          values.destination === "default"
+            ? "KubeSwift resolves the namespace's default storage location, else the cluster's."
+            : undefined
+        }
+        warning={values.destination === "location" ? undefined : warning}
+      >
+        <Select
+          id="snapshot-destination"
+          themeName="light"
+          menuClass={styles.selectMenu}
+          value={values.destination}
+          options={destinationOptions(values.backend)}
+          onChange={(option: { value: SnapshotDestination } | null) =>
+            option && updateSnapshotForm(model, { destination: option.value })
+          }
+        />
+      </Field>
+
+      {values.destination === "location" ? (
+        locations.state === "ready" && locations.choices.length > 0 ? (
+          <Field label="Storage location" error={errors.location} warning={warning}>
+            <Select
+              id="snapshot-storage-location"
+              themeName="light"
+              menuClass={styles.selectMenu}
+              value={values.location || null}
+              options={locations.choices.map((choice) => {
+                const refusal = storageLocationRefusal(choice, values.backend);
+                const label =
+                  storageLocationLabel(choice) +
+                  (choice.isDefault ? " (default)" : "") +
+                  (choice.ready === false ? " - not ready" : "");
+
+                return {
+                  value: storageLocationValue(choice.kind, choice.name),
+                  label: refusal ? `${label} - ${refusal}` : label,
+                  isDisabled: Boolean(refusal),
+                };
+              })}
+              onChange={(option: { value: string } | null) =>
+                updateSnapshotForm(model, { location: option?.value ?? "" })
+              }
+            />
+          </Field>
+        ) : (
+          <Field label="Storage location" error={errors.location}>
+            <div className={styles.readOnlyValue} data-testid="snapshot-storage-location-unavailable">
+              {locations.state === "loading"
+                ? "Listing the storage locations..."
+                : locations.state === "unavailable"
+                  ? "The storage locations could not be listed: the cluster may have none (KubeSwift before " +
+                    "v0.16.0) or you may not read them. Choose another destination."
+                  : "This namespace and the cluster have no storage locations. Choose another destination."}
+            </div>
+          </Field>
+        )
+      ) : null}
+    </>
+  );
+});
+
 /** The live write summary: the one create line, then the facts that are true of it (W1). */
 const SnapshotWriteSummary = observer(({ model }: { model: SnapshotDialogModel }) => (
-  <WriteSummary facts={snapshotSummary(model.guest, model.values)} />
+  <WriteSummary facts={snapshotSummary(model.guest, model.values, model.locations)} />
 ));
 
 /**
@@ -340,13 +513,15 @@ export const SnapshotCreateForm = observer(({ model }: { model: SnapshotDialogMo
 
       <BackendField model={model} />
 
-      {values.backend === "csi-volume-snapshot" ? (
+      {usesDestination(values.backend) ? <DestinationField model={model} /> : null}
+
+      {values.backend === "csi-volume-snapshot" && values.destination === "explicit" ? (
         <TextField
           model={model}
           field="volumeSnapshotClassName"
           testId="snapshot-volume-snapshot-class"
           label="VolumeSnapshotClass"
-          hint="Empty uses the cluster's default class."
+          error={errors.volumeSnapshotClassName}
         />
       ) : null}
 
@@ -403,7 +578,7 @@ export const SnapshotCreateForm = observer(({ model }: { model: SnapshotDialogMo
         </>
       ) : null}
 
-      {values.backend === "oci" ? (
+      {values.backend === "oci" && values.destination === "explicit" ? (
         <>
           <TextField
             model={model}

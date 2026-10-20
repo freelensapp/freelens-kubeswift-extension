@@ -1,0 +1,18 @@
+# Merge patch applied to the status subresource of the cluster-scoped
+# swiftartifactverificationpolicy/e2e-policy-invalid. See
+# swiftartifactverificationpolicy-e2e-policy-signed.yaml for why statuses are
+# injected.
+#
+# The invalid policy: its one authority holds no PEM block, so Ready is False
+# and every artifact it governs is refused. The empty selector matches every
+# namespace of the cluster; the count is the fixture's, not this cluster's.
+status:
+  observedGeneration: 1
+  namespaces: 6
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: InvalidAuthority
+      message: 'authority "legacy": the public key is not a PEM block.'
+      lastTransitionTime: "2026-10-19T08:05:00Z"
+      observedGeneration: 1

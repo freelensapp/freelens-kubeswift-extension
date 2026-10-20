@@ -113,6 +113,7 @@ import {
   sandboxPoolCreatePayload,
   sandboxPoolCreateSuccessMessage,
   sandboxPoolCreateSummary,
+  sandboxPoolFieldLabels,
   sandboxPoolFooter,
   sandboxPoolNameError,
   sandboxPoolNameWarning,
@@ -140,6 +141,7 @@ import {
   sandboxTimeoutFact,
   sandboxTtlError,
   sandboxTtlFact,
+  sandboxWorkloadContext,
   sandboxWorkloadFact,
   scratchClaimSuffix,
   scratchDiskPayload,
@@ -169,6 +171,8 @@ import {
   warmBufferFoldMessage,
   warmCount,
 } from "./sandbox-create";
+import { defaultSandboxNetwork } from "./sandbox-network-create";
+import { defaultSandboxProbe, defaultSandboxWorkload, probeWithPoolModeNoneMessage } from "./sandbox-workload-create";
 
 import type { GuestGpuProfileFacts } from "./guest-create";
 import type {
@@ -1201,7 +1205,8 @@ describe("the outcome (W9)", () => {
 
 describe("the footer", () => {
   it("says the form authors every field, and what the YAML editor is still for", () => {
-    expect(sandboxPoolFooter).toContain("all fourteen fields");
+    expect(sandboxPoolFooter).toContain("all thirteen fields");
+    expect(sandboxPoolFooter).toContain("matchExpressions");
     expect(sandboxPoolFooter).toContain("EDITS a pool afterwards");
     expect(sandboxPoolFooter).toContain("kubectl scale");
   });
@@ -2530,9 +2535,11 @@ describe("the sandbox outcome", () => {
 });
 
 describe("the sandbox footer", () => {
-  it("names the three leaves it does not author, each with its reason", () => {
+  it("names the leaves it does not author, each with its reason", () => {
     expect(sandboxCreateFooter).toContain("env[].valueFrom");
-    expect(sandboxCreateFooter).toContain("reaches the guest empty");
+    expect(sandboxCreateFooter).toContain("the one source KubeSwift accepts is secretKeyRef");
+    expect(sandboxCreateFooter).not.toContain("IGNORED");
+    expect(sandboxCreateFooter).toContain("podMetadata.annotations and readinessStartup");
     expect(sandboxCreateFooter).toContain("scratchDisk.blank.volumeMode");
     expect(sandboxCreateFooter).toContain("no-op on three legs");
     expect(sandboxCreateFooter).toContain("gpuResourceClaim.hugepages");
@@ -2606,5 +2613,202 @@ describe("the wording records", () => {
 
     expect(issue.label).toBe("Node selector 1 label");
     expect(issue.message).toBe(sandboxSlotRefusalWording.nodeSelectorKeyName);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPEC-0019 T4: the Network section on both forms and the workload sections on
+// the sandbox form, wired into the payloads, the verdicts and the summaries.
+// The sections' own rules are tested in their modules; these are the seams.
+// ---------------------------------------------------------------------------
+
+const exposedNetwork = {
+  ...defaultSandboxNetwork(),
+  ports: [{ id: "port-1", name: "http", port: "8080" }],
+  egress: [{ id: "egress-1", kind: "service" as const, cidr: "", serviceName: "db", serviceNamespace: "", ports: [] }],
+};
+
+describe("the Network section on the pool form (T4)", () => {
+  it("adds no network key while the section is untouched", () => {
+    expect(sandboxPoolCreatePayload(form()).spec.network).toBeUndefined();
+    expect(defaultSlotShape().network).toEqual(defaultSandboxNetwork());
+  });
+
+  it("writes ports and egress next to a non-default mode, and without one", () => {
+    expect(slotShapePayload(shape({ network: exposedNetwork })).network).toEqual({
+      ports: [{ name: "http", port: 8080 }],
+      egress: { allow: [{ service: { name: "db" } }] },
+    });
+    expect(
+      sandboxPoolCreatePayload(
+        form({ shape: shape({ networkMode: "open", network: { ...exposedNetwork, egress: [] } }) }),
+      ).spec.network,
+    ).toEqual({ mode: "open", ports: [{ name: "http", port: 8080 }] });
+  });
+
+  it("blocks on the section's own rules, after the warm buffer", () => {
+    const issues = sandboxPoolBlockingIssues(
+      inputs(),
+      form({ minWarm: "-1", shape: shape({ networkMode: "none", network: exposedNetwork }) }),
+    );
+
+    expect(issues.map((issue) => issue.label)).toEqual([sandboxPoolFieldLabels.minWarm, "Ports", "Egress"]);
+  });
+
+  it("says what the slots expose, in the pool's words", () => {
+    const { notes } = sandboxPoolCreateSummary(inputs(), form({ shape: shape({ network: exposedNetwork }) }));
+
+    expect(notes.some((note) => note.includes("every warm slot's launcher pod"))).toBe(true);
+    expect(notes.some((note) => note.includes("warm slots holding an older address are replaced"))).toBe(true);
+  });
+
+  it("repeats the metadata-range warning in the summary", () => {
+    const network = {
+      ...defaultSandboxNetwork(),
+      egress: [
+        {
+          id: "egress-1",
+          kind: "cidr" as const,
+          cidr: "169.254.0.0/16",
+          serviceName: "",
+          serviceNamespace: "",
+          ports: [],
+        },
+      ],
+    };
+
+    expect(sandboxPoolCreateSummary(inputs(), form({ shape: shape({ network }) })).warnings.join(" ")).toContain(
+      "cloud metadata range",
+    );
+  });
+});
+
+describe("the Network and workload sections on the sandbox form (T4)", () => {
+  const probe = { ...defaultSandboxProbe(), enabled: true, path: "/healthz", port: "http" };
+
+  it("adds no key while every new section is untouched", () => {
+    const { spec } = sandboxCreatePayload(sandboxInputs(), sandboxForm());
+
+    for (const key of [
+      "network",
+      "readinessProbe",
+      "livenessProbe",
+      "termination",
+      "artifacts",
+      "secretFiles",
+      "podMetadata",
+    ]) {
+      expect(spec).not.toHaveProperty(key);
+    }
+
+    expect(defaultSandboxForm().workload).toEqual(defaultSandboxWorkload());
+  });
+
+  it("merges the network and the workload into the cold path's spec", () => {
+    const values = sandboxForm({
+      shape: shape({ network: exposedNetwork }),
+      workload: {
+        ...defaultSandboxWorkload(),
+        readiness: probe,
+        drainPeriod: "15s",
+        podLabels: [{ id: "pod-label-1", key: "app", value: "web" }],
+      },
+    });
+    const { spec } = sandboxCreatePayload(sandboxInputs(), values);
+
+    expect(spec.network?.ports).toEqual([{ name: "http", port: 8080 }]);
+    expect(spec.readinessProbe).toEqual({ httpGet: { path: "/healthz", port: "http" } });
+    expect(spec.termination).toEqual({ drainPeriod: "15s" });
+    expect(spec.podMetadata).toEqual({ labels: { app: "web" } });
+  });
+
+  it("resets the network on a move to a checkout, and never sends one there", () => {
+    const moved = switchSandboxSource(sandboxForm({ shape: shape({ network: exposedNetwork }) }), "checkout");
+
+    expect(moved.shape.network).toEqual(defaultSandboxNetwork());
+    expect(
+      sandboxCreatePayload(sandboxInputs(), checkoutForm({ shape: shape({ network: exposedNetwork }) })).spec,
+    ).not.toHaveProperty("network");
+  });
+
+  it("keeps the workload on a checkout (D2)", () => {
+    const workload = { ...defaultSandboxWorkload(), podLabels: [{ id: "pod-label-1", key: "app", value: "web" }] };
+    const moved = switchSandboxSource(sandboxForm({ workload }), "checkout");
+
+    expect(moved.workload).toEqual(workload);
+    expect(sandboxCreatePayload(sandboxInputs(), checkoutForm({ workload })).spec.podMetadata).toEqual({
+      labels: { app: "web" },
+    });
+  });
+
+  it("reads the network a checkout runs under from the pool", () => {
+    const noneInputs = sandboxInputs({ pools: [{ ...warmPool, networkMode: "none" }, coldPool] });
+
+    expect(sandboxWorkloadContext(sandboxInputs(), checkoutForm()).networkMode).toBe("restricted");
+    expect(sandboxWorkloadContext(noneInputs, checkoutForm()).networkMode).toBe("none");
+    expect(
+      sandboxWorkloadContext(sandboxInputs({ poolsUnverified: true, pools: [] }), checkoutForm()).networkMode,
+    ).toBe(undefined);
+    expect(sandboxWorkloadContext(sandboxInputs(), checkoutForm()).portNames).toEqual([]);
+    expect(
+      sandboxWorkloadContext(sandboxInputs(), sandboxForm({ shape: shape({ network: exposedNetwork }) })).portNames,
+    ).toEqual(["http"]);
+  });
+
+  it("refuses a probe on a checkout of a pool without a network", () => {
+    const noneInputs = sandboxInputs({ pools: [{ ...warmPool, networkMode: "none" }, coldPool] });
+    const values = checkoutForm({ workload: { ...defaultSandboxWorkload(), liveness: { ...probe, port: "8080" } } });
+
+    expect(sandboxBlockingIssues(noneInputs, values)).toEqual([
+      { label: "Liveness probe", message: probeWithPoolModeNoneMessage },
+    ]);
+    expect(sandboxSubmitBlockReason(sandboxInputs(), values)).toBeUndefined();
+  });
+
+  it("blocks on the network on the cold path only, then on the workload", () => {
+    const values = sandboxForm({
+      shape: shape({ networkMode: "none", network: exposedNetwork }),
+      workload: { ...defaultSandboxWorkload(), drainPeriod: "1h" },
+    });
+
+    expect(sandboxBlockingIssues(sandboxInputs(), values).map((issue) => issue.label)).toEqual([
+      "Ports",
+      "Egress",
+      "Drain period",
+    ]);
+  });
+
+  it("states the network, workload facts and warnings in the summary", () => {
+    const values = sandboxForm({
+      shape: shape({ network: exposedNetwork }),
+      workload: {
+        ...defaultSandboxWorkload(),
+        readiness: probe,
+        secretFiles: [
+          {
+            id: "secret-file-1",
+            secretName: "e2e-missing",
+            mode: "",
+            optional: false,
+            items: [{ id: "secret-item-1", key: "token", path: "/etc/app/token", mode: "" }],
+          },
+        ],
+      },
+    });
+    const { notes, warnings } = sandboxCreateSummary(sandboxInputs(), values);
+
+    expect(notes.some((note) => note.includes("the launcher pod, forwarded"))).toBe(true);
+    expect(notes.some((note) => note.startsWith("The readiness probe runs GET /healthz on port http"))).toBe(true);
+    expect(notes.some((note) => note.includes("token is written to /etc/app/token"))).toBe(true);
+    expect(warnings.some((warning) => warning.includes("No Secret named e2e-missing"))).toBe(true);
+  });
+
+  it("leaves the network out of a checkout's summary", () => {
+    const { notes } = sandboxCreateSummary(
+      sandboxInputs(),
+      checkoutForm({ shape: shape({ network: exposedNetwork }) }),
+    );
+
+    expect(notes.some((note) => note.includes("forwarded to the same guest ports"))).toBe(false);
   });
 });

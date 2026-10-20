@@ -23,6 +23,7 @@ const sortingCallbacks = {
   namespace: (object: KubeObject) => object.getNs(),
   node: (object: KubeObject) => KubeObject.getNodeName(object),
   ip: (object: KubeObject) => KubeObject.getPrimaryIP(object),
+  podIp: (object: KubeObject) => KubeObject.getPodIP(object),
   restarts: (object: KubeObject) => KubeObject.getRestartCount(object),
   condition: (object: KubeObject) => classifyGuest(object.spec, object.status).state,
   status: (object: KubeObject) => guestMessage(object.spec, object.status),
@@ -40,7 +41,11 @@ const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks;
   { title: "Name", sortBy: "name", id: "name" },
   { title: "Namespace", sortBy: "namespace", id: "namespace" },
   { title: "Node", sortBy: "node", id: "node", className: styles.node },
-  { title: "IP", sortBy: "ip", id: "ip", className: styles.ip },
+  // Guest IP and Pod IP, as the CRD's printer columns name them since KubeSwift
+  // v0.15.0: on a nat guest the first repeats across launchers, and the second
+  // is where its ports are reachable (SPEC-0019 T2).
+  { title: "Guest IP", sortBy: "ip", id: "ip", className: styles.ip },
+  { title: "Pod IP", sortBy: "podIp", id: "podIp", className: styles.podIp },
   { title: "Restarts", sortBy: "restarts", id: "restarts", className: styles.restarts },
   { title: "Condition", sortBy: "condition", id: "condition", className: styles.condition },
   { title: "Status", sortBy: "status", id: "status", className: styles.status },
@@ -80,6 +85,7 @@ export const SwiftGuestsPage = observer((props: SwiftGuestsPageProps) => {
           <NamespaceSelectBadge key="namespace" namespace={object.getNs()} />,
           <LinkToNode key="node" name={KubeObject.getNodeName(object)} />,
           <WithTooltip key="ip">{KubeObject.getPrimaryIP(object) ?? notAvailable}</WithTooltip>,
+          <WithTooltip key="podIp">{KubeObject.getPodIP(object) ?? notAvailable}</WithTooltip>,
           <WithTooltip key="restarts">{KubeObject.getRestartCount(object)}</WithTooltip>,
           // The badge carries the derived state, so a guest whose stop has
           // been written but not yet reconciled reads `Stopping` here rather

@@ -31,7 +31,8 @@ never be copied; views are reimplemented from scratch.
 
 - KubeSwift API version: `v1alpha1` on every CRD, explicitly unstable between
   releases. Recon 2026-08-27: KubeSwift v0.13.12, 15 CRDs across 9 API
-  groups.
+  groups. Since SPEC-0019 the extension tracks KubeSwift v0.18.0: 19 CRDs
+  across 10 API groups (`storage.kubeswift.io` is the new group).
 - Authoritative CRD schemas: `config/crd/bases/*.yaml` in
   `kubeswift-io/kubeswift`. TypeScript types in this extension are written
   from those schemas (by hand or generated), never imported from KubeSwift

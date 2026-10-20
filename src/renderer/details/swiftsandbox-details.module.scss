@@ -24,3 +24,32 @@
   align-items: center;
   gap: calc(var(--unit) / 2);
 }
+
+// Nested table of the secret files, sized like the environment table above.
+.secretFiles {
+  :global(.TableCell) {
+    &.secret {
+      flex-grow: 1;
+    }
+
+    &.items {
+      flex-grow: 2;
+    }
+
+    &.mode {
+      flex-grow: 0.4;
+    }
+
+    &.optional {
+      flex-grow: 0.5;
+    }
+  }
+}
+
+// The verification policies of one artifact, each a link followed by the
+// generation that was applied, side by side.
+.policies {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--unit);
+}

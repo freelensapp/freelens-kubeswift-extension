@@ -50,7 +50,9 @@ pnpm demo:down
 
 Both commands are idempotent: `demo:up` re-applies CRDs and fixtures and
 repacks the extension on every run, and reuses the cluster if it already
-exists.
+exists. A snapshot fixture whose spec changed is the exception: KubeSwift
+v0.16.0 and later refuse to change a SwiftSnapshot's spec, so run
+`pnpm demo:down` first.
 
 ## Windows (via WSL2)
 

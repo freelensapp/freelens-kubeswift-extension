@@ -34,6 +34,7 @@ import type {
   SwiftSnapshotBackendType,
   SwiftSnapshotDeletionPolicy,
   SwiftSnapshotSpec,
+  SwiftStorageLocationKind,
 } from "../api/kubeswift/swiftsnapshot-v1alpha1";
 import type { ActionGuard, ApiFailureFacts } from "./guest-actions";
 
@@ -63,6 +64,200 @@ export function localSnapshotDirectory(namespace: string, name: string): string 
 /** The tag KubeSwift gives an `oci` snapshot whose spec names none. */
 export function defaultOciTag(namespace: string, name: string): string {
   return `${namespace}-${name}`;
+}
+
+/**
+ * Where an `oci` or csi snapshot goes (SPEC-0019 T4): the default storage
+ * location (the namespace's, else the cluster's), a location picked by name,
+ * or the backend's own fields (a registry, a VolumeSnapshotClass).
+ */
+export type SnapshotDestination = "default" | "location" | "explicit";
+
+/** The two backends a storage location serves. */
+export function usesDestination(backend: SwiftSnapshotBackendType): boolean {
+  return backend === "oci" || backend === "csi-volume-snapshot";
+}
+
+/** A storage location, as the picker and the checks read it. */
+export interface StorageLocationChoice {
+  kind: SwiftStorageLocationKind;
+  name: string;
+  /** Whether it sets a registry, and whether it sets a VolumeSnapshotClass. */
+  hasOci: boolean;
+  hasCsi: boolean;
+  isDefault: boolean;
+  /** The Ready condition: `false` with its message when the controller refused the location. */
+  ready?: boolean;
+  readyMessage?: string;
+  /** The Secret the registry is reached with in the snapshot's namespace, `undefined` when anonymous. */
+  credentialsSecretName?: string;
+  signingKeySecretName?: string;
+  repository?: string;
+}
+
+/** What the reads on open found about storage locations. */
+export interface StorageLocationFacts {
+  /** `unavailable`: the lists were refused, or the cluster has no storage locations (KubeSwift before v0.16.0). */
+  state: "loading" | "ready" | "unavailable";
+  choices: StorageLocationChoice[];
+}
+
+/** The picker value of a location. */
+export function storageLocationValue(kind: SwiftStorageLocationKind, name: string): string {
+  return `${kind}/${name}`;
+}
+
+export function parseStorageLocationValue(value: string): { kind: SwiftStorageLocationKind; name: string } | undefined {
+  const match = /^(SwiftStorageLocation|SwiftClusterStorageLocation)\/(.+)$/.exec(value);
+
+  return match ? { kind: match[1] as SwiftStorageLocationKind, name: match[2] } : undefined;
+}
+
+/** How a location reads in the form and in the summary: a cluster one as `cluster/<name>`, as swiftctl writes it. */
+export function storageLocationLabel(choice: { kind: SwiftStorageLocationKind; name: string }): string {
+  return choice.kind === "SwiftClusterStorageLocation" ? `cluster/${choice.name}` : choice.name;
+}
+
+/** Why a location cannot serve a backend, or `undefined` when it can. */
+export function storageLocationRefusal(
+  choice: StorageLocationChoice,
+  backend: SwiftSnapshotBackendType,
+): string | undefined {
+  if (backend === "oci" && !choice.hasOci) {
+    return "it sets no registry";
+  }
+
+  if (backend === "csi-volume-snapshot" && !choice.hasCsi) {
+    return "it sets no VolumeSnapshotClass";
+  }
+
+  return undefined;
+}
+
+/**
+ * The location KubeSwift would resolve for a snapshot that names none: the
+ * namespace's default, else the cluster's. `ambiguous` when a level has two
+ * defaults, which KubeSwift refuses rather than pick one.
+ */
+export function defaultStorageLocation(choices: StorageLocationChoice[]): {
+  choice?: StorageLocationChoice;
+  ambiguous: boolean;
+} {
+  for (const kind of ["SwiftStorageLocation", "SwiftClusterStorageLocation"] as const) {
+    const defaults = choices.filter((choice) => choice.kind === kind && choice.isDefault);
+
+    if (defaults.length > 1) {
+      return { ambiguous: true };
+    }
+
+    if (defaults.length === 1) {
+      return { choice: defaults[0], ambiguous: false };
+    }
+  }
+
+  return { ambiguous: false };
+}
+
+/** The location the form's destination resolves to, when it resolves to one the lists hold. */
+export function resolvedStorageLocation(
+  values: SnapshotFormValues,
+  locations: StorageLocationFacts,
+): StorageLocationChoice | undefined {
+  if (!usesDestination(values.backend) || locations.state !== "ready") {
+    return undefined;
+  }
+
+  if (values.destination === "default") {
+    return defaultStorageLocation(locations.choices).choice;
+  }
+
+  if (values.destination === "location") {
+    const picked = parseStorageLocationValue(values.location);
+
+    return locations.choices.find((choice) => choice.kind === picked?.kind && choice.name === picked?.name);
+  }
+
+  return undefined;
+}
+
+/**
+ * What a storage-location destination would still be accepted with, and wait
+ * or fail on (SPEC-0019 T4). Never blocks: the lists can be stale, and the
+ * snapshot reports the same reason on its own.
+ */
+export function storageLocationWarning(
+  values: SnapshotFormValues,
+  locations: StorageLocationFacts,
+  secretNames: string[] | undefined,
+): string | undefined {
+  if (!usesDestination(values.backend) || values.destination === "explicit") {
+    return undefined;
+  }
+
+  if (locations.state === "unavailable" && values.backend === "oci" && values.destination === "default") {
+    return (
+      "The storage locations could not be listed. If this cluster has none (KubeSwift before v0.16.0), an oci " +
+      "snapshot needs a registry: choose the Registry destination."
+    );
+  }
+
+  if (locations.state !== "ready") {
+    return undefined;
+  }
+
+  if (values.destination === "default") {
+    const resolved = defaultStorageLocation(locations.choices);
+
+    if (resolved.ambiguous) {
+      return (
+        "Two storage locations are marked default at the same level, so KubeSwift resolves neither and the " +
+        "snapshot waits Pending (AmbiguousStorageLocation)."
+      );
+    }
+
+    if (!resolved.choice) {
+      return values.backend === "oci"
+        ? "No storage location is marked default here or for the cluster, so the snapshot waits Pending " +
+            "(NoStorageLocation). Pick a location or a registry."
+        : undefined;
+    }
+  }
+
+  const choice = resolvedStorageLocation(values, locations);
+
+  if (!choice) {
+    return undefined;
+  }
+
+  const refusal = storageLocationRefusal(choice, values.backend);
+
+  if (refusal) {
+    return values.destination === "default" && values.backend === "csi-volume-snapshot"
+      ? undefined
+      : `The storage location ${storageLocationLabel(choice)} cannot serve this backend: ${refusal}.`;
+  }
+
+  if (choice.ready === false) {
+    return `The storage location ${storageLocationLabel(choice)} is not ready${choice.readyMessage ? `: ${choice.readyMessage}` : "."}`;
+  }
+
+  if (values.backend === "oci" && secretNames) {
+    if (choice.credentialsSecretName && !secretNames.includes(choice.credentialsSecretName)) {
+      return (
+        `The location reaches its registry with the Secret ${choice.credentialsSecretName}, which this ` +
+        "namespace does not have: the snapshot waits Pending (RegistryCredentialsMissing) until it exists."
+      );
+    }
+
+    if (choice.signingKeySecretName && !secretNames.includes(choice.signingKeySecretName)) {
+      return (
+        `The location signs with the Secret ${choice.signingKeySecretName}, which this namespace does not ` +
+        "have: the snapshot waits Pending (SigningKeyMissing) until it exists."
+      );
+    }
+  }
+
+  return undefined;
 }
 
 /** The annotation that switches a guest to a hypervisor upstream cannot pause for a capture. */
@@ -270,6 +465,10 @@ export interface SnapshotFormValues {
   ociCredentialsSecret: string;
   signingKeySecret: string;
   ociInsecure: boolean;
+  /** oci and csi: where the snapshot goes (SPEC-0019 T4). */
+  destination: SnapshotDestination;
+  /** The picked location, as `<kind>/<name>` (see `storageLocationValue`). */
+  location: string;
   resumeAfterSnapshot: boolean;
   deletionPolicy: SwiftSnapshotDeletionPolicy;
   ttl: string;
@@ -313,6 +512,8 @@ export function defaultSnapshotForm(guest: SnapshotGuestFacts, now: Date): Snaps
     ociCredentialsSecret: "",
     signingKeySecret: "",
     ociInsecure: false,
+    destination: "default",
+    location: "",
     resumeAfterSnapshot: true,
     deletionPolicy: "Delete",
     ttl: "",
@@ -332,6 +533,7 @@ export type SnapshotField =
   | "tag"
   | "ociCredentialsSecret"
   | "signingKeySecret"
+  | "location"
   | "ttl";
 
 /** One message per field, absent when the field has nothing to say. */
@@ -350,11 +552,22 @@ export const snapshotFieldLabels: Record<SnapshotField, string> = {
   tag: "Tag",
   ociCredentialsSecret: "Credentials secret",
   signingKeySecret: "Signing key secret",
+  location: "Storage location",
   ttl: "TTL",
 };
 
 /** The order the submit-disabled sentence reports the first offending field in. */
-const fieldOrder: SnapshotField[] = ["name", "bucket", "s3CredentialsSecret", "region", "repository", "tag", "ttl"];
+const fieldOrder: SnapshotField[] = [
+  "name",
+  "bucket",
+  "s3CredentialsSecret",
+  "region",
+  "location",
+  "volumeSnapshotClassName",
+  "repository",
+  "tag",
+  "ttl",
+];
 
 /** The Kubernetes object-name rule (RFC 1123 subdomain), which the API server would enforce afterwards. */
 const objectNamePattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
@@ -429,7 +642,17 @@ export function snapshotErrors(values: SnapshotFormValues): SnapshotFieldMessage
     }
   }
 
-  if (values.backend === "oci") {
+  if (usesDestination(values.backend) && values.destination === "location" && !values.location) {
+    errors.location = "Choose a storage location, or another destination.";
+  }
+
+  if (values.backend === "csi-volume-snapshot" && values.destination === "explicit") {
+    if (!values.volumeSnapshotClassName.trim()) {
+      errors.volumeSnapshotClassName = "A VolumeSnapshotClass is required for this destination.";
+    }
+  }
+
+  if (values.backend === "oci" && values.destination === "explicit") {
     if (!values.repository.trim()) {
       errors.repository = "A repository is required, without a tag.";
     }
@@ -500,12 +723,13 @@ export function snapshotWarnings(
   // Since KubeSwift v0.16.0 two oci snapshots may not share a repository:tag:
   // the second is created, and then fails with TagInUse. Only a client that
   // already holds the cluster's snapshots can see it coming.
-  const reference = name
-    ? ociReference(guest.namespace, name, {
-        type: values.backend,
-        oci: { repository: values.repository, tag: values.tag },
-      })
-    : undefined;
+  const reference =
+    name && values.destination === "explicit"
+      ? ociReference(guest.namespace, name, {
+          type: values.backend,
+          oci: { repository: values.repository, tag: values.tag },
+        })
+      : undefined;
   const holder = reference
     ? existing.find(
         (snapshot) =>
@@ -582,7 +806,16 @@ export function snapshotCreatePayload(
     spec.resumeAfterSnapshot = values.resumeAfterSnapshot;
   }
 
-  if (values.backend === "csi-volume-snapshot") {
+  const location = usesDestination(values.backend) ? parseStorageLocationValue(values.location) : undefined;
+
+  // A location is not valid next to backend.oci or a csi class, which say it
+  // themselves; "default" writes neither, and KubeSwift resolves the
+  // namespace's default location, else the cluster's (SPEC-0019 T4).
+  if (location && values.destination === "location") {
+    spec.backend.locationRef = { kind: location.kind, name: location.name };
+  }
+
+  if (values.backend === "csi-volume-snapshot" && values.destination === "explicit") {
     const volumeSnapshotClassName = values.volumeSnapshotClassName.trim();
 
     if (volumeSnapshotClassName) {
@@ -625,7 +858,7 @@ export function snapshotCreatePayload(
     }
   }
 
-  if (values.backend === "oci") {
+  if (values.backend === "oci" && values.destination === "explicit") {
     spec.backend.oci = { repository: values.repository.trim() };
 
     const tag = values.tag.trim();
@@ -678,7 +911,47 @@ export interface SnapshotSummaryFacts {
 }
 
 /** Where the artifacts land, when the form names a destination. */
-function destinationNote(guest: SnapshotGuestFacts, values: SnapshotFormValues): string | undefined {
+/** Where a storage-location destination sends the snapshot. */
+function locationDestinationNote(
+  guest: SnapshotGuestFacts,
+  values: SnapshotFormValues,
+  locations: StorageLocationFacts | undefined,
+): string {
+  const resolved = locations ? resolvedStorageLocation(values, locations) : undefined;
+  const picked = values.destination === "location" ? parseStorageLocationValue(values.location) : undefined;
+  const named = resolved ?? picked;
+  const which = named
+    ? `the storage location ${storageLocationLabel(named)}${values.destination === "default" ? " (the default)" : ""}`
+    : "the default storage location (the namespace's, else the cluster's)";
+
+  if (values.backend === "csi-volume-snapshot") {
+    return values.destination === "default"
+      ? `The VolumeSnapshot takes its class from ${which}, else the cluster's default VolumeSnapshotClass.`
+      : `The VolumeSnapshot takes its class from ${which}.`;
+  }
+
+  const repository = resolved?.repository
+    ? resolved.kind === "SwiftClusterStorageLocation"
+      ? `${resolved.repository}/${guest.namespace}/snapshots`
+      : `${resolved.repository}/snapshots`
+    : undefined;
+
+  return (
+    `The artifact is pushed through ${which}` +
+    (repository ? `, to ${repository}` : "") +
+    ", tagged with the snapshot's name and a part of its uid, so no other snapshot can hold the tag."
+  );
+}
+
+function destinationNote(
+  guest: SnapshotGuestFacts,
+  values: SnapshotFormValues,
+  locations?: StorageLocationFacts,
+): string | undefined {
+  if (usesDestination(values.backend) && values.destination !== "explicit") {
+    return locationDestinationNote(guest, values, locations);
+  }
+
   switch (values.backend) {
     case "csi-volume-snapshot": {
       const className = values.volumeSnapshotClassName.trim();
@@ -754,10 +1027,10 @@ function deletionPolicyNote(values: SnapshotFormValues): string | undefined {
   }
 
   if (values.backend === "oci") {
-    return (
-      `Deletion policy ${values.deletionPolicy} has no effect on this backend: nothing purges registry artifacts, ` +
-      "under either policy, so they stay until someone removes them from the registry."
-    );
+    return values.deletionPolicy === "Delete"
+      ? "Deleting the snapshot deletes its registry artifacts by the digest recorded at push time; a registry that " +
+          "refuses deletes keeps them."
+      : "Deleting the snapshot keeps its registry artifacts, and nothing removes them later.";
   }
 
   return undefined;
@@ -767,11 +1040,15 @@ function deletionPolicyNote(values: SnapshotFormValues): string | undefined {
  * The live write summary: the one create line, plus the consequence lines that
  * are true of this object in this state (W1, rebuilt on every change).
  */
-export function snapshotSummary(guest: SnapshotGuestFacts, values: SnapshotFormValues): SnapshotSummaryFacts {
+export function snapshotSummary(
+  guest: SnapshotGuestFacts,
+  values: SnapshotFormValues,
+  locations?: StorageLocationFacts,
+): SnapshotSummaryFacts {
   const name = values.name.trim() || "<name>";
   const notes: string[] = [contentsNote(values)];
   const warnings: string[] = [];
-  const destination = destinationNote(guest, values);
+  const destination = destinationNote(guest, values, locations);
 
   if (destination) {
     notes.push(destination);
@@ -901,9 +1178,14 @@ export function snapshotDeleteConsequences(
           : "The uploaded objects under the S3 prefix are kept, and nothing removes them later.",
       );
       break;
+    // KubeSwift v0.14.1 gave oci a cleanup, and v0.16.0 made it delete by the
+    // recorded digest, never by a tag another snapshot may hold (SPEC-0019 T1).
     case "oci":
       consequences.push(
-        `The registry artifacts stay regardless of the ${policy} policy: this backend has no cleanup path at all.`,
+        policy === "Delete"
+          ? "The registry artifacts are deleted with this object, by the digest recorded at push time; one with no " +
+              "recorded digest, or in a registry that refuses deletes, is left in place."
+          : "The registry artifacts are kept, and nothing removes them later.",
       );
       break;
     default:

@@ -14,6 +14,15 @@ export type SwiftGuestClassDiskFormat = "raw" | "qcow2";
 
 export type SwiftGuestClassCoreScheduling = "off" | "vm" | "vcpu";
 
+/** `none` lets the host scheduler place the vCPUs; `static` pins each to its own host CPU (KubeSwift v0.14.0+). */
+export type SwiftGuestClassCpuPinning = "none" | "static";
+
+/** Sibling placement under `static` pinning. */
+export type SwiftGuestClassSmtPolicy = "spread" | "pack";
+
+/** The hugepage size backing the guest's memory; empty keeps ordinary pages. */
+export type SwiftGuestClassHugepages = "" | "2Mi" | "1Gi";
+
 export type SwiftGuestClassAccessMode = "ReadWriteOnce" | "ReadWriteMany";
 
 export type SwiftGuestClassVolumeMode = "Filesystem" | "Block";
@@ -36,6 +45,13 @@ export interface SwiftGuestClassSpec {
   rootDisk: SwiftGuestClassRootDisk;
   coreScheduling?: SwiftGuestClassCoreScheduling;
   storage?: SwiftGuestClassStorage;
+  /** Default `none`. */
+  cpuPinning?: SwiftGuestClassCpuPinning;
+  /** Default `spread`; read only with `static` pinning. */
+  smtPolicy?: SwiftGuestClassSmtPolicy;
+  hugepages?: SwiftGuestClassHugepages;
+  /** Default `false`; immutable. A node-local copy-on-write root disk. */
+  sharedBaseDisk?: boolean;
 }
 
 /** The CRD declares no status subresource: a guest class never reports one. */
@@ -83,6 +99,25 @@ export class SwiftGuestClass extends Renderer.K8sApi.LensExtensionKubeObject<
    */
   static getCoreScheduling(object: SwiftGuestClass): SwiftGuestClassCoreScheduling {
     return object.spec?.coreScheduling || "off";
+  }
+
+  /** The CRD defaults CPU pinning to `none` (KubeSwift v0.14.0+). */
+  static getCpuPinning(object: SwiftGuestClass): SwiftGuestClassCpuPinning {
+    return object.spec?.cpuPinning ?? "none";
+  }
+
+  /** The SMT policy, which the controller reads only under `static` pinning; `undefined` otherwise. */
+  static getSmtPolicy(object: SwiftGuestClass): SwiftGuestClassSmtPolicy | undefined {
+    return SwiftGuestClass.getCpuPinning(object) === "static" ? (object.spec?.smtPolicy ?? "spread") : undefined;
+  }
+
+  /** The hugepage size backing the memory, `undefined` for ordinary pages. */
+  static getHugepages(object: SwiftGuestClass): SwiftGuestClassHugepages | undefined {
+    return object.spec?.hugepages || undefined;
+  }
+
+  static isSharedBaseDisk(object: SwiftGuestClass): boolean {
+    return object.spec?.sharedBaseDisk === true;
   }
 }
 

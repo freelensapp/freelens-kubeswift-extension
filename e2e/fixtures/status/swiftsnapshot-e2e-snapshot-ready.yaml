@@ -3,7 +3,13 @@
 # cluster, so the status a real controller would write is injected here instead.
 status:
   phase: Ready
+  # KubeSwift v0.16.0 (SPEC-0019 T2): when the capture was sent, and the class
+  # the controller resolved for a csi snapshot that names none.
+  captureStartedAt: "2026-08-27T02:00:03Z"
   capturedAt: "2026-08-27T02:04:12Z"
+  location:
+    source: DefaultVolumeSnapshotClass
+    volumeSnapshotClassName: csi-hostpath-snapclass
   totalSizeBytes: 22548578304
   hypervisor: cloud-hypervisor
   hypervisorVersion: v52.0
@@ -21,6 +27,7 @@ status:
     memoryMi: 4096
     imageName: e2e-ubuntu-2404
     osType: linux
+    primaryIP: 10.244.1.21
     rootDiskSize: 20Gi
     hasSeed: true
     hasDataDisks: true

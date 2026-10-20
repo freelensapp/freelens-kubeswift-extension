@@ -1,0 +1,13 @@
+@use "../vars";
+
+// Read-only rendering of a PEM text (a cosign public key, a CA bundle). The
+// content is shown in a MonacoEditor (host theme, clamped initial height, own
+// scrollbar), the large-blob idiom of DESIGN.md section 3, and never reaches a
+// table cell.
+.editor {
+  margin: vars.$margin 0;
+  resize: none;
+  overflow: hidden;
+  border: 1px solid var(--borderFaintColor);
+  border-radius: 4px;
+}

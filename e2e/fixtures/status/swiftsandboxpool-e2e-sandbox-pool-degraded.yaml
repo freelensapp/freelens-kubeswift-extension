@@ -23,6 +23,9 @@
 status:
   phase: Degraded
   warmReplicas: 0
+  # The one slot the pool keeps trying to warm, still unscheduled (v0.18.0,
+  # SPEC-0019 T2): warming, never warm, so a checkout still boots cold.
+  warmingReplicas: 1
   claimedReplicas: 0
   observedGeneration: 1
   conditions:

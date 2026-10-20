@@ -20,20 +20,23 @@ const sortingCallbacks = {
   namespace: (object: KubeObject) => object.getNs(),
   guest: (object: KubeObject) => KubeObject.getGuestName(object),
   backend: (object: KubeObject) => KubeObject.getBackendType(object),
+  location: (object: KubeObject) => KubeObject.getLocationLabel(object) ?? "",
   contents: (object: KubeObject) => KubeObject.getContents(object),
   phase: (object: KubeObject) => KubeObject.getPhase(object),
   size: (object: KubeObject) => object.status?.totalSizeBytes ?? 0,
   age: (object: KubeObject) => object.getCreationTimestamp(),
 };
 
-// Guest, backend, phase and size are the columns the CRD publishes as printer
-// columns, so the list reads like `kubectl get swiftsnapshots`. Contents is
-// derived from the backend, which is what decides whether memory was captured.
+// Guest, backend, location, phase and size are the columns the CRD publishes as
+// printer columns, so the list reads like `kubectl get swiftsnapshots`. Contents
+// is derived from the backend, which is what decides whether memory was
+// captured. Location arrived with KubeSwift v0.16.0 (SPEC-0019 T2).
 const renderTableHeader: { title: string; sortBy: keyof typeof sortingCallbacks; id: string; className?: string }[] = [
   { title: "Name", sortBy: "name", id: "name" },
   { title: "Namespace", sortBy: "namespace", id: "namespace" },
   { title: "Guest", sortBy: "guest", id: "guest" },
   { title: "Backend", sortBy: "backend", id: "backend", className: styles.backend },
+  { title: "Location", sortBy: "location", id: "location", className: styles.location },
   { title: "Contents", sortBy: "contents", id: "contents", className: styles.contents },
   { title: "Phase", sortBy: "phase", id: "phase", className: styles.phase },
   { title: "Size", sortBy: "size", id: "size", className: styles.size },
@@ -61,6 +64,7 @@ export const SwiftSnapshotsPage = observer((props: SwiftSnapshotsPageProps) => {
         <LinkToNamespace namespace={object.getNs()} />,
         <WithTooltip>{KubeObject.getGuestName(object) ?? notAvailable}</WithTooltip>,
         <WithTooltip>{KubeObject.getBackendType(object) ?? notAvailable}</WithTooltip>,
+        <WithTooltip>{KubeObject.getLocationLabel(object) ?? notAvailable}</WithTooltip>,
         <WithTooltip>{KubeObject.getContents(object) ?? notAvailable}</WithTooltip>,
         <WithTooltip>{KubeObject.getPhase(object) ?? notAvailable}</WithTooltip>,
         <WithTooltip>{KubeObject.getTotalSize(object) ?? notAvailable}</WithTooltip>,

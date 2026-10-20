@@ -5,6 +5,7 @@ import { SwiftGPUNode } from "../api/kubeswift/swiftgpunode-v1alpha1";
 import { SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest } from "../api/kubeswift/swiftguest-v1alpha1";
 import { SwiftGuestPool } from "../api/kubeswift/swiftguestpool-v1alpha1";
+import { formatBytes } from "../api/kubeswift/types";
 import { canOpenGuestConsole, guestConsoleDrawerExplanation } from "../components/console-commands";
 import { deleteCascade } from "../components/guest-actions";
 import { classifyGuest } from "../components/guest-status";
@@ -36,6 +37,18 @@ const managedByTooltip =
   "pool instead.";
 
 export type SwiftGuestDetailsProps = Renderer.Component.KubeObjectDetailsProps<SwiftGuest>;
+
+/** What each IP scope means for reaching the guest. */
+function guestIPScopeText(scope?: string): string | undefined {
+  switch (scope) {
+    case "Pod":
+      return "Pod: the launcher's private nat address, reachable only inside the pod; use the Pod IP for its ports";
+    case "Network":
+      return "Network: reachable on the network outside the pod";
+    default:
+      return scope;
+  }
+}
 
 export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) => {
   const { object } = props;
@@ -105,6 +118,8 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) => {
 
   const nodeIsLinkable = objectExists(nodesStore, nodeName);
   const podIsLinkable = objectExists(podsStore, podName, podNamespace);
+  const sharedBaseDisk = status?.sharedBaseDisk;
+  const sharedBaseNodeIsLinkable = objectExists(nodesStore, sharedBaseDisk?.node);
   const gpuProfileRef = existingObjectRef(gpuProfileStore, SwiftGPUProfile.kind, gpuProfileName, namespace);
   const gpuNodeRef = existingObjectRef(gpuNodeStore, SwiftGPUNode.kind, gpuNodeName);
   const owningPoolRef = existingObjectRef(guestPoolStore, SwiftGuestPool.kind, owningPool?.name, owningPool?.namespace);
@@ -210,6 +225,15 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) => {
       <DrawerItem name="Primary IP">
         <WithTooltip>{SwiftGuest.getPrimaryIP(object) ?? notAvailable}</WithTooltip>
       </DrawerItem>
+      {/* KubeSwift v0.15.0 (SPEC-0019 T2): where the primary IP can be
+          reached from, and the launcher pod's own IP, which is where a nat
+          guest's ports are when the primary IP is only the pod's private one. */}
+      <DrawerItem name="IP Scope" hidden={!status?.network?.primaryIPScope}>
+        <WithTooltip>{guestIPScopeText(status?.network?.primaryIPScope)}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Pod IP" hidden={!SwiftGuest.getPodIP(object)}>
+        <WithTooltip>{SwiftGuest.getPodIP(object)}</WithTooltip>
+      </DrawerItem>
       <DrawerItem name="Interfaces" hidden={interfaces.length === 0} labelsOnly>
         {interfaces.map((iface, index) => (
           <Badge
@@ -219,6 +243,31 @@ export const SwiftGuestDetails = observer((props: SwiftGuestDetailsProps) => {
           />
         ))}
       </DrawerItem>
+
+      {/* KubeSwift v0.14.0 (SPEC-0019 T2): the node-local disk of a guest
+          whose class shares a base, recorded once; the guest runs on that
+          node or not at all. */}
+      {sharedBaseDisk ? (
+        <>
+          <DrawerTitle>Shared Base Disk</DrawerTitle>
+          <DrawerItem name="Node">
+            {sharedBaseNodeIsLinkable ? (
+              <LinkToNode name={sharedBaseDisk.node} />
+            ) : (
+              <WithTooltip>{sharedBaseDisk.node}</WithTooltip>
+            )}
+          </DrawerItem>
+          <DrawerItem name="Built">
+            <WithTooltip>{sharedBaseDisk.created ? "Yes" : "Not yet"}</WithTooltip>
+          </DrawerItem>
+          <DrawerItem name="Size" hidden={sharedBaseDisk.sizeBytes === undefined}>
+            <WithTooltip>{formatBytes(sharedBaseDisk.sizeBytes)}</WithTooltip>
+          </DrawerItem>
+          <DrawerItem name="Base" hidden={!sharedBaseDisk.baseKey}>
+            <WithTooltip>{sharedBaseDisk.baseKey}</WithTooltip>
+          </DrawerItem>
+        </>
+      ) : null}
 
       <DrawerTitle>Restarts</DrawerTitle>
       <DrawerItem name="Restart Count">

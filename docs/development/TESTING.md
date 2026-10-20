@@ -70,7 +70,11 @@ VMs), driven through Freelens dev by Playwright over CDP (layer 2).
 | `pnpm test:integration` | The integration test and the E2E suite, as CI runs them |
 
 `E2E_KEEP_CLUSTER=1 pnpm e2e` leaves the cluster running for inspection.
-`pnpm e2e:cluster:up` is idempotent, so it doubles as "re-apply the fixtures".
+`pnpm e2e:cluster:up` is idempotent, so it doubles as "re-apply the fixtures",
+with one exception: since KubeSwift v0.16.0 a SwiftSnapshot's spec is
+immutable except `deletionPolicy` and `ttl`, so a change to a snapshot
+fixture's spec is refused on a cluster that already holds it. Recreate the
+cluster then (`pnpm e2e:cluster:down`, or `pnpm demo:down` for the demo one).
 
 #### Running locally
 
@@ -106,8 +110,13 @@ on a new cluster and a new app every time.
 - `e2e/scripts/` — cluster lifecycle. `lib.sh` is the single place where the
   KubeSwift version, the kind and Kubernetes versions, the cluster name and
   the kubeconfig path are pinned.
-- `e2e/fixtures/` — hand-written custom resources for the six M1 and the four
-  M2 CRDs, in numbered files applied together. `fixtures/status/` holds the
+- `e2e/fixtures/` — hand-written custom resources for every KubeSwift kind the
+  extension shows, in numbered files applied together, against the KubeSwift
+  v0.18.0 CRDs `lib.sh` pins (19 CRDs across 10 API groups).
+  `220-storage-locations.yaml` and `225-artifact-placements.yaml` cover the
+  four read-only kinds SPEC-0019 added (the storage locations at both scopes,
+  the artifact placements and the verification policies), each with one
+  healthy and one failing object. `fixtures/status/` holds the
   merge patches applied to the status subresources with `kubectl patch
   --subresource=status`, since no KubeSwift controller runs in the cluster.
   Each pair of fixtures is chosen to cover a state its views distinguish, so

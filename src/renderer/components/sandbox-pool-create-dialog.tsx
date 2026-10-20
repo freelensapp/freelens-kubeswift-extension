@@ -4,8 +4,8 @@
  */
 
 // The Create Sandbox Pool form (SPEC-0016, slice 1), Dialog B of that spec:
-// fourteen flat fields, two collapsed sections, and no admission webhook
-// anywhere behind it - which is why every refusal it makes is the only one an
+// every field of the pool's spec, three collapsed sections (the Network one of
+// SPEC-0019 T4 included), and no admission webhook anywhere behind it - which is why every refusal it makes is the only one an
 // operator will ever see.
 //
 // Every decision it renders belongs to `sandbox-create.ts`. What lives here is
@@ -80,6 +80,7 @@ import {
   slotShapeWarnings,
   updateNodeSelectorRow,
 } from "./sandbox-create";
+import { SandboxNetworkSection } from "./sandbox-network-section";
 
 import type { ObjectPickerFacts } from "./create-dialog";
 import type { GuestGpuProfileFacts } from "./guest-create";
@@ -120,9 +121,11 @@ export interface SandboxShapeOwner {
   /** The namespace's existing names, for the collision warning that never blocks. */
   existingNames: string[];
   existingNamesUnverified: boolean;
-  /** The two collapsed sections ship shut; these are what the user does about that. */
+  /** The collapsed sections ship shut; these are what the user does about that. */
   gpuOpen: boolean;
   registryOpen: boolean;
+  /** The Network section's (SPEC-0019 T4), which a sandbox's checkout does not render. */
+  networkOpen: boolean;
   /** Run inside the action that changed the values, so the submit verdict cannot drift. */
   onValuesChanged: () => void;
 }
@@ -172,6 +175,7 @@ export function createSandboxPoolDialogModel(
       // open or shut.
       gpuOpen: false,
       registryOpen: false,
+      networkOpen: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
       onValuesChanged: () => syncOkButton(model),
     },
@@ -946,6 +950,7 @@ export const SandboxPoolCreateForm = observer(({ model }: { model: SandboxPoolDi
 
       <WarmBufferFields model={model} />
 
+      <SandboxNetworkSection model={model} kind="pool" />
       <SlotGpuSection model={model} />
       <SlotRegistrySection model={model} />
 

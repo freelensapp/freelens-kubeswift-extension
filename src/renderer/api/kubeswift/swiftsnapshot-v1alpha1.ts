@@ -60,10 +60,24 @@ export interface SwiftSnapshotS3Backend {
   region?: string;
 }
 
+/** The two kinds a snapshot's `locationRef` may name (KubeSwift v0.16.0+). */
+export type SwiftStorageLocationKind = "SwiftStorageLocation" | "SwiftClusterStorageLocation";
+
+/** The API version of both storage location kinds. */
+export const storageLocationApiVersion = "storage.kubeswift.io/v1alpha1";
+
+/** A storage location an `oci` or csi snapshot uses instead of the defaults. `kind` defaults to the namespaced one. */
+export interface SwiftSnapshotLocationRef {
+  kind?: SwiftStorageLocationKind;
+  name: string;
+}
+
 export interface SwiftSnapshotBackend {
   type: SwiftSnapshotBackendType;
   csiVolumeSnapshot?: SwiftSnapshotCsiVolumeSnapshotBackend;
   local?: SwiftSnapshotLocalBackend;
+  /** Not valid with `oci` or with a csi class, which say it themselves. */
+  locationRef?: SwiftSnapshotLocationRef;
   oci?: SwiftSnapshotOciBackend;
   s3?: SwiftSnapshotS3Backend;
 }
@@ -124,6 +138,8 @@ export interface SwiftSnapshotCapturedGuestSpec {
   network?: boolean;
   osType?: string;
   rootDiskSize?: string;
+  /** The guest's primary address when the capture began, which a restore in place resumes with (v0.15.0+). */
+  primaryIP?: string;
   storage?: SwiftSnapshotCapturedStorage;
 }
 
@@ -167,13 +183,35 @@ export interface SwiftSnapshotS3Status {
   uploadedBytes?: number;
 }
 
+/**
+ * Where an `oci` snapshot is stored, or the class a csi snapshot uses, resolved
+ * once before the capture (KubeSwift v0.16.0+). Unset on a snapshot taken
+ * before storage locations existed.
+ */
+export interface SwiftSnapshotResolvedLocation {
+  /** `SwiftStorageLocation/<name>`, `SwiftClusterStorageLocation/<name>`, `Explicit` or `DefaultVolumeSnapshotClass`. */
+  source: string;
+  repository?: string;
+  tag?: string;
+  caBundle?: string;
+  /** Empty means anonymous. */
+  credentialsSecretName?: string;
+  /** Empty means unsigned. */
+  signingKeySecretName?: string;
+  insecure?: boolean;
+  volumeSnapshotClassName?: string;
+}
+
 export interface SwiftSnapshotStatus {
+  /** When the capture was sent to the launcher; the capture deadline runs from here (v0.16.0+). */
+  captureStartedAt?: string;
   capturedAt?: string;
   conditions?: Condition[];
   disks?: SwiftSnapshotDiskRef[];
   guestSpec?: SwiftSnapshotCapturedGuestSpec;
   hypervisor?: string;
   hypervisorVersion?: string;
+  location?: SwiftSnapshotResolvedLocation;
   /** Unset when the backend captures no memory. */
   memorySnapshot?: SwiftSnapshotMemorySnapshotRef;
   /** Only set for the `local` backend, whose artifacts live on one node. */
@@ -315,6 +353,62 @@ export class SwiftSnapshot extends Renderer.K8sApi.LensExtensionKubeObject<
     }
 
     return undefined;
+  }
+
+  /**
+   * The storage location the snapshot used, from what the controller resolved
+   * (`status.location.source`), else the one its spec asks for, which a
+   * snapshot still waiting to resolve only has.
+   */
+  static getStorageLocation(object: SwiftSnapshot): { kind: SwiftStorageLocationKind; name: string } | undefined {
+    const resolved = /^(SwiftStorageLocation|SwiftClusterStorageLocation)\/(.+)$/.exec(
+      object.status?.location?.source ?? "",
+    );
+
+    if (resolved) {
+      return { kind: resolved[1] as SwiftStorageLocationKind, name: resolved[2] };
+    }
+
+    const requested = object.spec?.backend?.locationRef;
+
+    return requested?.name ? { kind: requested.kind ?? "SwiftStorageLocation", name: requested.name } : undefined;
+  }
+
+  /**
+   * The Location column: a location by name (a cluster one as `cluster/<name>`,
+   * as swiftctl writes it), `Explicit` for the spec's own registry, `Default
+   * class` for the cluster's default VolumeSnapshotClass, and nothing for a
+   * snapshot taken before storage locations existed.
+   */
+  static getLocationLabel(object: SwiftSnapshot): string | undefined {
+    const location = SwiftSnapshot.getStorageLocation(object);
+
+    if (location) {
+      return location.kind === "SwiftClusterStorageLocation" ? `cluster/${location.name}` : location.name;
+    }
+
+    switch (object.status?.location?.source) {
+      case "Explicit":
+        return "Explicit";
+      case "DefaultVolumeSnapshotClass":
+        return "Default class";
+      default:
+        return undefined;
+    }
+  }
+
+  /** Link target for the storage location; a namespaced one is in the snapshot's namespace. */
+  static getStorageLocationRef(object: SwiftSnapshot): KubeObjectRef | undefined {
+    const location = SwiftSnapshot.getStorageLocation(object);
+
+    return location
+      ? toKubeObjectRef(
+          location.kind,
+          storageLocationApiVersion,
+          location.name,
+          location.kind === "SwiftStorageLocation" ? object.getNs() : undefined,
+        )
+      : undefined;
   }
 
   /** The CRD defaults the deletion policy to purging the backend artifacts. */

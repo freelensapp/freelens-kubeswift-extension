@@ -235,4 +235,54 @@ describe("SwiftSnapshot (v1alpha1)", () => {
       expect(SwiftSnapshot.getResumeAfterSnapshot(object)).toBe(false);
     });
   });
+
+  // KubeSwift v0.16.0 storage locations (SPEC-0019 T2).
+  describe("storage location", () => {
+    const ociByRef: SwiftSnapshot["spec"] = {
+      backend: { type: "oci", locationRef: { kind: "SwiftClusterStorageLocation", name: "central" } },
+      guestRef: { name: "web-1" },
+    };
+
+    it("reads the location the controller resolved, before the one the spec asks for", () => {
+      const object = buildSwiftSnapshot(ociByRef, { location: { source: "SwiftStorageLocation/team" } });
+
+      expect(SwiftSnapshot.getStorageLocation(object)).toEqual({ kind: "SwiftStorageLocation", name: "team" });
+      expect(SwiftSnapshot.getLocationLabel(object)).toBe("team");
+      expect(SwiftSnapshot.getStorageLocationRef(object)).toEqual({
+        apiVersion: "storage.kubeswift.io/v1alpha1",
+        kind: "SwiftStorageLocation",
+        name: "team",
+        namespace: "default",
+      });
+    });
+
+    it("falls back to the requested location, a cluster one without a namespace", () => {
+      const object = buildSwiftSnapshot(ociByRef);
+
+      expect(SwiftSnapshot.getLocationLabel(object)).toBe("cluster/central");
+      expect(SwiftSnapshot.getStorageLocationRef(object)?.namespace).toBeUndefined();
+    });
+
+    it("defaults the requested kind to the namespaced one", () => {
+      const object = buildSwiftSnapshot({
+        ...csiSpec,
+        backend: { type: "csi-volume-snapshot", locationRef: { name: "x" } },
+      });
+
+      expect(SwiftSnapshot.getStorageLocation(object)?.kind).toBe("SwiftStorageLocation");
+    });
+
+    it("names an explicit registry and the default class, and nothing for an older snapshot", () => {
+      expect(SwiftSnapshot.getLocationLabel(buildSwiftSnapshot(csiSpec, { location: { source: "Explicit" } }))).toBe(
+        "Explicit",
+      );
+      expect(
+        SwiftSnapshot.getLocationLabel(
+          buildSwiftSnapshot(csiSpec, { location: { source: "DefaultVolumeSnapshotClass" } }),
+        ),
+      ).toBe("Default class");
+      expect(SwiftSnapshot.getLocationLabel(buildSwiftSnapshot(csiSpec))).toBeUndefined();
+      expect(SwiftSnapshot.getStorageLocationRef(buildSwiftSnapshot(csiSpec))).toBeUndefined();
+    });
+  });
 });

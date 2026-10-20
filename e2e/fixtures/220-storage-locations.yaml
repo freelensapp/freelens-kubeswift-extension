@@ -1,0 +1,104 @@
+# The storage locations of SPEC-0019 (T3): two SwiftStorageLocations in the
+# fixture namespace and two cluster-wide SwiftClusterStorageLocations, one
+# healthy and one failing at each level, plus the two Secrets the healthy
+# namespaced location names, so its drawer rows resolve to objects that really
+# exist and render as links (DESIGN.md section 3).
+#
+# Every PEM text here is obviously fake: base64 of a sentence saying so. The
+# E2E cluster never pulls, pushes, signs or verifies anything. Their statuses
+# are injected by cluster-up.sh.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-location-registry
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+# Opaque and empty on purpose: the location only names it, and a repository
+# that ships an MIT extension carries no credential-shaped data in its fixtures.
+type: Opaque
+data: {}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: e2e-location-signing
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+type: Opaque
+data: {}
+---
+# The namespace default, with both backends: a registry with credentials, a
+# signing key, a verification key and a private CA, and a VolumeSnapshotClass.
+# Every section of the drawer renders, the two PEM blocks included.
+apiVersion: storage.kubeswift.io/v1alpha1
+kind: SwiftStorageLocation
+metadata:
+  name: e2e-location-team
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  default: true
+  oci:
+    repository: registry.kubeswift-e2e.internal/team
+    credentialsSecretName: e2e-location-registry
+    signingKeySecretName: e2e-location-signing
+    verifyKey: |
+      -----BEGIN PUBLIC KEY-----
+      Tk9ULUEtUkVBTC1LRVktRk9SLVRIRS1FMkUtRklYVFVSRVM=
+      -----END PUBLIC KEY-----
+    caBundle: |
+      -----BEGIN CERTIFICATE-----
+      Tk9ULUEtUkVBTC1DRVJUSUZJQ0FURS1PTkU=
+      -----END CERTIFICATE-----
+      -----BEGIN CERTIFICATE-----
+      Tk9ULUEtUkVBTC1DRVJUSUZJQ0FURS1UV08=
+      -----END CERTIFICATE-----
+  csi:
+    volumeSnapshotClassName: e2e-snapclass
+---
+# The failing one: a registry whose credentials Secret is never created, so
+# its row stays plain text, and a status whose Ready condition is False.
+apiVersion: storage.kubeswift.io/v1alpha1
+kind: SwiftStorageLocation
+metadata:
+  name: e2e-location-broken
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  oci:
+    repository: registry.kubeswift-e2e.internal/broken
+    credentialsSecretName: e2e-location-missing
+---
+# The cluster default: an anonymous registry and a VolumeSnapshotClass, Ready
+# and Reachable.
+apiVersion: storage.kubeswift.io/v1alpha1
+kind: SwiftClusterStorageLocation
+metadata:
+  name: e2e-cluster-location-default
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  default: true
+  oci:
+    repository: registry.kubeswift-e2e.internal/kubeswift
+    anonymous: true
+  csi:
+    volumeSnapshotClassName: e2e-snapclass
+---
+# The unreachable one: a plaintext registry the controller could not dial. Its
+# credentials name is unset, so the drawer reads the controller's default
+# Secret name, and it is never a link on a cluster-scoped location.
+apiVersion: storage.kubeswift.io/v1alpha1
+kind: SwiftClusterStorageLocation
+metadata:
+  name: e2e-cluster-location-down
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  oci:
+    repository: registry-down.kubeswift-e2e.internal/kubeswift
+    insecure: true

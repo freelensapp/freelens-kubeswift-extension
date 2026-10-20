@@ -32,7 +32,7 @@ import * as pr from "../helpers/pre-review";
 
 import type { Frame, Page } from "playwright";
 
-// Connecting a cluster, installing an extension, and walking ten views twice
+// Connecting a cluster, installing an extension, and walking nineteen views twice
 // (both themes, with drawer links each re-navigating and reopening) is slow,
 // and this pass is meant to run before a milestone review, not on every PR.
 const TIMEOUT = 20 * 60 * 1000;

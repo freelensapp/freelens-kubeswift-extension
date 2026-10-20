@@ -1,0 +1,14 @@
+# Merge patch applied to the status subresource of
+# swiftstoragelocation/e2e-location-team. No KubeSwift controller runs in the
+# E2E cluster, so the status a real controller would write is injected here.
+#
+# The healthy branch: the namespace default, validated and usable.
+status:
+  observedGeneration: 1
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Validated
+      message: The registry and the VolumeSnapshotClass of this location can be used.
+      lastTransitionTime: "2026-10-19T08:00:00Z"
+      observedGeneration: 1

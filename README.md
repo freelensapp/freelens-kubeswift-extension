@@ -18,7 +18,7 @@
 [KubeSwift](https://github.com/kubeswift-io/kubeswift), the Kubernetes-native
 virtual machine runtime.
 
-The extension covers every KubeSwift custom resource — all 15 kinds across 9
+The extension covers every KubeSwift custom resource — all 19 kinds across 10
 API groups — with list pages, detail drawers, lifecycle actions, creation
 forms, and consoles, grouped in the cluster sidebar under **Guests**, **Boot
 and Images**, **Data Protection**, **Migrations**, **GPU**, **Sandboxes**,
@@ -41,7 +41,7 @@ boundary).
 
 - **Freelens >= 1.10.3.**
 - **Kubernetes >= 1.24.**
-- **KubeSwift v0.13.x.** The views track the v0.13.12 CRDs. The upstream API
+- **KubeSwift v0.18.x.** The views track the v0.18.0 CRDs. The upstream API
   is `v1alpha1` and may change between KubeSwift releases; the extension
   follows.
 - **Node.js** is required only when building the extension from source; it
@@ -50,6 +50,8 @@ boundary).
 ## Supported APIs
 
 All resources are `v1alpha1`.
+
+<!-- markdownlint-disable MD013 -->
 
 | API group | Kinds |
 | --- | --- |
@@ -60,8 +62,11 @@ All resources are `v1alpha1`.
 | `gpu.kubeswift.io` | SwiftGPUProfile, SwiftGPUNode |
 | `snapshot.kubeswift.io` | SwiftSnapshot, SwiftRestore, SwiftSnapshotSchedule |
 | `migration.kubeswift.io` | SwiftMigration |
-| `sandbox.kubeswift.io` | SwiftSandbox, SwiftSandboxPool |
+| `sandbox.kubeswift.io` | SwiftSandbox, SwiftSandboxPool, SwiftArtifactPlacement, SwiftArtifactVerificationPolicy |
+| `storage.kubeswift.io` | SwiftStorageLocation, SwiftClusterStorageLocation |
 | `fleet.kubeswift.io` | Cluster |
+
+<!-- markdownlint-enable MD013 -->
 
 ## Installation
 
@@ -111,7 +116,9 @@ what did and did not happen.
 
 Take Snapshot (with its four storage backends), Restore (in place or as a
 clone), snapshot schedules, and delete dialogs that read back what will
-actually happen to the data before you confirm.
+actually happen to the data before you confirm. Each snapshot names the
+storage location it resolved, and the namespaced and cluster-wide storage
+locations themselves have read-only views of their own.
 
 ### Migrations
 

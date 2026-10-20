@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   blankScratchDiskLabel,
+  describeEgressAllowed,
+  describeEgressRule,
   describeEnvSource,
+  describeIngressPeer,
+  describeProbe,
+  describeSandboxLabelSelector,
+  describeSandboxPort,
+  describeSecretFileItem,
   draGpuBackendLabel,
   existingScratchDiskLabel,
+  formatFileMode,
   nativeGpuBackendLabel,
   noNetworkLabel,
   noNetworkTooltip,
   SwiftSandbox,
+  sandboxArtifactViews,
 } from "./swiftsandbox-v1alpha1";
 
 // The model only exposes `static` helpers: instance methods are not available
@@ -362,6 +371,187 @@ describe("SwiftSandbox (v1alpha1)", () => {
           valueFrom: { fileKeyRef: { volumeName: "config", path: "app.env", key: "MODE" } },
         }),
       ).toEqual({ kind: "file", key: "MODE", text: "file config/app.env (MODE)" });
+    });
+  });
+
+  // The v0.18.0 fields (SPEC-0019 T2), from fixtures written from that schema.
+  describe("v0.18.0 network", () => {
+    const networked = buildSwiftSandbox(
+      {
+        ...minimalSpec,
+        network: {
+          mode: "restricted",
+          ports: [
+            { name: "http", port: 8080, protocol: "TCP" },
+            { name: "metrics", port: 9090 },
+          ],
+          ingress: {
+            from: [
+              { ipBlock: { cidr: "10.0.0.0/8", except: ["10.1.0.0/16"] } },
+              { namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "frontend" } } },
+              { podSelector: { matchLabels: { app: "web" } } },
+            ],
+          },
+          egress: {
+            allow: [{ service: { name: "db", namespace: "data" }, ports: [{ port: 5432 }] }, { cidr: "10.20.0.0/24" }],
+          },
+        },
+      },
+      {
+        network: {
+          primaryIP: "10.0.2.15",
+          podIP: "10.244.1.9",
+          primaryIPScope: "Pod",
+          egressAllowed: [{ cidr: "10.96.0.12/32", from: "service data/db", port: 5432, protocol: "TCP" }],
+        },
+      },
+    );
+
+    it("reads the ports, the ingress sources, the egress rules and what is enforced", () => {
+      expect(SwiftSandbox.getPorts(networked).map(describeSandboxPort)).toEqual([
+        "http: 8080/TCP",
+        "metrics: 9090/TCP",
+      ]);
+      expect(SwiftSandbox.getIngressFrom(networked).map(describeIngressPeer)).toEqual([
+        "CIDR 10.0.0.0/8 except 10.1.0.0/16",
+        "Every pod of namespace frontend",
+        "Pods matching app=web of this namespace",
+      ]);
+      expect(SwiftSandbox.getEgressAllow(networked).map(describeEgressRule)).toEqual([
+        "Service data/db on 5432/TCP",
+        "CIDR 10.20.0.0/24, every port",
+      ]);
+      expect(SwiftSandbox.getEgressAllowed(networked).map(describeEgressAllowed)).toEqual([
+        "10.96.0.12/32 5432/TCP (service data/db)",
+      ]);
+    });
+
+    it("reads the pod IP and the scope of the guest address", () => {
+      expect(SwiftSandbox.getPodIP(networked)).toBe("10.244.1.9");
+      expect(SwiftSandbox.getPrimaryIPScope(networked)).toBe("Pod");
+    });
+
+    it("reads nothing from a sandbox that predates the fields", () => {
+      const plain = buildSwiftSandbox(minimalSpec);
+
+      expect(SwiftSandbox.getPorts(plain)).toEqual([]);
+      expect(SwiftSandbox.getIngressFrom(plain)).toEqual([]);
+      expect(SwiftSandbox.getEgressAllow(plain)).toEqual([]);
+      expect(SwiftSandbox.getEgressAllowed(plain)).toEqual([]);
+      expect(SwiftSandbox.getPodIP(plain)).toBeUndefined();
+      expect(SwiftSandbox.getArtifactViews(plain)).toEqual([]);
+      expect(SwiftSandbox.getSecretFiles(plain)).toEqual([]);
+      expect(SwiftSandbox.getArtifactPolicyNames(plain)).toEqual([]);
+    });
+
+    it("reads every peer shape core allows, empty selectors included", () => {
+      expect(describeIngressPeer({ namespaceSelector: {} })).toBe("Every pod of every namespace");
+      expect(describeIngressPeer({ podSelector: {} })).toBe("Every pod of this namespace");
+      expect(
+        describeIngressPeer({
+          namespaceSelector: { matchLabels: { team: "a" } },
+          podSelector: { matchExpressions: [{ key: "tier", operator: "In", values: ["web", "api"] }] },
+        }),
+      ).toBe("Pods matching tier In (web, api) in namespaces matching team=a");
+      expect(describeIngressPeer({})).toBe("No source");
+      expect(describeSandboxLabelSelector({ matchExpressions: [{ key: "gpu", operator: "Exists" }] })).toEqual([
+        "gpu Exists",
+      ]);
+    });
+
+    it("names a Service with no namespace by its name alone, which is the sandbox's own namespace", () => {
+      expect(describeEgressRule({ service: { name: "cache" }, ports: [{ port: 53, protocol: "UDP" }] })).toBe(
+        "Service cache on 53/UDP",
+      );
+      expect(describeEgressAllowed({ cidr: "10.20.0.0/24", from: "cidr 10.20.0.0/24" })).toBe(
+        "10.20.0.0/24 (cidr 10.20.0.0/24)",
+      );
+    });
+  });
+
+  describe("v0.18.0 probes", () => {
+    it("summarizes an HTTP probe with the schema's defaults filled in", () => {
+      expect(describeProbe({ httpGet: { path: "/healthz", port: "http" } })).toBe(
+        "HTTP GET /healthz on port http, every 10s, timeout 1s, fails after 3",
+      );
+    });
+
+    it("summarizes a TCP probe with its own timing", () => {
+      expect(
+        describeProbe({
+          tcpSocket: { port: 8080 },
+          periodSeconds: 5,
+          timeoutSeconds: 2,
+          failureThreshold: 6,
+          initialDelaySeconds: 3,
+        }),
+      ).toBe("TCP connect on port 8080, every 5s, timeout 2s, fails after 6, first after 3s");
+    });
+
+    it("says when a handler is one KubeSwift does not support, rather than misreading it", () => {
+      expect(describeProbe({ exec: { command: ["true"] } })).toContain("not supported");
+      expect(describeProbe({ grpc: { port: 9000 } })).toContain("not supported");
+      expect(describeProbe(undefined)).toBeUndefined();
+    });
+  });
+
+  describe("v0.18.0 artifacts and secret files", () => {
+    const withArtifacts = buildSwiftSandbox(
+      {
+        ...minimalSpec,
+        artifacts: [
+          {
+            name: "plugins",
+            ref: "ghcr.io/example/plugins@sha256:bb",
+            mountPath: "/opt/plugins",
+            pullSecretRef: { name: "artifact-pull" },
+            verifyKeySecretRef: { name: "artifact-cosign" },
+          },
+          { name: "cache", ref: "ghcr.io/example/cache:v1", mountPath: "/cache", optional: true },
+        ],
+        secretFiles: [{ secretName: "tls", items: [{ key: "tls.crt", path: "/etc/tls/tls.crt", mode: 0o444 }] }],
+      },
+      {
+        artifacts: [
+          {
+            name: "plugins",
+            mountPath: "/opt/plugins",
+            digest: "sha256:bb",
+            state: "Mounted",
+            reason: "Fetched",
+            policies: [{ name: "platform", generation: 2 }],
+          },
+          { name: "removed", mountPath: "/gone", state: "Skipped", reason: "FetchTimeout" },
+        ],
+      },
+    );
+
+    it("joins every artifact with its status entry, keeping a status whose spec entry is gone", () => {
+      const views = SwiftSandbox.getArtifactViews(withArtifacts);
+
+      expect(views.map((view) => view.name)).toEqual(["plugins", "cache", "removed"]);
+      expect(views[0].status?.state).toBe("Mounted");
+      expect(views[1].status).toBeUndefined();
+      expect(views[2].spec).toBeUndefined();
+      expect(sandboxArtifactViews()).toEqual([]);
+    });
+
+    it("collects the policies the status names", () => {
+      expect(SwiftSandbox.getArtifactPolicyNames(withArtifacts)).toEqual(["platform"]);
+    });
+
+    it("adds the artifact and secret-file Secrets to the drawer's lookups", () => {
+      expect(SwiftSandbox.getSecretNames(withArtifacts)).toEqual(["artifact-cosign", "artifact-pull", "tls"]);
+    });
+
+    it("formats a file mode as the octal it is written in", () => {
+      expect(formatFileMode(256)).toBe("0400");
+      expect(formatFileMode(0)).toBe("0000");
+      expect(formatFileMode(undefined)).toBeUndefined();
+      expect(describeSecretFileItem({ key: "tls.crt", path: "/etc/tls/tls.crt", mode: 0o444 })).toBe(
+        "tls.crt -> /etc/tls/tls.crt (0444)",
+      );
+      expect(describeSecretFileItem({ key: "a", path: "/a" })).toBe("a -> /a");
     });
   });
 });

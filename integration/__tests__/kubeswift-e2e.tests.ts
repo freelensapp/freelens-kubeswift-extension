@@ -70,6 +70,19 @@ function backendControl(frame: Frame) {
   return frame.locator(".Select:has(#snapshot-backend) .Select__control");
 }
 
+/**
+ * Picks an option of one of the Take Snapshot selects by its id and the start
+ * of the option's text. Anchored and case-sensitive, because Playwright's
+ * plain `hasText` is a case-insensitive substring: "Storage location" would
+ * pick "Default storage location".
+ */
+async function chooseSnapshotOption(frame: Frame, id: string, text: string): Promise<void> {
+  const start = new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+
+  await frame.locator(`.Select:has(#${id}) .Select__control`).click();
+  await frame.locator(`.${id}-options .Select__option`, { hasText: start }).first().click();
+}
+
 /** The SwiftSnapshots the cluster holds, by name: the only way to see a create that did not happen. */
 function snapshotNames(): string[] {
   const { stdout } = cluster.kubectlE2E("get", "swiftsnapshots.snapshot.kubeswift.io", "--output", "name");
@@ -466,6 +479,21 @@ async function addEnvRow(frame: Frame, index: number, name: string, value: strin
   await frame.locator(`[data-testid="sandbox-create-env-${index}-value"]`).fill(value);
 }
 
+/**
+ * Adds one port row of the Network section both sandbox forms share, and fills
+ * it. The section must be open: it ships shut like every optional one.
+ */
+async function addSandboxPortRow(frame: Frame, index: number, name: string, port: string): Promise<void> {
+  await frame.locator('[data-testid="sandbox-create-add-port"]').click();
+  await frame.locator(`[data-testid="sandbox-create-port-${index}-name"]`).fill(name);
+  await frame.locator(`[data-testid="sandbox-create-port-${index}-number"]`).fill(port);
+}
+
+/** Ticks one of the sandbox forms' checkboxes, reached the way every host `Checkbox` is. */
+async function tickSandboxCheckbox(frame: Frame, testId: string): Promise<void> {
+  await frame.locator(`[data-testid="${testId}"] .Checkbox`).first().click();
+}
+
 /** The digest the image cases pin by: a well-formed sha256 that names nothing. */
 const e2eImageDigest = `sha256:${"1234567890abcdef".repeat(4)}`;
 
@@ -734,6 +762,82 @@ function isFailedRequest(error: string, status: number, url: RegExp): boolean {
   return match !== null && Number(match[1]) === status && url.test(new URL(match[2]).pathname);
 }
 
+/**
+ * The extension's own drawer row `label`, as `pr.inspectDrawerRows` read it.
+ * Throws when the row is missing, naming the rows that are there, so a renamed
+ * label fails on the label rather than on an `undefined` further down.
+ */
+function drawerRow(rows: pr.DrawerRow[], label: string, drawer: string): pr.DrawerRow {
+  const row = rows.find((candidate) => candidate.label === label);
+
+  if (!row) {
+    throw new Error(
+      `The ${drawer} drawer has no "${label}" row at all. Rows: ${rows.map((candidate) => candidate.label).join(", ")}.`,
+    );
+  }
+
+  return row;
+}
+
+/** The section titles of the open detail drawer, in order. */
+async function drawerSections(frame: Frame): Promise<string[]> {
+  return frame.$$eval(".Drawer.KubeObjectDetails .DrawerTitle", (elements) =>
+    elements.map((element) => element.textContent?.trim() ?? ""),
+  );
+}
+
+/**
+ * Asserts that the row of `name` carries a badge reading `label` with one of
+ * the host's global status classes. Core's `Badge` is a CSS-module component,
+ * so its own class name is hashed at build time and only the `className` the
+ * extension passes survives verbatim - which is what makes the class the
+ * stable selector (the pattern of the sandbox and fleet cases).
+ */
+async function expectRowBadge(
+  frame: Frame,
+  name: string,
+  className: "success" | "warning" | "error" | "info",
+  label: string,
+): Promise<void> {
+  const badges = await frame.locator(".TableRow", { hasText: name }).first().locator(`.${className}`).allInnerTexts();
+
+  if (!badges.some((text) => text.trim() === label)) {
+    throw new Error(
+      `The "${label}" badge of "${name}" must carry the host's "${className}" class, got: ${JSON.stringify(badges)}`,
+    );
+  }
+}
+
+/**
+ * Asserts that the drawer row `label` is a link, waiting for its reference
+ * store to load, and that following it lands on a real drawer.
+ */
+async function expectDrawerLink(
+  frame: Frame,
+  view: string,
+  drawer: string,
+  label: string,
+  reopen: () => Promise<void>,
+): Promise<void> {
+  const row = await pr.waitForDrawerLink(frame, label);
+
+  if (!row) {
+    throw new Error(`The ${drawer} drawer has no "${label}" row at all.`);
+  }
+
+  if (!row.href) {
+    throw new Error(
+      `The ${drawer} drawer's "${label}" row ("${row.text}") stayed plain text: the fixture makes the referenced object exist, so the row must render as a link.`,
+    );
+  }
+
+  const result = await pr.checkDrawerLink(frame, view, row, reopen);
+
+  if (!result.ok) {
+    throw new Error(`The "${label}" link ("${row.text}") did not navigate cleanly: ${result.note}`);
+  }
+}
+
 describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixture cluster", () => {
   let session: kubeswift.AppSession | undefined;
   let window: Page;
@@ -778,7 +882,9 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
       // The guest whose status was injected: running, scheduled, addressable,
-      // and restarted twice (the IP and the restart count are adjacent cells).
+      // and restarted twice (the guest IP, the launcher pod's own IP and the
+      // restart count are adjacent cells: KubeSwift v0.15.0 reports the pod IP
+      // next to the guest's, SPEC-0019 T2).
       // "Running" is read from the Condition badge since M6 replaced the plain
       // Phase column with the classifier's Condition/Status pair (SPEC-0010).
       // The node name is the E2E cluster's real (single) node, substituted
@@ -786,7 +892,13 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       // it is "kubeswift-e2e-control-plane" here because that is what kind
       // names the single node of a cluster called "kubeswift-e2e"
       // (E2E_CLUSTER_NAME), not because the value is hardcoded in the fixture.
-      await cluster.expectRow(frame, "e2e-guest-running", "Running", "kubeswift-e2e-control-plane", "10.244.1.21 2");
+      await cluster.expectRow(
+        frame,
+        "e2e-guest-running",
+        "Running",
+        "kubeswift-e2e-control-plane",
+        "10.244.1.21 10.244.1.121 2",
+      );
 
       // The guest without a status: no phase and no address to show.
       await cluster.expectRow(frame, "e2e-guest-pending", "N/A");
@@ -800,6 +912,18 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
         "10.244.1.21",
         "e2e-ubuntu-2404",
       );
+
+      // Where the primary IP can be reached from, and the launcher pod's own
+      // IP next to it (KubeSwift v0.15.0, SPEC-0019 T2). Read by label, so
+      // the pod IP is pinned to its own row rather than found anywhere.
+      await pr.openDrawer(frame, "e2e-guest-running");
+
+      const guestRows = await pr.inspectDrawerRows(frame);
+
+      expect(drawerRow(guestRows, "IP Scope", "SwiftGuest").text.startsWith("Network:")).toBe(true);
+      expect(drawerRow(guestRows, "Pod IP", "SwiftGuest").text).toBe("10.244.1.121");
+
+      await cluster.closeDetails(frame);
     },
     TIMEOUT,
   );
@@ -1053,13 +1177,20 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       await cluster.openKubeSwiftPage(frame, "swiftsnapshots", "Snapshots");
       expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
-      // Guest, backend, contents, phase and size, in column order. The CSI
-      // backend is disk-only whatever the snapshot asks for.
-      await cluster.expectRow(frame, "e2e-snapshot-ready", "e2e-guest-running csi-volume-snapshot Disk Ready 21Gi");
+      // Guest, backend, location, contents, phase and size, in column order.
+      // The CSI backend is disk-only whatever the snapshot asks for, and this
+      // one names no location, so the controller resolved the cluster's
+      // default VolumeSnapshotClass (SPEC-0019 T2).
+      await cluster.expectRow(
+        frame,
+        "e2e-snapshot-ready",
+        "e2e-guest-running csi-volume-snapshot Default class Disk Ready 21Gi",
+      );
 
-      // The OCI capture takes memory along with the disk, and has no total
-      // size while the push is still running.
-      await cluster.expectRow(frame, "e2e-snapshot-uploading", "oci Memory + disk Uploading N/A");
+      // The OCI capture takes memory along with the disk, pushes to the
+      // registry its own spec names, and has no total size while the push is
+      // still running.
+      await cluster.expectRow(frame, "e2e-snapshot-uploading", "oci Explicit Memory + disk Uploading N/A");
 
       await cluster.expectDetails(
         frame,
@@ -1074,6 +1205,39 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
         // VolumeSnapshotClass does.
         "follows the VolumeSnapshotClass",
       );
+
+      // The Location section (KubeSwift v0.16.0, SPEC-0019 T2), the capture's
+      // start and the captured guest's address, each read by its own label.
+      await pr.openDrawer(frame, "e2e-snapshot-ready");
+
+      const readyRows = await pr.inspectDrawerRows(frame);
+
+      expect(drawerRow(readyRows, "Location", "SwiftSnapshot").text).toBe("Default class");
+      expect(drawerRow(readyRows, "VolumeSnapshotClass", "SwiftSnapshot").text).toBe("csi-hostpath-snapclass");
+      expect(drawerRow(readyRows, "Capture Started", "SwiftSnapshot").text).not.toBe("");
+      expect(drawerRow(readyRows, "Primary IP", "SwiftSnapshot").text).toBe("10.244.1.21");
+      // A csi location has no registry, so none of the registry rows render.
+      expect(readyRows.some((row) => row.label === "Repository" || row.label === "Credentials Secret")).toBe(false);
+
+      await cluster.closeDetails(frame);
+
+      // The registry of the snapshot's own spec, recorded before the capture.
+      // It names no credentials Secret, which is an anonymous push and is
+      // said so rather than left empty.
+      await pr.openDrawer(frame, "e2e-snapshot-uploading");
+
+      const uploadingRows = await pr.inspectDrawerRows(frame);
+
+      expect(drawerRow(uploadingRows, "Location", "SwiftSnapshot").text).toBe("Explicit");
+      expect(drawerRow(uploadingRows, "Repository", "SwiftSnapshot").text).toBe(
+        "ghcr.io/freelensapp/kubeswift-e2e/vm-snapshots",
+      );
+      expect(drawerRow(uploadingRows, "Tag", "SwiftSnapshot").text).toBe("kubeswift-e2e-nightly");
+      expect(drawerRow(uploadingRows, "Credentials Secret", "SwiftSnapshot").text).toBe("None: anonymous");
+      // Neither label names an object, so neither is a link.
+      expect(drawerRow(uploadingRows, "Location", "SwiftSnapshot").href).toBeNull();
+
+      await cluster.closeDetails(frame);
     },
     TIMEOUT,
   );
@@ -1112,12 +1276,15 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       await cluster.openKubeSwiftPage(frame, "swiftsnapshotschedules", "Snapshot Schedules");
       expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
-      // Cron, guest, retention budget and suspended flag, in column order.
-      await cluster.expectRow(frame, "e2e-schedule-nightly", "0 2 * * * e2e-guest-running 7 false");
+      // Cron, guest, retention budget and suspended flag, in column order,
+      // and the Ready badge after the last tick (KubeSwift v0.16.0, SPEC-0019
+      // T2): the injected status reports the schedule as active.
+      await cluster.expectRow(frame, "e2e-schedule-nightly", "0 2 * * * e2e-guest-running 7 false", "Ready");
 
-      // No retention budget keeps every snapshot, and the schedule has never
-      // fired, so it has no last tick either.
-      await cluster.expectRow(frame, "e2e-schedule-suspended", "e2e-guest-pending All true N/A");
+      // No retention budget keeps every snapshot, the schedule has never
+      // fired, so it has no last tick either, and no controller has reported
+      // a Ready condition on it, so that cell is N/A too.
+      await cluster.expectRow(frame, "e2e-schedule-suspended", "e2e-guest-pending All true N/A N/A");
 
       await cluster.expectDetails(
         frame,
@@ -1410,21 +1577,29 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       // (single) node, substituted into the fixture by cluster-up.sh's
       // inject_statuses() rather than hardcoded (issue #23).
       const nodeName = cluster.clusterNodeName();
+      // The launcher pod's own IP sits between the guest IP and the condition
+      // badge since KubeSwift v0.15.0 (SPEC-0019 T2), and reads "N/A" for a
+      // status that reports none. It is read from the cluster rather than
+      // written here, so the row pins the column order whichever value the
+      // injected status carries.
+      const podIPCell = (name: string) =>
+        cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", name, "{.status.network.podIP}") || "N/A";
 
       await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
       expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
 
-      // Image, node, IP and the condition badge, in column order. The Status
-      // column carries the controller's own words - here the message of the
-      // newest condition, since this fixture writes no status.message - which
-      // is what makes M4 the first milestone to implement DESIGN.md section 2's
-      // two-column pattern literally (SPEC-0008).
+      // Image, node, guest IP, pod IP and the condition badge, in column
+      // order. The Status column carries the controller's own words - here
+      // the message of the newest condition, since this fixture writes no
+      // status.message - which is what makes M4 the first milestone to
+      // implement DESIGN.md section 2's two-column pattern literally
+      // (SPEC-0008).
       await cluster.expectRow(
         frame,
         "e2e-sandbox-running",
         "kubeswift-e2e/sandbox@sha256:3f7a1c9e",
         nodeName,
-        "10.244.3.17 Running",
+        `10.244.3.17 ${podIPCell("e2e-sandbox-running")} Running`,
         "The guest booted and the workload is running",
       );
 
@@ -1432,7 +1607,12 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       // than "N/A" because network mode "none" means the absent address is a
       // chosen configuration and not a missing value. Its Status column shows
       // the controller's own status.message, the first rung of the ladder.
-      await cluster.expectRow(frame, "e2e-sandbox-failed", "N/A None Failed", "Materializing the rootfs failed");
+      await cluster.expectRow(
+        frame,
+        "e2e-sandbox-failed",
+        `N/A None ${podIPCell("e2e-sandbox-failed")} Failed`,
+        "Materializing the rootfs failed",
+      );
 
       // The pooled one wrote neither a message nor a condition, so the Status
       // column falls all the way back to the classifier's own explanation - the
@@ -1854,6 +2034,191 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
   );
 
   it(
+    "shows a SwiftSandbox's network, probes, pod labels, artifacts and Secret files, and the pools' warming slots",
+    async () => {
+      // SPEC-0019 T2, against 130-swiftsandboxes.yaml and the status the
+      // cluster-up script injects for e2e-sandbox-running: everything KubeSwift
+      // added to the two sandbox kinds between v0.13.12 and v0.18.0.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await pr.openDrawer(frame, "e2e-sandbox-running");
+
+      // The new sections, where the drawer puts them: the network and the
+      // workload's health next to the shape they belong to, the artifacts and
+      // the Secret files after the runtime facts.
+      const sections = await drawerSections(frame);
+      const ordered = [
+        "Guest",
+        "Network",
+        "Health",
+        "Pod Metadata",
+        "Runtime",
+        "Artifact: plugins",
+        "Artifact: cache",
+        "Secret Files",
+        "Environment",
+      ];
+
+      for (const present of ordered) {
+        if (!sections.includes(present)) {
+          throw new Error(`The SwiftSandbox drawer should have a "${present}" section, got: ${sections.join(", ")}`);
+        }
+      }
+
+      expect(ordered.map((title) => sections.indexOf(title))).toEqual(
+        ordered.map((title) => sections.indexOf(title)).sort((a, b) => a - b),
+      );
+
+      const rows = await pr.inspectDrawerRows(frame);
+      const text = (label: string) => drawerRow(rows, label, "SwiftSandbox").text;
+
+      // The guest's address is reachable only inside its launcher pod, which
+      // is why the pod's own address now sits next to it.
+      expect(text("Guest IP")).toBe("10.244.3.17");
+      expect(text("IP Scope")).toBe("Pod");
+      expect(text("Pod IP")).toBe("10.244.0.42");
+      expect(text("Drain Period")).toBe("20s");
+
+      // The Network section: both ports, the three source shapes in words, the
+      // two egress rules as declared and as the launcher enforces them.
+      for (const port of ["http: 8080/TCP", "metrics: 9090/TCP"]) {
+        expect(text("Ports")).toContain(port);
+      }
+
+      for (const source of [
+        "Every pod of namespace kubeswift-e2e",
+        "CIDR 10.0.0.0/8 except 10.96.0.0/12",
+        "Pods matching app=e2e-sandbox-client of this namespace",
+      ]) {
+        expect(text("Ingress From")).toContain(source);
+      }
+
+      for (const rule of ["Service e2e-sandbox-db on 5432/TCP", "CIDR 10.20.0.0/24 on 53/UDP"]) {
+        expect(text("Egress Allow")).toContain(rule);
+      }
+
+      for (const entry of [
+        "10.96.0.12/32 5432/TCP (service kubeswift-e2e/e2e-sandbox-db)",
+        "10.20.0.0/24 53/UDP (cidr 10.20.0.0/24)",
+      ]) {
+        expect(text("Egress Enforced")).toContain(entry);
+      }
+
+      // The probes, each on one line with the schema's defaults filled in.
+      expect(text("Readiness Probe")).toBe(
+        "HTTP GET /healthz on port http, every 5s, timeout 1s, fails after 3, first after 2s",
+      );
+      expect(text("Liveness Probe")).toBe("TCP connect on port 8080, every 15s, timeout 1s, fails after 4");
+      // Not `drawerRow`: the host's own metadata block above the extension's
+      // sections has a "Labels" row too, holding the object's own labels.
+      expect(rows.filter((row) => row.label === "Labels").map((row) => row.text)).toContain("app=e2e-sandbox-web");
+
+      // One titled group per artifact, which is what keeps their same-named
+      // rows apart: the mounted one with the policy that governed it, the
+      // skipped one with the reason it was skipped.
+      const artifact = frame.locator('.Drawer.KubeObjectDetails [data-testid="swiftsandbox-artifact-plugins"]');
+      const skipped = frame.locator('.Drawer.KubeObjectDetails [data-testid="swiftsandbox-artifact-cache"]');
+      const artifactText = (await artifact.innerText()).replace(/\s+/g, " ");
+      const skippedText = (await skipped.innerText()).replace(/\s+/g, " ");
+
+      expect((await artifact.locator(".success").allInnerTexts()).map((badge) => badge.trim())).toContain("Mounted");
+      expect(artifactText).toContain("/opt/plugins");
+      expect(artifactText).toContain("tier=prod");
+      expect(artifactText).toContain("e2e-policy-signed (generation 1)");
+      expect((await skipped.locator(".warning").allInnerTexts()).map((badge) => badge.trim())).toContain("Skipped");
+      expect(skippedText).toContain("FetchTimeout");
+      expect(skippedText).toContain("unpacked");
+      expect(skippedText).toContain("30s");
+
+      // The Secret files, one table row per Secret: the decimal modes the API
+      // carries read back as the octal anyone would have written.
+      const tokenRow = frame.locator(".Drawer.KubeObjectDetails .TableRow", { hasText: "/etc/app/token" }).first();
+      const cosignRow = frame
+        .locator(".Drawer.KubeObjectDetails .TableRow", { hasText: "/etc/app/cosign.pub" })
+        .first();
+      const tokenText = (await tokenRow.innerText()).replace(/\s+/g, " ");
+      const cosignText = (await cosignRow.innerText()).replace(/\s+/g, " ");
+
+      expect(tokenText).toContain("e2e-sandbox-registry");
+      expect(tokenText).toContain("token -> /etc/app/token");
+      expect(tokenText).toContain("0440");
+      expect(cosignText).toContain("e2e-sandbox-cosign");
+      expect(cosignText).toContain("cosign.pub -> /etc/app/cosign.pub (0444)");
+      expect(cosignText).toContain("0400");
+      // Both Secrets exist (125-sandbox-references.yaml), so both are links.
+      await tokenRow
+        .locator("a", { hasText: "e2e-sandbox-registry" })
+        .first()
+        .waitFor({ state: "visible", timeout: 60_000 });
+
+      // The policy is cluster-scoped and exists (225-artifact-placements.yaml),
+      // so its name is a link that lands on a real drawer.
+      const reopen = async () => {
+        await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+        await pr.openDrawer(frame, "e2e-sandbox-running");
+      };
+
+      await expectDrawerLink(frame, "swiftsandboxes", "SwiftSandbox", "Policies", reopen);
+      await cluster.closeDetails(frame);
+
+      // The minimal sandbox declares none of it, and every new section guards
+      // itself away rather than render empty.
+      await pr.openDrawer(frame, "e2e-sandbox-failed");
+
+      const failedSections = await drawerSections(frame);
+
+      for (const absent of ["Network", "Health", "Pod Metadata", "Secret Files"]) {
+        if (failedSections.includes(absent)) {
+          throw new Error(
+            `The "${absent}" section must guard itself away on a sandbox that has no such block, got: ${failedSections.join(", ")}`,
+          );
+        }
+      }
+
+      if (failedSections.some((title) => title.startsWith("Artifact: "))) {
+        throw new Error(`A sandbox with no artifact has no artifact section, got: ${failedSections.join(", ")}`);
+      }
+
+      await cluster.closeDetails(frame);
+
+      // The pools: the slots still on their way to warm, and the Network
+      // section the two kinds share.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+      await pr.openDrawer(frame, "e2e-sandbox-pool");
+
+      const poolSections = await drawerSections(frame);
+
+      expect(poolSections).toContain("Network");
+      expect(poolSections.indexOf("Network")).toBeGreaterThan(poolSections.indexOf("Slot Shape"));
+
+      const poolRows = await pr.inspectDrawerRows(frame);
+      const poolText = (label: string) => drawerRow(poolRows, label, "SwiftSandboxPool").text;
+
+      // Zero is a count, not a missing value, so the row is there.
+      expect(poolText("Warm")).toBe("2");
+      expect(poolText("Warming")).toBe("0");
+      expect(poolText("Claimed")).toBe("1");
+      expect(poolText("Ports")).toBe("http: 8080/TCP");
+      expect(poolText("Ingress From")).toBe("Every pod of namespace kubeswift-e2e");
+      expect(poolText("Egress Allow")).toBe("CIDR 10.20.0.0/24, every port");
+      // Only a sandbox reports what its launcher enforces.
+      expect(poolRows.some((row) => row.label === "Egress Enforced")).toBe(false);
+
+      await cluster.closeDetails(frame);
+
+      await pr.openDrawer(frame, "e2e-sandbox-pool-degraded");
+
+      const degradedRows = await pr.inspectDrawerRows(frame);
+
+      expect(drawerRow(degradedRows, "Warm", "SwiftSandboxPool").text).toBe("0");
+      expect(drawerRow(degradedRows, "Warming", "SwiftSandboxPool").text).toBe("1");
+      expect(await drawerSections(frame)).not.toContain("Network");
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
     "lists the fleet Clusters with their server, version and condition",
     async () => {
       await cluster.openKubeSwiftPage(frame, "fleetclusters", "Member Clusters");
@@ -2024,6 +2389,420 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       if (!missingSecretRow.text.includes("e2e-fleet-edge-down-credential")) {
         throw new Error(`The "Credential Secret" row should name the Secret, got "${missingSecretRow.text}".`);
       }
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  // ---------------------------------------------------------------------------
+  // SPEC-0019 (T3): the four read-only kinds KubeSwift added after v0.13.12.
+  // Two are cluster-scoped (SwiftClusterStorageLocation and
+  // SwiftArtifactVerificationPolicy), so the namespace filter the suite set up
+  // does not apply to them; the other two live in the fixture namespace.
+  it(
+    "lists the SwiftStorageLocations with their default, repository and condition, and links their Secrets",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftstoragelocations", "Storage Locations");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // Default, repository and the condition badge, in column order, then the
+      // controller's own words in the Status column.
+      await cluster.expectRow(
+        frame,
+        "e2e-location-team",
+        "Yes registry.kubeswift-e2e.internal/team Ready",
+        "The registry and the VolumeSnapshotClass of this location can be used.",
+      );
+
+      // The failing one: not the default, and the message of its False Ready
+      // condition, which names the credentials Secret that is missing.
+      await cluster.expectRow(
+        frame,
+        "e2e-location-broken",
+        "No registry.kubeswift-e2e.internal/broken Not Ready",
+        "Secret e2e-location-missing was not found in namespace kubeswift-e2e.",
+      );
+
+      // A location nothing can use stops every object that names it: an error,
+      // not a warning.
+      await expectRowBadge(frame, "e2e-location-team", "success", "Ready");
+      await expectRowBadge(frame, "e2e-location-broken", "error", "Not Ready");
+
+      // Both Secrets the healthy location names exist in its namespace, so both
+      // rows are links that land on a real drawer.
+      await pr.openDrawer(frame, "e2e-location-team");
+
+      const reopen = async () => {
+        await cluster.openKubeSwiftPage(frame, "swiftstoragelocations", "Storage Locations");
+        await pr.openDrawer(frame, "e2e-location-team");
+      };
+
+      for (const label of ["Credentials Secret", "Signing Key Secret"]) {
+        await expectDrawerLink(frame, "swiftstoragelocations", "SwiftStorageLocation", label, reopen);
+      }
+
+      // Every section renders on the location that sets both backends, the two
+      // PEM texts last, each as its own read-only block.
+      const sections = await drawerSections(frame);
+
+      for (const present of ["Location", "OCI Registry", "CSI", "Verify Key", "CA Bundle"]) {
+        if (!sections.includes(present)) {
+          throw new Error(
+            `The SwiftStorageLocation drawer should have a "${present}" section, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      const teamRows = await pr.inspectDrawerRows(frame);
+
+      expect(drawerRow(teamRows, "Default", "SwiftStorageLocation").text).toBe("Yes");
+      expect(drawerRow(teamRows, "Backends", "SwiftStorageLocation").text).toBe("OCI and CSI");
+      // The PEM texts are summarized in their rows, never decoded.
+      expect(drawerRow(teamRows, "Verify Key", "SwiftStorageLocation").text).toBe("1 public key");
+      expect(drawerRow(teamRows, "CA Bundle", "SwiftStorageLocation").text).toBe("2 certificates");
+      expect(drawerRow(teamRows, "Volume Snapshot Class", "SwiftStorageLocation").text).toBe("e2e-snapclass");
+      // A namespaced location never reports Reachable, so the row is hidden.
+      expect(teamRows.some((row) => row.label === "Reachable")).toBe(false);
+
+      await cluster.closeDetails(frame);
+      await cluster.expectDetails(
+        frame,
+        "e2e-location-team",
+        "SwiftStorageLocation: e2e-location-team",
+        "registry.kubeswift-e2e.internal/team",
+        "e2e-location-registry",
+        "e2e-location-signing",
+      );
+
+      // The counter-assert: the broken location names a Secret the fixtures
+      // never create, so its row degrades to plain text (DESIGN.md section 3),
+      // and the sections of the blocks it does not set guard themselves away.
+      await pr.openDrawer(frame, "e2e-location-broken");
+
+      const brokenRows = await pr.inspectDrawerRows(frame);
+      const missingSecret = drawerRow(brokenRows, "Credentials Secret", "SwiftStorageLocation");
+
+      if (missingSecret.href) {
+        throw new Error(
+          `"${missingSecret.text}" names a Secret the fixtures never create, so it must stay plain text.`,
+        );
+      }
+
+      expect(missingSecret.text).toBe("e2e-location-missing");
+      expect(drawerRow(brokenRows, "Condition", "SwiftStorageLocation").text).toBe("Not Ready");
+
+      const brokenSections = await drawerSections(frame);
+
+      for (const absent of ["CSI", "Verify Key", "CA Bundle"]) {
+        if (brokenSections.includes(absent)) {
+          throw new Error(
+            `The "${absent}" section must guard itself away on a location that has no such block, got: ${brokenSections.join(", ")}`,
+          );
+        }
+      }
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "lists the SwiftClusterStorageLocations with their reachability, and never links their Secrets",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftclusterstoragelocations", "Cluster Storage Locations");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // Default, repository, the Reachable boolean and the condition badge, in
+      // column order. Both conditions are True, so the Status column quotes the
+      // newest of them.
+      await cluster.expectRow(
+        frame,
+        "e2e-cluster-location-default",
+        "Yes registry.kubeswift-e2e.internal/kubeswift True Ready",
+        "The location can be used.",
+      );
+
+      // Reachable False makes the verdict Unreachable rather than Not Ready, and
+      // it is the newer of the two failing conditions, so its dial error is what
+      // the Status column quotes.
+      await cluster.expectRow(
+        frame,
+        "e2e-cluster-location-down",
+        "No registry-down.kubeswift-e2e.internal/kubeswift False Unreachable",
+        "dial tcp 10.10.0.42:80: connect: connection refused",
+      );
+
+      await expectRowBadge(frame, "e2e-cluster-location-default", "success", "Ready");
+      await expectRowBadge(frame, "e2e-cluster-location-down", "error", "Unreachable");
+
+      // The anonymous registry looks up no Secret at all, and says so.
+      await pr.openDrawer(frame, "e2e-cluster-location-default");
+
+      const defaultRows = await pr.inspectDrawerRows(frame);
+
+      expect(drawerRow(defaultRows, "Credentials Secret", "SwiftClusterStorageLocation").text).toBe(
+        "None (anonymous registry)",
+      );
+      expect(drawerRow(defaultRows, "Backends", "SwiftClusterStorageLocation").text).toBe("OCI and CSI");
+      expect(drawerRow(defaultRows, "Reachable", "SwiftClusterStorageLocation").text).toBe("True");
+      expect(drawerRow(defaultRows, "Volume Snapshot Class", "SwiftClusterStorageLocation").text).toBe("e2e-snapclass");
+
+      await cluster.closeDetails(frame);
+      await cluster.expectDetails(
+        frame,
+        "e2e-cluster-location-default",
+        "SwiftClusterStorageLocation: e2e-cluster-location-default",
+        "registry.kubeswift-e2e.internal/kubeswift",
+      );
+
+      // A cluster location names a Secret per namespace of each object that
+      // uses it, so there is no one object to link: the row reads the
+      // controller's default name, marked as such, and is never a link. The
+      // fixtures do not create a Secret by that name either way.
+      await pr.openDrawer(frame, "e2e-cluster-location-down");
+
+      const downRows = await pr.inspectDrawerRows(frame);
+      const credentials = drawerRow(downRows, "Credentials Secret", "SwiftClusterStorageLocation");
+
+      expect(credentials.text).toBe("kubeswift-registry (default)");
+      expect(credentials.href).toBeNull();
+      expect(drawerRow(downRows, "Reachable", "SwiftClusterStorageLocation").text).toBe("False");
+      expect(drawerRow(downRows, "Condition", "SwiftClusterStorageLocation").text).toBe("Unreachable");
+      // A plaintext registry: the TLS badge is off.
+      expect(drawerRow(downRows, "TLS", "SwiftClusterStorageLocation").text).toBe("False");
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "lists the SwiftArtifactPlacements with their node counts, and links the pool, Secrets, policies and nodes",
+    async () => {
+      const nodeName = cluster.clusterNodeName();
+
+      await cluster.openKubeSwiftPage(frame, "swiftartifactplacements", "Artifact Placements");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // Pool, prepared nodes, target nodes and the condition badge, in column
+      // order; the gap between the two counts is what an operator scans for.
+      await cluster.expectRow(
+        frame,
+        "e2e-placement-ready",
+        "e2e-sandbox-pool 1 1 Prepared",
+        "Every target node holds every artifact.",
+      );
+
+      // Refused by the invalid policy: prepared on neither target node, and the
+      // Prepared condition's own message names the artifact and the policy.
+      await cluster.expectRow(
+        frame,
+        "e2e-placement-refused",
+        "e2e-sandbox-pool 0 2 Refused",
+        "legacy-data: refused by SwiftArtifactVerificationPolicy e2e-policy-invalid.",
+      );
+
+      await expectRowBadge(frame, "e2e-placement-ready", "success", "Prepared");
+      await expectRowBadge(frame, "e2e-placement-refused", "error", "Refused");
+
+      // The pool of 140-swiftsandboxpools.yaml, the two Secrets of
+      // 125-sandbox-references.yaml and the valid policy all exist, so every
+      // row that names one is a link that lands on a real drawer.
+      await pr.openDrawer(frame, "e2e-placement-ready");
+
+      const reopen = async () => {
+        await cluster.openKubeSwiftPage(frame, "swiftartifactplacements", "Artifact Placements");
+        await pr.openDrawer(frame, "e2e-placement-ready");
+      };
+
+      for (const label of ["Pool", "Pull Secret", "Verify Key Secret", "Policies"]) {
+        await expectDrawerLink(frame, "swiftartifactplacements", "SwiftArtifactPlacement", label, reopen);
+      }
+
+      // The node lives in the Nodes table rather than in a `DrawerItem` row, so
+      // it is read from the drawer directly, with the same bounded wait for the
+      // node store to fill.
+      const nodeLink = frame.locator(".Drawer.KubeObjectDetails .TableRow a", { hasText: nodeName }).first();
+
+      await nodeLink.waitFor({ state: "visible", timeout: 60_000 });
+
+      const nodeResult = await pr.checkDrawerLink(
+        frame,
+        "swiftartifactplacements",
+        { label: "Nodes", text: nodeName, href: await nodeLink.getAttribute("href") },
+        reopen,
+      );
+
+      if (!nodeResult.ok) {
+        throw new Error(`The node link ("${nodeName}") did not navigate cleanly: ${nodeResult.note}`);
+      }
+
+      const readyRows = await pr.inspectDrawerRows(frame);
+
+      expect(drawerRow(readyRows, "Policies", "SwiftArtifactPlacement").text).toBe("e2e-policy-signed (generation 1)");
+
+      await cluster.closeDetails(frame);
+
+      // The artifact section, titled with the artifact's name: the digest the
+      // controller resolved, the layout, the claims as sorted key=value badges,
+      // and the platform verification the spec requires.
+      await cluster.expectDetails(
+        frame,
+        "e2e-placement-ready",
+        "SwiftArtifactPlacement: e2e-placement-ready",
+        "Artifact: weights",
+        "sha256:f1ed9422913ad93219d2d0e0e003015f145674e6cfc2442869926a058fb752b2",
+        "unpacked",
+        "model-id=e2e-demo",
+        "tier=prod",
+        "Authorized",
+        "Required",
+      );
+
+      // The refused one: one section per artifact, the denied artifact's own
+      // reason, and the two node rows - the cluster's node still preparing, and
+      // a node that is gone after three failed attempts.
+      await pr.openDrawer(frame, "e2e-placement-refused");
+
+      const sections = await drawerSections(frame);
+
+      for (const present of ["Placement", "Artifact: tools", "Artifact: legacy-data", "Nodes"]) {
+        if (!sections.includes(present)) {
+          throw new Error(
+            `The SwiftArtifactPlacement drawer should have a "${present}" section, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      const drawerText = (await frame.locator(".Drawer.KubeObjectDetails").innerText()).replace(/\s+/g, " ");
+
+      for (const expected of ["Policy Denied", "Preparing", "Prepare Failed", "the node cache could not be reached"]) {
+        if (!drawerText.includes(expected)) {
+          throw new Error(`The refused placement's drawer should show "${expected}", got "${drawerText}"`);
+        }
+      }
+
+      // The real node is a link once the node store has filled; waiting for it
+      // first is what makes the plain-text assert below mean something.
+      await frame
+        .locator(".Drawer.KubeObjectDetails .TableRow a", { hasText: nodeName })
+        .first()
+        .waitFor({ state: "visible", timeout: 60_000 });
+
+      // The counter-assert: the node that is gone stays plain text rather than
+      // render a dead link (DESIGN.md section 3).
+      const goneRow = frame
+        .locator(".Drawer.KubeObjectDetails .TableRow", { hasText: "e2e-artifact-node-gone" })
+        .first();
+
+      await goneRow.waitFor({ state: "visible", timeout: 60_000 });
+
+      if ((await goneRow.locator("a", { hasText: "e2e-artifact-node-gone" }).count()) !== 0) {
+        throw new Error('"e2e-artifact-node-gone" names a node that does not exist, so it must stay plain text.');
+      }
+
+      expect((await goneRow.innerText()).replace(/\s+/g, " ")).toContain("Prepare Failed");
+      expect((await goneRow.innerText()).replace(/\s+/g, " ")).toContain("3");
+
+      await cluster.closeDetails(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "lists the SwiftArtifactVerificationPolicies with their reach and condition, and shows authorities and claims",
+    async () => {
+      await cluster.openKubeSwiftPage(frame, "swiftartifactverificationpolicies", "Verification Policies");
+      expect(await pr.headerCellsWithoutId(frame)).toEqual([]);
+
+      // Namespaces matched, the otherRepositories enum and the condition badge,
+      // in column order.
+      await cluster.expectRow(frame, "e2e-policy-signed", "1 Deny Ready", "The policy is enforced in 1 namespace.");
+
+      // The invalid one leaves otherRepositories to the API server, which
+      // defaults it to Allow; its Ready condition is False, and the Status
+      // column quotes why.
+      await cluster.expectRow(
+        frame,
+        "e2e-policy-invalid",
+        "6 Allow Not Ready",
+        'authority "legacy": the public key is not a PEM block.',
+      );
+
+      await expectRowBadge(frame, "e2e-policy-signed", "success", "Ready");
+      await expectRowBadge(frame, "e2e-policy-invalid", "error", "Not Ready");
+
+      // The whole drawer of the valid policy: both enums, the repository globs,
+      // both halves of the namespace selector in kubectl's own syntax, the two
+      // authorities with the key identity the controller parsed, and the three
+      // claim sources in words.
+      await cluster.expectDetails(
+        frame,
+        "e2e-policy-signed",
+        "SwiftArtifactVerificationPolicy: e2e-policy-signed",
+        "Required",
+        "Deny",
+        "ghcr.io/freelensapp/kubeswift-e2e/**",
+        "registry.kubeswift-e2e.internal/artifacts/*",
+        "app.kubernetes.io/part-of=freelens-kubeswift-e2e",
+        "kubernetes.io/metadata.name in (kubeswift-e2e)",
+        "ECDSA-P256",
+        "803632e966b8d2c57d35c5cb0ba5736263c8c169e6959de6e2f2bf5a4afea1ed",
+        "Ed25519",
+        'one of "prod", "staging"',
+        "equals the name of the namespace the artifact is mounted in",
+        `equals the artifact's own "model-id" claim`,
+      );
+
+      // Each authority's key is its own read-only block.
+      await pr.openDrawer(frame, "e2e-policy-signed");
+
+      const sections = await drawerSections(frame);
+
+      for (const present of [
+        "Policy",
+        "Scope",
+        "Authorities",
+        "Claims",
+        "Public Key: release",
+        "Public Key: rotation",
+      ]) {
+        if (!sections.includes(present)) {
+          throw new Error(
+            `The SwiftArtifactVerificationPolicy drawer should have a "${present}" section, got: ${sections.join(", ")}`,
+          );
+        }
+      }
+
+      await cluster.closeDetails(frame);
+
+      // The empty selector selects every namespace, and the drawer says so
+      // rather than show an empty row; a policy that requires no claim has no
+      // Claims section at all; and the authority the controller could not
+      // parse has no key identity to show.
+      await pr.openDrawer(frame, "e2e-policy-invalid");
+
+      const invalidRows = await pr.inspectDrawerRows(frame);
+
+      expect(drawerRow(invalidRows, "Namespace Selector", "SwiftArtifactVerificationPolicy").text).toBe(
+        "Every namespace",
+      );
+      expect(drawerRow(invalidRows, "Condition", "SwiftArtifactVerificationPolicy").text).toBe("Not Ready");
+      expect(drawerRow(invalidRows, "Digest Pinning", "SwiftArtifactVerificationPolicy").text).toBe("Optional");
+
+      const invalidSections = await drawerSections(frame);
+
+      if (invalidSections.includes("Claims")) {
+        throw new Error(
+          `The "Claims" section must guard itself away on a policy that requires none, got: ${invalidSections.join(", ")}`,
+        );
+      }
+
+      const legacyAuthority = frame.locator(".Drawer.KubeObjectDetails .TableRow", { hasText: "legacy" }).first();
+
+      await legacyAuthority.waitFor({ state: "visible", timeout: 60_000 });
+      expect((await legacyAuthority.innerText()).replace(/\s+/g, " ")).toContain("N/A");
 
       await cluster.closeDetails(frame);
     },
@@ -2650,6 +3429,9 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       await cluster.confirmDialogText(frame);
       await backendControl(frame).click();
       await frame.locator(".snapshot-backend-options .Select__option", { hasText: "oci" }).first().click();
+      // The check applies to the snapshot's own registry only: a storage
+      // location tags with the snapshot's uid (SPEC-0019 T4).
+      await chooseSnapshotOption(frame, "snapshot-destination", "Registry");
       await frame.locator('[data-testid="snapshot-repository"]').fill("ghcr.io/freelensapp/kubeswift-e2e/vm-snapshots");
       await frame.locator('[data-testid="snapshot-tag"]').fill("kubeswift-e2e-nightly");
 
@@ -2666,6 +3448,79 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       await cluster.cancelDialog(frame);
 
       expect(snapshotNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "takes an oci snapshot through a storage location, and writes only its locationRef",
+    async () => {
+      // SPEC-0019 T4, against the locations of 220-storage-locations.yaml:
+      // e2e-location-team is the namespace's default (oci and csi, both its
+      // Secrets present), e2e-location-broken is not ready, the cluster's
+      // default is anonymous, and cluster/e2e-cluster-location-down sets no
+      // VolumeSnapshotClass.
+      await cluster.openKubeSwiftPage(frame, "swiftguests", "Guests");
+      await cluster.clearNotifications(frame);
+      await cluster.openRowMenu(frame, "e2e-guest-running");
+      await frame.locator('.Menu [data-testid="swiftguest-take-snapshot-action"]').click();
+      await cluster.confirmDialogText(frame);
+
+      // csi: a location without a class is offered, disabled, with its reason.
+      await chooseSnapshotOption(frame, "snapshot-destination", "Storage location");
+      await frame.locator(".Select:has(#snapshot-storage-location) .Select__control").click();
+
+      const noClass = frame
+        .locator(".snapshot-storage-location-options .Select__option", { hasText: "cluster/e2e-cluster-location-down" })
+        .first();
+
+      expect(await noClass.innerText()).toContain("it sets no VolumeSnapshotClass");
+      expect(await noClass.getAttribute("class")).toContain("Select__option--is-disabled");
+      await frame.locator(".Select:has(#snapshot-storage-location) .Select__control").click();
+
+      // oci, default destination: the namespace's default location, resolved
+      // in the summary, with the repository under it.
+      await backendControl(frame).click();
+      await frame.locator(".snapshot-backend-options .Select__option", { hasText: "oci" }).first().click();
+      await chooseSnapshotOption(frame, "snapshot-destination", "Default storage location");
+
+      const byDefault = await cluster.confirmDialogText(frame);
+
+      expect(byDefault).toContain(
+        "pushed through the storage location e2e-location-team (the default), to " +
+          "registry.kubeswift-e2e.internal/team/snapshots",
+      );
+      expect(byDefault).not.toContain("RegistryCredentialsMissing");
+      expect(await frame.locator('[data-testid="snapshot-repository"]').count()).toBe(0);
+
+      // A location that is not ready is flagged, without blocking.
+      await chooseSnapshotOption(frame, "snapshot-destination", "Storage location");
+      await chooseSnapshotOption(frame, "snapshot-storage-location", "e2e-location-broken");
+
+      expect(await cluster.confirmDialogText(frame)).toContain("The storage location e2e-location-broken is not ready");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      // The cluster's default, picked by name, and written.
+      await chooseSnapshotOption(frame, "snapshot-storage-location", "cluster/e2e-cluster-location-default");
+
+      const name = await frame.locator('[data-testid="snapshot-name"]').inputValue();
+      const picked = await cluster.confirmDialogText(frame);
+
+      expect(picked).toContain("cluster/e2e-cluster-location-default");
+      expect(picked).toContain("registry.kubeswift-e2e.internal/kubeswift/kubeswift-e2e/snapshots");
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSnapshot ${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftsnapshots.snapshot.kubeswift.io", name, "{.spec}"));
+
+      // No backend.oci next to the reference: the CRD refuses the pair.
+      expect(spec.backend).toEqual({
+        type: "oci",
+        locationRef: { kind: "SwiftClusterStorageLocation", name: "e2e-cluster-location-default" },
+      });
+
+      await cluster.clearNotifications(frame);
     },
     TIMEOUT,
   );
@@ -5471,6 +6326,110 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
   );
 
   it(
+    "writes a sandbox pool's ports, ingress source and egress rule, and refuses them under mode none",
+    async () => {
+      // SPEC-0019 T4 on the pool form. The section sends only what was typed -
+      // no mode, since restricted is the default, and no protocol, since TCP is
+      // - so what the readback shows beyond that is the API server's own
+      // structural defaults, which is the proof of what was sent.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxpools", "Sandbox Pools");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-sbxpool-net");
+
+      await openCreateSandboxPoolDialog(frame);
+      await frame.locator('[data-testid="sandbox-pool-create-name"]').fill(name);
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+
+      await openFormSection(frame, "sandbox-create-network-section");
+      await addSandboxPortRow(frame, 0, "http", "8080");
+      await addSandboxPortRow(frame, 1, "metrics", "9090");
+
+      // A source is only offered once a port is declared, which it now is.
+      await frame.locator('[data-testid="sandbox-create-add-ingress"]').click();
+      await pickCreateOption(frame, "sandbox-create-ingress-0-kind", "Namespace");
+      await frame.locator('[data-testid="sandbox-create-ingress-0-namespace"]').fill("kubeswift-e2e");
+
+      // A new destination is a Service until it is told otherwise.
+      await frame.locator('[data-testid="sandbox-create-add-egress"]').click();
+      await frame.locator('[data-testid="sandbox-create-egress-0-service"]').fill("e2e-sandbox-db");
+      await frame.locator('[data-testid="sandbox-create-egress-0-add-port"]').click();
+      await frame.locator('[data-testid="sandbox-create-egress-0-port-0-number"]').fill("5432");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftSandboxPool kubeswift-e2e/${name}`);
+      expect(dialog).toContain(
+        "http (8080), metrics (9090) are exposed as named containerPorts of every warm slot's launcher pod",
+      );
+      expect(dialog).toContain("No Service is created for them");
+      expect(dialog).toContain("Only every pod of the namespace kubeswift-e2e may reach them.");
+      expect(dialog).toContain("the guest may reach the Service e2e-sandbox-db on 5432/TCP");
+      expect(dialog).toContain("169.254.0.0/16 and IPv6 stay blocked whatever is allowed");
+      expect(dialog).not.toContain("Create Sandbox Pool is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSandboxPool kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftsandboxpools.sandbox.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual(["cpu", "image", "memory", "minWarm", "network", "rootfsMode"]);
+      // Key for key. `mode` and both `protocol` keys are the v0.18.0 schema's
+      // defaults, stamped by the API server inside the block the form sent:
+      // they are there although the form never wrote them.
+      expect(spec.network).toEqual({
+        mode: "restricted",
+        ports: [
+          { name: "http", port: 8080, protocol: "TCP" },
+          { name: "metrics", port: 9090, protocol: "TCP" },
+        ],
+        ingress: { from: [{ namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "kubeswift-e2e" } } }] },
+        egress: { allow: [{ service: { name: "e2e-sandbox-db" }, ports: [{ port: 5432, protocol: "TCP" }] }] },
+      });
+
+      await cluster.clearNotifications(frame);
+
+      // Mode none: a slot with no network has nothing to forward a port to and
+      // nowhere to send a packet, so both add controls are disabled with the
+      // reason, and the source's with its own - no port is declared.
+      const before = sandboxPoolNames();
+
+      await openCreateSandboxPoolDialog(frame);
+      await frame.locator('[data-testid="sandbox-pool-create-name"]').fill("e2e-sandbox-pool-net-none");
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:warm");
+      await pickCreateOption(frame, "sandbox-create-network-mode", "none");
+      await openFormSection(frame, "sandbox-create-network-section");
+
+      expect(await frame.locator('[data-testid="sandbox-create-add-port"]').isDisabled()).toBe(true);
+      expect(await frame.locator('[data-testid="sandbox-create-add-port-blocked"]').innerText()).toContain(
+        "Ports are not valid with network mode none",
+      );
+      expect(await frame.locator('[data-testid="sandbox-create-add-egress"]').isDisabled()).toBe(true);
+      expect(await frame.locator('[data-testid="sandbox-create-add-egress-blocked"]').innerText()).toContain(
+        "Egress rules are only valid with network mode restricted: mode none has no network at all",
+      );
+      expect(await frame.locator('[data-testid="sandbox-create-add-ingress"]').isDisabled()).toBe(true);
+      expect(await frame.locator('[data-testid="sandbox-create-add-ingress-blocked"]').innerText()).toContain(
+        "Declare a port first",
+      );
+      // The blocks are on the rows, not on the pool: an empty section under
+      // mode none is a valid pool.
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.cancelDialog(frame);
+
+      expect(sandboxPoolNames()).toEqual(before);
+    },
+    TIMEOUT,
+  );
+
+  it(
     "creates a cold sandbox with its whole workload, and reads back what the server stamped",
     async () => {
       // SPEC-0016 slice 2, the cold path end to end. What it proves that no unit
@@ -5653,6 +6612,211 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       expect(spec.gpuProfileRef).toBeUndefined();
       expect(spec.gpuResourceClaim).toBeUndefined();
       expect(spec.network).toBeUndefined();
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "writes a cold sandbox's ports, probes, drain period, artifact, Secret file and pod label, key for key",
+    async () => {
+      // SPEC-0019 T4 on the sandbox form's cold path: every section v0.18.0
+      // added, filled once and read back exactly. What the readback holds
+      // beyond what was typed is the API server's structural defaults - the
+      // network mode, the port protocol and the artifact layout - which the
+      // form deliberately never sends.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-sbx-wl");
+      const artifactRef = `registry.example.com/plugins@${e2eImageDigest}`;
+
+      await openCreateSandboxDialog(frame);
+      await frame.locator('[data-testid="sandbox-create-name"]').fill(name);
+      await frame
+        .locator('[data-testid="sandbox-create-image"]')
+        .fill("ghcr.io/freelensapp/kubeswift-e2e/sandbox:cold");
+      await addArgvRow(frame, "command", 0, "/usr/bin/server");
+
+      // The port first: the readiness probe below names it.
+      await openFormSection(frame, "sandbox-create-network-section");
+      await addSandboxPortRow(frame, 0, "http", "8080");
+
+      await openFormSection(frame, "sandbox-create-probes-section");
+      await tickSandboxCheckbox(frame, "sandbox-create-readiness-probe-enabled");
+      // A new probe is an HTTP GET until it is told otherwise.
+      await frame.locator('[data-testid="sandbox-create-readiness-probe-path"]').fill("/healthz");
+      await frame.locator('[data-testid="sandbox-create-readiness-probe-port"]').fill("http");
+      await tickSandboxCheckbox(frame, "sandbox-create-liveness-probe-enabled");
+      await pickCreateOption(frame, "sandbox-create-liveness-probe-action", "TCP connect");
+      await frame.locator('[data-testid="sandbox-create-liveness-probe-port"]').fill("8080");
+      await frame.locator('[data-testid="sandbox-create-liveness-probe-period"]').fill("15");
+
+      await openFormSection(frame, "sandbox-create-termination-section");
+      await frame.locator('[data-testid="sandbox-create-drain-period"]').fill("20s");
+
+      await openFormSection(frame, "sandbox-create-artifacts-section");
+      await frame.locator('[data-testid="sandbox-create-add-artifact"]').click();
+      await frame.locator('[data-testid="sandbox-create-artifact-0-name"]').fill("plugins");
+      await frame.locator('[data-testid="sandbox-create-artifact-0-ref"]').fill(artifactRef);
+      await frame.locator('[data-testid="sandbox-create-artifact-0-mount-path"]').fill("/opt/plugins");
+      // The fetch timeout belongs to an optional artifact, and appears with it.
+      await tickSandboxCheckbox(frame, "sandbox-create-artifact-0-optional");
+      await frame.locator('[data-testid="sandbox-create-artifact-0-fetch-timeout"]').fill("30s");
+      await frame.locator('[data-testid="sandbox-create-artifact-0-claim-add"]').click();
+      await frame.locator('[data-testid="sandbox-create-artifact-0-claim-0-key"]').fill("tier");
+      await frame.locator('[data-testid="sandbox-create-artifact-0-claim-0-value"]').fill("prod");
+
+      // A new entry comes with its one required file row. The Secret is
+      // 125-sandbox-references.yaml's, which holds a `token` key.
+      await openFormSection(frame, "sandbox-create-secret-files-section");
+      await frame.locator('[data-testid="sandbox-create-add-secret-file"]').click();
+      await frame.waitForSelector(".Select:has(#sandbox-create-secret-file-0-secret)", {
+        state: "visible",
+        timeout: 60_000,
+      });
+      await pickCreateOption(frame, "sandbox-create-secret-file-0-secret", "e2e-sandbox-registry");
+      await frame.locator('[data-testid="sandbox-create-secret-file-0-mode"]').fill("0440");
+      await frame.locator('[data-testid="sandbox-create-secret-file-0-item-0-key"]').fill("token");
+      await frame.locator('[data-testid="sandbox-create-secret-file-0-item-0-path"]').fill("/etc/app/token");
+
+      await openFormSection(frame, "sandbox-create-pod-labels-section");
+      await frame.locator('[data-testid="sandbox-create-pod-label-add"]').click();
+      await frame.locator('[data-testid="sandbox-create-pod-label-0-key"]').fill("app");
+      await frame.locator('[data-testid="sandbox-create-pod-label-0-value"]').fill("web");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).toContain(`Create SwiftSandbox kubeswift-e2e/${name}`);
+      expect(dialog).toContain("http (8080) is exposed as named containerPorts of the launcher pod");
+      expect(dialog).toContain("Any source may reach them");
+      expect(dialog).not.toContain("Create Sandbox is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSandbox kubeswift-e2e/${name} created`);
+      await cluster.expectRow(frame, name, "kubeswift-e2e");
+
+      const spec = JSON.parse(cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", name, "{.spec}"));
+
+      expect(Object.keys(spec).sort()).toEqual([
+        "artifacts",
+        "command",
+        "cpu",
+        "image",
+        "livenessProbe",
+        "memory",
+        "network",
+        "podMetadata",
+        "readinessProbe",
+        "rootfsMode",
+        "secretFiles",
+        "termination",
+      ]);
+
+      // `mode` and `protocol` are stamped inside the block the form sent.
+      expect(spec.network).toEqual({ mode: "restricted", ports: [{ name: "http", port: 8080, protocol: "TCP" }] });
+      // A port name stays a name: the launcher resolves it against the ports.
+      expect(spec.readinessProbe).toEqual({ httpGet: { path: "/healthz", port: "http" } });
+      // Only the number that was typed; the three left empty keep their
+      // defaults by staying absent.
+      expect(spec.livenessProbe).toEqual({ tcpSocket: { port: 8080 }, periodSeconds: 15 });
+      expect(spec.termination).toEqual({ drainPeriod: "20s" });
+      // `layout: oci` is the schema's default, stamped; the form omits it.
+      expect(spec.artifacts).toEqual([
+        {
+          name: "plugins",
+          ref: artifactRef,
+          mountPath: "/opt/plugins",
+          layout: "oci",
+          optional: true,
+          fetchTimeout: "30s",
+          claims: { tier: "prod" },
+        },
+      ]);
+      // The octal typed is sent as the number it stands for: 0440 is 288.
+      expect(spec.secretFiles).toEqual([
+        { secretName: "e2e-sandbox-registry", mode: 288, items: [{ key: "token", path: "/etc/app/token" }] },
+      ]);
+      expect(spec.podMetadata).toEqual({ labels: { app: "web" } });
+
+      await cluster.clearNotifications(frame);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "keeps the network to the pool on a checkout, refuses a probe port by name, and writes the pod labels",
+    async () => {
+      // SPEC-0019 D2: a checkout's network is the pool's, so the section that
+      // would author one is not rendered, and a probe has no port name of its
+      // own to refer to. The workload sections stay: pod labels are how a
+      // Service of the user's own selects the claimed slot.
+      await cluster.openKubeSwiftPage(frame, "swiftsandboxes", "Sandboxes");
+      await cluster.clearNotifications(frame);
+
+      const name = createdObjectName("e2e-sbx-claim-lbl");
+
+      await openCreateSandboxDialog(frame);
+      await frame.locator('[data-testid="sandbox-create-name"]').fill(name);
+      // Rendered on the cold path the dialog opens on, and gone on a checkout.
+      expect(await frame.locator('[data-testid="sandbox-create-network-section"]').count()).toBe(1);
+      await useSandboxCheckout(frame);
+      await pickCreateOption(frame, "sandbox-create-pool", "e2e-sandbox-pool - Ready");
+      await addArgvRow(frame, "command", 0, "/usr/bin/env");
+
+      expect(await frame.locator('[data-testid="sandbox-create-network-section"]').count()).toBe(0);
+      expect(await frame.locator('[data-testid="sandbox-create-add-port"]').count()).toBe(0);
+
+      // The pool runs restricted, so the probe itself is offered; only a port
+      // given by name is refused, with the reason.
+      await openFormSection(frame, "sandbox-create-probes-section");
+      expect(await frame.locator('[data-testid="sandbox-create-readiness-probe-blocked"]').count()).toBe(0);
+      await tickSandboxCheckbox(frame, "sandbox-create-readiness-probe-enabled");
+      await frame.locator('[data-testid="sandbox-create-readiness-probe-port"]').fill("http");
+
+      const refused = await cluster.confirmDialogText(frame);
+
+      expect(refused).toContain("Create Sandbox is disabled - Readiness probe port:");
+      expect(refused).toContain("On a checkout the pool decides the network");
+      expect(refused).toContain("Give the port as a number.");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(true);
+
+      // Off again, which empties the probe, and the submit is released.
+      await tickSandboxCheckbox(frame, "sandbox-create-readiness-probe-enabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await openFormSection(frame, "sandbox-create-pod-labels-section");
+      await frame.locator('[data-testid="sandbox-create-pod-label-add"]').click();
+      await frame.locator('[data-testid="sandbox-create-pod-label-0-key"]').fill("app");
+      await frame.locator('[data-testid="sandbox-create-pod-label-0-value"]').fill("web");
+
+      const dialog = await cluster.confirmDialogText(frame);
+
+      expect(dialog).not.toContain("Create Sandbox is disabled");
+      expect(await frame.locator('[data-testid="confirm"]').isDisabled()).toBe(false);
+
+      await cluster.confirmDialog(frame);
+      await cluster.expectNotification(frame, "ok", `SwiftSandbox kubeswift-e2e/${name} created`);
+
+      const spec = JSON.parse(cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", name, "{.spec}"));
+
+      // The checkout's own key set, plus the labels and nothing else: no
+      // network, and no probe left behind by the one turned off.
+      expect(Object.keys(spec).sort()).toEqual([
+        "command",
+        "cpu",
+        "image",
+        "memory",
+        "podMetadata",
+        "poolRef",
+        "rootfsMode",
+      ]);
+      expect(spec.poolRef).toEqual({ name: "e2e-sandbox-pool" });
+      expect(spec.podMetadata).toEqual({ labels: { app: "web" } });
+      expect(spec.network).toBeUndefined();
+      expect(spec.readinessProbe).toBeUndefined();
 
       await cluster.clearNotifications(frame);
     },

@@ -8,6 +8,9 @@ import { Renderer } from "@freelensapp/extensions";
 // `Cluster` here would shadow the most overloaded noun in the host's vocabulary
 // for every future reader of this file (SPEC-0009).
 import { FleetCluster as FleetClusterV1alpha1 } from "./api/kubeswift/fleetcluster-v1alpha1";
+import { SwiftArtifactPlacement as SwiftArtifactPlacementV1alpha1 } from "./api/kubeswift/swiftartifactplacement-v1alpha1";
+import { SwiftArtifactVerificationPolicy as SwiftArtifactVerificationPolicyV1alpha1 } from "./api/kubeswift/swiftartifactverificationpolicy-v1alpha1";
+import { SwiftClusterStorageLocation as SwiftClusterStorageLocationV1alpha1 } from "./api/kubeswift/swiftclusterstoragelocation-v1alpha1";
 import { SwiftGPUNode as SwiftGPUNodeV1alpha1 } from "./api/kubeswift/swiftgpunode-v1alpha1";
 import { SwiftGPUProfile as SwiftGPUProfileV1alpha1 } from "./api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftGuest as SwiftGuestV1alpha1 } from "./api/kubeswift/swiftguest-v1alpha1";
@@ -22,6 +25,7 @@ import { SwiftSandboxPool as SwiftSandboxPoolV1alpha1 } from "./api/kubeswift/sw
 import { SwiftSeedProfile as SwiftSeedProfileV1alpha1 } from "./api/kubeswift/swiftseedprofile-v1alpha1";
 import { SwiftSnapshot as SwiftSnapshotV1alpha1 } from "./api/kubeswift/swiftsnapshot-v1alpha1";
 import { SwiftSnapshotSchedule as SwiftSnapshotScheduleV1alpha1 } from "./api/kubeswift/swiftsnapshotschedule-v1alpha1";
+import { SwiftStorageLocation as SwiftStorageLocationV1alpha1 } from "./api/kubeswift/swiftstoragelocation-v1alpha1";
 import { type AvailableVersionPageProps, createAvailableVersionPage } from "./components/available-version";
 import {
   withDetailsErrorBoundary,
@@ -29,6 +33,9 @@ import {
   withPageErrorBoundary,
 } from "./components/error-boundary";
 import { FleetClusterDetails as FleetClusterDetailsV1alpha1 } from "./details/fleetcluster-details-v1alpha1";
+import { SwiftArtifactPlacementDetails as SwiftArtifactPlacementDetailsV1alpha1 } from "./details/swiftartifactplacement-details-v1alpha1";
+import { SwiftArtifactVerificationPolicyDetails as SwiftArtifactVerificationPolicyDetailsV1alpha1 } from "./details/swiftartifactverificationpolicy-details-v1alpha1";
+import { SwiftClusterStorageLocationDetails as SwiftClusterStorageLocationDetailsV1alpha1 } from "./details/swiftclusterstoragelocation-details-v1alpha1";
 import { SwiftGPUNodeDetails as SwiftGPUNodeDetailsV1alpha1 } from "./details/swiftgpunode-details-v1alpha1";
 import { SwiftGPUProfileDetails as SwiftGPUProfileDetailsV1alpha1 } from "./details/swiftgpuprofile-details-v1alpha1";
 import { SwiftGuestDetails as SwiftGuestDetailsV1alpha1 } from "./details/swiftguest-details-v1alpha1";
@@ -43,6 +50,7 @@ import { SwiftSandboxPoolDetails as SwiftSandboxPoolDetailsV1alpha1 } from "./de
 import { SwiftSeedProfileDetails as SwiftSeedProfileDetailsV1alpha1 } from "./details/swiftseedprofile-details-v1alpha1";
 import { SwiftSnapshotDetails as SwiftSnapshotDetailsV1alpha1 } from "./details/swiftsnapshot-details-v1alpha1";
 import { SwiftSnapshotScheduleDetails as SwiftSnapshotScheduleDetailsV1alpha1 } from "./details/swiftsnapshotschedule-details-v1alpha1";
+import { SwiftStorageLocationDetails as SwiftStorageLocationDetailsV1alpha1 } from "./details/swiftstoragelocation-details-v1alpha1";
 import { KubeSwiftIcon } from "./icons/kubeswift";
 import { SwiftGuestConsoleMenuItem as SwiftGuestConsoleMenuItemV1alpha1 } from "./menus/swiftguest-console-menu-item-v1alpha1";
 import { SwiftGuestMigrateMenuItem as SwiftGuestMigrateMenuItemV1alpha1 } from "./menus/swiftguest-migrate-menu-item-v1alpha1";
@@ -52,6 +60,9 @@ import { SwiftGuestTakeSnapshotMenuItem as SwiftGuestTakeSnapshotMenuItemV1alpha
 import { SwiftSandboxConsoleMenuItem as SwiftSandboxConsoleMenuItemV1alpha1 } from "./menus/swiftsandbox-console-menu-item-v1alpha1";
 import { SwiftSnapshotRestoreMenuItem as SwiftSnapshotRestoreMenuItemV1alpha1 } from "./menus/swiftsnapshot-restore-menu-item-v1alpha1";
 import { FleetClustersPage as FleetClustersPageV1alpha1 } from "./pages/fleetclusters-page-v1alpha1";
+import { SwiftArtifactPlacementsPage as SwiftArtifactPlacementsPageV1alpha1 } from "./pages/swiftartifactplacements-page-v1alpha1";
+import { SwiftArtifactVerificationPoliciesPage as SwiftArtifactVerificationPoliciesPageV1alpha1 } from "./pages/swiftartifactverificationpolicies-page-v1alpha1";
+import { SwiftClusterStorageLocationsPage as SwiftClusterStorageLocationsPageV1alpha1 } from "./pages/swiftclusterstoragelocations-page-v1alpha1";
 import { SwiftGPUNodesPage as SwiftGPUNodesPageV1alpha1 } from "./pages/swiftgpunodes-page-v1alpha1";
 import { SwiftGPUProfilesPage as SwiftGPUProfilesPageV1alpha1 } from "./pages/swiftgpuprofiles-page-v1alpha1";
 import { SwiftGuestClassesPage as SwiftGuestClassesPageV1alpha1 } from "./pages/swiftguestclasses-page-v1alpha1";
@@ -66,6 +77,7 @@ import { SwiftSandboxPoolsPage as SwiftSandboxPoolsPageV1alpha1 } from "./pages/
 import { SwiftSeedProfilesPage as SwiftSeedProfilesPageV1alpha1 } from "./pages/swiftseedprofiles-page-v1alpha1";
 import { SwiftSnapshotsPage as SwiftSnapshotsPageV1alpha1 } from "./pages/swiftsnapshots-page-v1alpha1";
 import { SwiftSnapshotSchedulesPage as SwiftSnapshotSchedulesPageV1alpha1 } from "./pages/swiftsnapshotschedules-page-v1alpha1";
+import { SwiftStorageLocationsPage as SwiftStorageLocationsPageV1alpha1 } from "./pages/swiftstoragelocations-page-v1alpha1";
 
 import type { KubeSwiftKubeObjectCRD } from "./api/kubeswift/types";
 
@@ -94,6 +106,16 @@ const SwiftGPUNodesPage = availablePage(SwiftGPUNodeV1alpha1, SwiftGPUNodesPageV
 const SwiftSandboxesPage = availablePage(SwiftSandboxV1alpha1, SwiftSandboxesPageV1alpha1);
 const SwiftSandboxPoolsPage = availablePage(SwiftSandboxPoolV1alpha1, SwiftSandboxPoolsPageV1alpha1);
 const FleetClustersPage = availablePage(FleetClusterV1alpha1, FleetClustersPageV1alpha1);
+const SwiftStorageLocationsPage = availablePage(SwiftStorageLocationV1alpha1, SwiftStorageLocationsPageV1alpha1);
+const SwiftClusterStorageLocationsPage = availablePage(
+  SwiftClusterStorageLocationV1alpha1,
+  SwiftClusterStorageLocationsPageV1alpha1,
+);
+const SwiftArtifactPlacementsPage = availablePage(SwiftArtifactPlacementV1alpha1, SwiftArtifactPlacementsPageV1alpha1);
+const SwiftArtifactVerificationPoliciesPage = availablePage(
+  SwiftArtifactVerificationPolicyV1alpha1,
+  SwiftArtifactVerificationPoliciesPageV1alpha1,
+);
 
 /**
  * Renderer-process entry point of the extension.
@@ -128,6 +150,24 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
     // (`cluster.x-k8s.io`) or a Rancher Fleet (`fleet.cattle.io`) object of the
     // same kind never receives this drawer, and ours never receives theirs.
     Renderer.K8sApi.detailsFor(FleetClusterV1alpha1, { priority: 10, Details: FleetClusterDetailsV1alpha1 }),
+    // The four kinds KubeSwift added after v0.13.12 (SPEC-0019, T3), read-only:
+    // details and pages, no menu items.
+    Renderer.K8sApi.detailsFor(SwiftStorageLocationV1alpha1, {
+      priority: 10,
+      Details: SwiftStorageLocationDetailsV1alpha1,
+    }),
+    Renderer.K8sApi.detailsFor(SwiftClusterStorageLocationV1alpha1, {
+      priority: 10,
+      Details: SwiftClusterStorageLocationDetailsV1alpha1,
+    }),
+    Renderer.K8sApi.detailsFor(SwiftArtifactPlacementV1alpha1, {
+      priority: 10,
+      Details: SwiftArtifactPlacementDetailsV1alpha1,
+    }),
+    Renderer.K8sApi.detailsFor(SwiftArtifactVerificationPolicyV1alpha1, {
+      priority: 10,
+      Details: SwiftArtifactVerificationPolicyDetailsV1alpha1,
+    }),
   ].map((registration) => withDetailsErrorBoundary(this, registration));
 
   // The extension's first write surface (M6, SPEC-0010). Two registrations
@@ -273,12 +313,39 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
         Page: () => <FleetClustersPage extension={this} />,
       },
     },
+    {
+      id: "swiftstoragelocations",
+      components: {
+        Page: () => <SwiftStorageLocationsPage extension={this} />,
+      },
+    },
+    {
+      id: "swiftclusterstoragelocations",
+      components: {
+        Page: () => <SwiftClusterStorageLocationsPage extension={this} />,
+      },
+    },
+    {
+      id: "swiftartifactplacements",
+      components: {
+        Page: () => <SwiftArtifactPlacementsPage extension={this} />,
+      },
+    },
+    {
+      id: "swiftartifactverificationpolicies",
+      components: {
+        Page: () => <SwiftArtifactVerificationPoliciesPage extension={this} />,
+      },
+    },
   ].map((registration) => withPageErrorBoundary(this, registration));
 
   // Every kind has a page and a sidebar entry of its own under "KubeSwift", so the Custom Resources tree of
   // the cluster sidebar would list it a second time.
   customResources = [
     FleetClusterV1alpha1,
+    SwiftArtifactPlacementV1alpha1,
+    SwiftArtifactVerificationPolicyV1alpha1,
+    SwiftClusterStorageLocationV1alpha1,
     SwiftGPUNodeV1alpha1,
     SwiftGPUProfileV1alpha1,
     SwiftGuestV1alpha1,
@@ -293,6 +360,7 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
     SwiftSeedProfileV1alpha1,
     SwiftSnapshotV1alpha1,
     SwiftSnapshotScheduleV1alpha1,
+    SwiftStorageLocationV1alpha1,
   ];
 
   clusterPageMenus = [
@@ -392,6 +460,22 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       target: { pageId: "swiftsnapshotschedules" },
       components: {},
     },
+    // Where snapshots are kept (SPEC-0019, T3), after the three kinds that
+    // take and use them: the namespace's own locations, then the cluster's.
+    {
+      id: "swiftstoragelocations",
+      parentId: "kubeswift-data-protection",
+      title: SwiftStorageLocationV1alpha1.crd.title,
+      target: { pageId: "swiftstoragelocations" },
+      components: {},
+    },
+    {
+      id: "swiftclusterstoragelocations",
+      parentId: "kubeswift-data-protection",
+      title: SwiftClusterStorageLocationV1alpha1.crd.title,
+      target: { pageId: "swiftclusterstoragelocations" },
+      components: {},
+    },
     {
       id: "kubeswift-migrations",
       parentId: "kubeswift",
@@ -461,6 +545,22 @@ export default class KubeSwiftRenderer extends Renderer.LensExtension {
       parentId: "kubeswift-sandboxes",
       title: SwiftSandboxPoolV1alpha1.crd.title,
       target: { pageId: "swiftsandboxpools" },
+      components: {},
+    },
+    // The artifact kinds (SPEC-0019, T3), after the pool a placement prepares
+    // artifacts for; the cluster-wide policy that verifies them comes last.
+    {
+      id: "swiftartifactplacements",
+      parentId: "kubeswift-sandboxes",
+      title: SwiftArtifactPlacementV1alpha1.crd.title,
+      target: { pageId: "swiftartifactplacements" },
+      components: {},
+    },
+    {
+      id: "swiftartifactverificationpolicies",
+      parentId: "kubeswift-sandboxes",
+      title: SwiftArtifactVerificationPolicyV1alpha1.crd.title,
+      target: { pageId: "swiftartifactverificationpolicies" },
       components: {},
     },
     // The seventh group, appended after "Sandboxes" for the same reason every

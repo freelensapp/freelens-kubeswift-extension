@@ -195,7 +195,7 @@ the default store type of `getStore<SwiftKernel>()` has an untyped `api`.
 (`kubeObjectDetailItems`) and menu items (`kubeObjectMenuItems`), its page
 (`clusterPages`) and its sidebar entry (`clusterPageMenus`).
 
-`customResources` lists the 15 model classes. The host reads the group and
+`customResources` lists the 19 model classes. The host reads the group and
 plural from each class's `crd`, and while the extension is enabled it leaves
 the resource out of the Custom Resources tree of the cluster sidebar, where it
 would otherwise be listed a second time next to the extension's own page. The

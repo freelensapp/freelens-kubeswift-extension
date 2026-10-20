@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   classifySandbox,
+  classifySandboxArtifact,
   classifySandboxPool,
+  sandboxArtifactStates,
   sandboxMessage,
   sandboxPoolMessage,
   sandboxPoolStates,
@@ -221,5 +223,38 @@ describe("sandboxPoolMessage", () => {
     };
 
     expect(sandboxPoolMessage(status)).toBe(classifySandboxPool(status).explanation);
+  });
+});
+
+describe("classifySandboxArtifact", () => {
+  it("reads a mounted artifact as healthy, and an entry with no state as mounted", () => {
+    expect(classifySandboxArtifact("Mounted", "Cached")).toMatchObject({ state: "Mounted", className: "success" });
+    expect(classifySandboxArtifact(undefined)).toMatchObject({ state: "Mounted", className: "success" });
+    expect(classifySandboxArtifact(undefined).explanation).toContain("earlier release");
+  });
+
+  it("reads the three states before a mount as in progress", () => {
+    for (const state of [
+      sandboxArtifactStates.resolved,
+      sandboxArtifactStates.fetching,
+      sandboxArtifactStates.dispatched,
+    ]) {
+      expect(classifySandboxArtifact(state)).toMatchObject({ state, className: "warning" });
+    }
+  });
+
+  it("reads a skipped artifact as a degradation, with its reason", () => {
+    const condition = classifySandboxArtifact("Skipped", "FetchTimeout");
+
+    expect(condition).toMatchObject({ state: "Skipped", className: "warning" });
+    expect(condition.explanation).toContain("FetchTimeout");
+  });
+
+  it("reads a failed artifact as an error", () => {
+    expect(classifySandboxArtifact("Failed")).toMatchObject({ state: "Failed", className: "error" });
+  });
+
+  it("passes a state it does not know through as it arrived", () => {
+    expect(classifySandboxArtifact("Pruned")).toMatchObject({ state: "Pruned", className: "info" });
   });
 });

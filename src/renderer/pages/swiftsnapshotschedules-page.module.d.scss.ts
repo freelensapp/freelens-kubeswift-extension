@@ -3,6 +3,7 @@ declare const classNames: {
   readonly keep: "keep";
   readonly suspended: "suspended";
   readonly lastSchedule: "lastSchedule";
+  readonly ready: "ready";
   readonly age: "age";
 };
 export = classNames;

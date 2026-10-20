@@ -1,0 +1,34 @@
+# Merge patch applied to the status subresource of
+# swiftartifactplacement/e2e-placement-ready. No KubeSwift controller runs in
+# the E2E cluster, so the status a real controller would write is injected
+# here.
+#
+# Fully prepared: the one artifact is authorized and governed by the valid
+# policy, and the cluster's one node (__NODE_NAME__, substituted by
+# cluster-up.sh, so the drawer's Node link lands on a real node) holds it.
+status:
+  observedGeneration: 1
+  targetNodes: 1
+  preparedNodes: 1
+  artifacts:
+    - name: weights
+      digest: sha256:f1ed9422913ad93219d2d0e0e003015f145674e6cfc2442869926a058fb752b2
+      reason: Authorized
+      preparedNodes: 1
+      policies:
+        - name: e2e-policy-signed
+          generation: 1
+  nodes:
+    - name: __NODE_NAME__
+      prepared: true
+      reason: Prepared
+      preparedAt: "2026-10-19T08:30:00Z"
+      observedGeneration: 1
+      requirements: sha256:886863f9d7382f355ed16209c60c5c78454fc3e5f636f57110c5939bc989f1fb
+  conditions:
+    - type: Prepared
+      status: "True"
+      reason: Prepared
+      message: Every target node holds every artifact.
+      lastTransitionTime: "2026-10-19T08:30:00Z"
+      observedGeneration: 1

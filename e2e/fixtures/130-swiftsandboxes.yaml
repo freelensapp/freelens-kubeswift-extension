@@ -46,8 +46,92 @@ spec:
   timeout: 30m
   ttl: 1h
   rootfsMode: block
+  # The v0.18.0 network (SPEC-0019 T2): two named ports, three ingress sources
+  # (one of each shape the create form writes) and two egress rules, one per
+  # destination kind. The Service is resolved by a controller that does not run
+  # here; the injected status.network.egressAllowed carries what one would
+  # write.
   network:
     mode: restricted
+    ports:
+      - name: http
+        port: 8080
+      - name: metrics
+        port: 9090
+    ingress:
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kubeswift-e2e
+        - ipBlock:
+            cidr: 10.0.0.0/8
+            except:
+              - 10.96.0.0/12
+        - podSelector:
+            matchLabels:
+              app: e2e-sandbox-client
+    egress:
+      allow:
+        - service:
+            name: e2e-sandbox-db
+          ports:
+            - port: 5432
+        - cidr: 10.20.0.0/24
+          ports:
+            - port: 53
+              protocol: UDP
+  # Both probes, each of the two supported actions, one by port name and one by
+  # number.
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 2
+    periodSeconds: 5
+  livenessProbe:
+    tcpSocket:
+      port: 8080
+    periodSeconds: 15
+    failureThreshold: 4
+  termination:
+    drainPeriod: 20s
+  # A required artifact pinned by digest, verified and governed by
+  # e2e-policy-signed (225-artifact-placements.yaml), and an optional one by
+  # tag that the injected status reports Skipped.
+  artifacts:
+    - name: plugins
+      ref: ghcr.io/freelensapp/kubeswift-e2e/plugins@sha256:5d2a8f1c7e4b9036a1d8c5f2e7b4a9d03c6e1f8b5a2d7c4e9f1b6a3d8c5e2f7a
+      mountPath: /opt/plugins
+      pullSecretRef:
+        name: e2e-sandbox-registry
+      verifyKeySecretRef:
+        name: e2e-sandbox-cosign
+      claims:
+        tier: prod
+      requirePlatformVerification: true
+    - name: cache
+      ref: ghcr.io/freelensapp/kubeswift-e2e/cache:latest
+      mountPath: /var/cache/app
+      layout: unpacked
+      optional: true
+      fetchTimeout: 30s
+  # Two Secrets written as files: modes are decimal in the object (0440 is 288,
+  # 0444 is 292), which the drawer shows in octal.
+  secretFiles:
+    - secretName: e2e-sandbox-registry
+      mode: 288
+      items:
+        - key: token
+          path: /etc/app/token
+    - secretName: e2e-sandbox-cosign
+      optional: true
+      items:
+        - key: cosign.pub
+          path: /etc/app/cosign.pub
+          mode: 292
+  podMetadata:
+    labels:
+      app: e2e-sandbox-web
   nodeSelector:
     kubeswift.io/kernel: "true"
   kernelProfileRef:

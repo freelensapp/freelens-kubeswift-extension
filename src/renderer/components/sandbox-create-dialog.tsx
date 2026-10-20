@@ -23,6 +23,10 @@
 // grouping: this form spends four collapsed sections where the pool spends two,
 // because A8 and A9 are two sections here and one there, and because a sandbox's
 // GPU section is a three-way backend control that a checkout removes entirely.
+//
+// SPEC-0019 T4 adds the Network section (shared with the pool form, rendered on
+// the cold path only: a checkout's network is the pool's, D2) and the five
+// workload sections of `sandbox-workload-sections.tsx`, offered on both modes.
 
 import { Renderer } from "@freelensapp/extensions";
 import * as Mobx from "mobx";
@@ -106,6 +110,7 @@ import {
   sandboxSourceLabels,
   sandboxSources,
   sandboxSubmitBlockReason,
+  sandboxWorkloadContext,
   scratchVolumeModeFact,
   setSandboxGpuBackend,
   setSandboxScratchSource,
@@ -114,6 +119,7 @@ import {
   updateArgvRow,
   updateEnvRow,
 } from "./sandbox-create";
+import { SandboxNetworkSection } from "./sandbox-network-section";
 import {
   loadGpuProfiles,
   loadKernels,
@@ -127,6 +133,14 @@ import {
   sandboxCreateInputs,
   updateSandboxShape,
 } from "./sandbox-pool-create-dialog";
+import { clearWorkloadSecrets } from "./sandbox-workload-create";
+import {
+  SandboxArtifactsSection,
+  SandboxPodLabelsSection,
+  SandboxProbesSection,
+  SandboxSecretFilesSection,
+  SandboxTerminationSection,
+} from "./sandbox-workload-sections";
 
 import type { ObjectPickerFacts } from "./create-dialog";
 import type { GuestGpuProfileFacts } from "./guest-create";
@@ -144,6 +158,7 @@ import type {
   SandboxSource,
 } from "./sandbox-create";
 import type { SandboxShapeOwner, SlotShapeWording } from "./sandbox-pool-create-dialog";
+import type { SandboxWorkloadOwner } from "./sandbox-workload-sections";
 
 const { observer } = MobxReact;
 
@@ -179,7 +194,7 @@ export const sandboxSlotShapeWording: SlotShapeWording = {
 };
 
 /** The form's state, for one opening of the dialog. */
-export interface SandboxDialogModel extends SandboxShapeOwner {
+export interface SandboxDialogModel extends SandboxShapeOwner, SandboxWorkloadOwner {
   values: SandboxFormValues;
   /** The namespace's SwiftSandboxPools, for the checkout picker and the derivation. */
   pools: PickerFacts<SandboxPoolFacts>;
@@ -235,6 +250,12 @@ export function createSandboxDialogModel(
       gpuOpen: false,
       registryOpen: false,
       modelOpen: false,
+      networkOpen: false,
+      probesOpen: false,
+      terminationOpen: false,
+      artifactsOpen: false,
+      secretFilesOpen: false,
+      podLabelsOpen: false,
       okButtonProps: { disabled: false, primary: true, accent: false },
       onValuesChanged: () => syncOkButton(model),
     },
@@ -271,7 +292,8 @@ export const toggleSandboxFormSection = Mobx.action(
  * Moves the form to another namespace.
  *
  * Everything namespaced goes with it: the pool, the scratch claim, the kernel
- * and GPU profiles and the two Secrets all named objects of the previous
+ * and GPU profiles, the two Secrets and the workload's Secrets (the artifacts'
+ * pull and verification keys, the Secret files) all named objects of the previous
  * namespace and name nothing in this one, which is the stale-selection bug
  * upstream's own wizard carries across cluster switches.
  */
@@ -279,6 +301,7 @@ export const changeSandboxNamespace = Mobx.action((model: SandboxDialogModel, na
   model.values.namespace = namespace;
   model.values.pool = "";
   model.values.scratchClaim = "";
+  model.values.workload = clearWorkloadSecrets(model.values.workload);
   Object.assign(model.values.shape, {
     kernelProfile: "",
     gpuProfile: "",
@@ -346,6 +369,7 @@ export async function loadSandboxPools(model: SandboxDialogModel, namespace: str
           // A Quantity may be a number; the facts carry it as text.
           memory: pool.spec?.memory === undefined ? undefined : String(pool.spec.memory),
           rootfsMode: pool.spec?.rootfsMode,
+          networkMode: pool.spec?.network?.mode,
         })),
       };
       // The derivation is a snapshot of an object nothing makes immutable, so
@@ -585,9 +609,10 @@ const SandboxDerivedShapeFacts = observer(({ model }: { model: SandboxDialogMode
         {`Read from ${model.values.pool.trim()} ${derived.readAt ? `at ${derived.readAt}` : "as this dialog opened"} and SENT from it. These are the four upstream documents a claimant as having to match, and the four nothing on the cluster ever compares - a mismatched image silently runs this workload inside the pool image's rootfs, which is why they are not editable here. A different shape is what the other mode is for.`}
       </div>
       <div className={styles.hint}>
-        The network mode, the kernel profile and the node selector are not asked for on a checkout either: the slot is
-        already booted and already placed, and the documented match set is these four alone. The YAML editor is the
-        escape hatch if a claim ever needs more.
+        The network (its mode, ports, ingress and egress), the kernel profile and the node selector are not asked for on
+        a checkout either: the slot is already booted, placed and wired by the pool, and the documented match set is
+        these four alone. The workload sections below are still offered: they belong to this sandbox. The YAML editor is
+        the escape hatch if a claim ever needs more.
       </div>
     </div>
   );
@@ -688,11 +713,10 @@ const WorkingDirField = observer(({ model }: { model: SandboxDialogModel }) => (
 /**
  * The environment, as literal values only.
  *
- * `valueFrom` is schema-complete and behaviourally ignored - the merge takes the
- * literal value, because a microVM has no downward-API and no Secret path - so a
- * `secretKeyRef` variable reaches the guest EMPTY. The control is not offered
- * and the fact stands in its place (W12 option dropping); the footer says it
- * again with the reason.
+ * Since v0.18.0 `valueFrom.secretKeyRef` is honoured (the launcher reads the
+ * Secret with its own account) and every other source is refused. This form
+ * writes literal values only; the hint and the footer say where a Secret-backed
+ * variable is written instead.
  */
 const EnvSection = observer(({ model }: { model: SandboxDialogModel }) => {
   const messages = envErrors(model.values);
@@ -701,9 +725,8 @@ const EnvSection = observer(({ model }: { model: SandboxDialogModel }) => {
     <div className={styles.field} data-testid="sandbox-create-env">
       <div className={styles.label}>Environment</div>
       <div className={styles.hint}>
-        Merged over the image config's own environment. Literal values only: env[].valueFrom is declared in the schema
-        and IGNORED by the controller, which takes the literal value, so a secretKeyRef variable would reach the guest
-        empty.
+        Merged over the image config's own environment. Literal values only here: a value from a Secret
+        (env[].valueFrom.secretKeyRef, the one source KubeSwift accepts) is written in the YAML editor.
       </div>
 
       {model.values.env.map((row, index) => (
@@ -1084,6 +1107,7 @@ export const SandboxCreateForm = observer(({ model }: { model: SandboxDialogMode
   const blocked = sandboxSubmitBlockReason(inputs, model.values);
   const asked = sandboxShapeIsAsked(inputs, model.values);
   const checkout = model.values.source === "checkout";
+  const workloadContext = sandboxWorkloadContext(inputs, model.values);
 
   return (
     <div className={styles.form} data-testid="swiftsandbox-create-form">
@@ -1142,6 +1166,12 @@ export const SandboxCreateForm = observer(({ model }: { model: SandboxDialogMode
 
       <ScratchDiskSection model={model} />
       <SandboxGpuSection model={model} />
+      {checkout ? null : <SandboxNetworkSection model={model} kind="sandbox" />}
+      <SandboxProbesSection model={model} context={workloadContext} />
+      <SandboxTerminationSection model={model} context={workloadContext} />
+      <SandboxArtifactsSection model={model} context={workloadContext} />
+      <SandboxSecretFilesSection model={model} context={workloadContext} />
+      <SandboxPodLabelsSection model={model} context={workloadContext} />
       <SandboxRegistrySection model={model} />
       <SandboxModelSection model={model} />
 

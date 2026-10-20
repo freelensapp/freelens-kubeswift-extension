@@ -1,0 +1,120 @@
+# The artifact kinds of SPEC-0019 (T3): two cluster-wide
+# SwiftArtifactVerificationPolicies, a valid one and an invalid one, and two
+# SwiftArtifactPlacements on the warm pool of 140-swiftsandboxpools.yaml, one
+# fully prepared and one with an artifact the invalid policy refuses.
+#
+# The placements name the Secrets 125-sandbox-references.yaml already creates,
+# so the drawer's Secret rows render as links. Every digest is a made-up one and
+# every PEM text is base64 of a sentence saying it is fake: nothing in the E2E
+# cluster pulls or verifies an artifact. The statuses are injected by
+# cluster-up.sh.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftArtifactVerificationPolicy
+metadata:
+  name: e2e-policy-signed
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  repositories:
+    - ghcr.io/freelensapp/kubeswift-e2e/**
+    - registry.kubeswift-e2e.internal/artifacts/*
+  # Both halves of a label selector, matching the fixture namespace only.
+  namespaceSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: freelens-kubeswift-e2e
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: In
+        values:
+          - kubeswift-e2e
+  # Two authorities: the key in use and the one rotated in next to it.
+  authorities:
+    - name: release
+      key:
+        publicKey: |
+          -----BEGIN PUBLIC KEY-----
+          Tk9ULUEtUkVBTC1SRUxFQVNFLUtFWQ==
+          -----END PUBLIC KEY-----
+    - name: rotation
+      key:
+        publicKey: |
+          -----BEGIN PUBLIC KEY-----
+          Tk9ULUEtUkVBTC1ST1RBVElPTi1LRVk=
+          -----END PUBLIC KEY-----
+  # Three of the four claim sources.
+  claims:
+    - key: tier
+      values:
+        - prod
+        - staging
+    - key: consumer
+      fromNamespace: true
+    - key: model
+      fromArtifact: model-id
+  digestPinning: Required
+  otherRepositories: Deny
+---
+# The invalid one: its only authority holds no PEM block, so the controller
+# reports Ready False and refuses every artifact the policy governs. The empty
+# selector selects every namespace, and the drawer must say so rather than show
+# an empty row.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftArtifactVerificationPolicy
+metadata:
+  name: e2e-policy-invalid
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  repositories:
+    - registry.kubeswift-e2e.internal/legacy/*
+  namespaceSelector: {}
+  authorities:
+    - name: legacy
+      key:
+        publicKey: not-a-pem-public-key
+  digestPinning: Optional
+---
+# Fully prepared: one artifact, authorized and governed by the valid policy,
+# held by the cluster's one node.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftArtifactPlacement
+metadata:
+  name: e2e-placement-ready
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  poolRef:
+    name: e2e-sandbox-pool
+  artifacts:
+    - name: weights
+      ref: ghcr.io/freelensapp/kubeswift-e2e/model@sha256:f1ed9422913ad93219d2d0e0e003015f145674e6cfc2442869926a058fb752b2
+      layout: unpacked
+      pullSecretRef:
+        name: e2e-sandbox-registry
+      verifyKeySecretRef:
+        name: e2e-sandbox-cosign
+      claims:
+        model-id: e2e-demo
+        tier: prod
+      requirePlatformVerification: true
+---
+# Refused: the second artifact comes from a repository the invalid policy
+# governs, so it is prepared nowhere, and the two target nodes are not
+# prepared - the cluster's own node still preparing, and a node that is gone,
+# whose row must stay plain text.
+apiVersion: sandbox.kubeswift.io/v1alpha1
+kind: SwiftArtifactPlacement
+metadata:
+  name: e2e-placement-refused
+  namespace: kubeswift-e2e
+  labels:
+    app.kubernetes.io/part-of: freelens-kubeswift-e2e
+spec:
+  poolRef:
+    name: e2e-sandbox-pool
+  artifacts:
+    - name: tools
+      ref: ghcr.io/freelensapp/kubeswift-e2e/tools@sha256:0cc61bdbd38ccc089cbc9776c90b3413b6c64e7303924c555d9ddf55c23c9851
+    - name: legacy-data
+      ref: registry.kubeswift-e2e.internal/legacy/data@sha256:1b01e41d86bbf67e6e5215b08874cdf7c8511b90fc4d66c9f623fbbf1f10c5a1

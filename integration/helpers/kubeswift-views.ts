@@ -57,4 +57,15 @@ export const KUBESWIFT_VIEWS: KubeSwiftView[] = [
   // all qualified so that neither the sidebar nor this pass's failure output is
   // ambiguous next to the host's own "Cluster" item (SPEC-0009).
   { menuId: "fleetclusters", title: "Member Clusters", fixtureObject: "e2e-fleet-edge-1" },
+  // The four read-only kinds KubeSwift added after v0.13.12 (SPEC-0019, T3),
+  // registered after the fleet page; the menu files them under Data
+  // Protection and Sandboxes.
+  { menuId: "swiftstoragelocations", title: "Storage Locations", fixtureObject: "e2e-location-team" },
+  {
+    menuId: "swiftclusterstoragelocations",
+    title: "Cluster Storage Locations",
+    fixtureObject: "e2e-cluster-location-default",
+  },
+  { menuId: "swiftartifactplacements", title: "Artifact Placements", fixtureObject: "e2e-placement-ready" },
+  { menuId: "swiftartifactverificationpolicies", title: "Verification Policies", fixtureObject: "e2e-policy-signed" },
 ];

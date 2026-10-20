@@ -14,6 +14,7 @@ import { noWarmCapTooltip, SwiftSandboxPool } from "../api/kubeswift/swiftsandbo
 import { formatQuantity } from "../api/kubeswift/types";
 import { existingObjectRef, objectExists } from "../components/object-existence";
 import { useReferenceStores } from "../components/reference-loader";
+import { SandboxNetworkSection } from "../components/sandbox-network-drawer";
 import { classifySandbox, classifySandboxPool } from "../components/sandbox-status";
 import styles from "./swiftsandboxpool-details.module.scss";
 
@@ -64,6 +65,10 @@ const gpuSizingTooltip =
   "A warm GPU pool pre-boots each slot with its own native SwiftGPU allocation, so minWarm should not exceed the " +
   "number of GPUs the cluster can give it";
 
+/** Why a warming slot is not counted as warm. */
+const warmingTooltip =
+  "Unclaimed slots that are not ready yet. A checkout never takes one: with no ready slot it boots cold";
+
 /** What the image environment is for, said once rather than per row. */
 const imageEnvTooltip =
   "The pool image's own config environment, resolved once at materialize. A checkout merges the claiming " +
@@ -108,6 +113,12 @@ function PoolSection({ object }: SectionProps) {
       </DrawerItem>
       <DrawerItem name="Warm">
         <WithTooltip>{SwiftSandboxPool.getWarmReplicas(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      {/* Unclaimed slots still being scheduled, materialized or booted
+          (v0.18.0). A checkout never takes one, so they are counted apart
+          from Warm rather than in it. */}
+      <DrawerItem name="Warming" hidden={SwiftSandboxPool.getWarmingReplicas(object) === undefined}>
+        <WithTooltip tooltip={warmingTooltip}>{SwiftSandboxPool.getWarmingReplicas(object)}</WithTooltip>
       </DrawerItem>
       <DrawerItem name="Claimed">
         <WithTooltip>{SwiftSandboxPool.getClaimedReplicas(object) ?? notAvailable}</WithTooltip>
@@ -450,6 +461,7 @@ export const SwiftSandboxPoolDetails = observer((props: SwiftSandboxPoolDetailsP
     <>
       <PoolSection object={object} />
       <SlotShapeSection object={object} />
+      <SandboxNetworkSection network={object.spec?.network} />
       <RootfsSection object={object} />
       <ModelSection object={object} />
       <GpuSection object={object} />

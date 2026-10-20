@@ -29,6 +29,15 @@ export const SwiftGuestClassDetails = observer((props: SwiftGuestClassDetailsPro
       <DrawerItem name="Core Scheduling">
         <WithTooltip>{SwiftGuestClass.getCoreScheduling(object)}</WithTooltip>
       </DrawerItem>
+      <DrawerItem name="CPU Pinning">
+        <WithTooltip>{SwiftGuestClass.getCpuPinning(object)}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="SMT Policy" hidden={!SwiftGuestClass.getSmtPolicy(object)}>
+        <WithTooltip>{SwiftGuestClass.getSmtPolicy(object)}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Hugepages" hidden={!SwiftGuestClass.getHugepages(object)}>
+        <WithTooltip>{SwiftGuestClass.getHugepages(object)}</WithTooltip>
+      </DrawerItem>
 
       <DrawerTitle>Root Disk</DrawerTitle>
       <DrawerItem name="Size">
@@ -36,6 +45,9 @@ export const SwiftGuestClassDetails = observer((props: SwiftGuestClassDetailsPro
       </DrawerItem>
       <DrawerItem name="Format">
         <WithTooltip>{SwiftGuestClass.getRootDiskFormat(object) ?? notAvailable}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Shared Base Disk" hidden={!SwiftGuestClass.isSharedBaseDisk(object)}>
+        <WithTooltip>Yes: node-local, not replicated, never migrated</WithTooltip>
       </DrawerItem>
 
       <DrawerTitle>Storage Defaults</DrawerTitle>

@@ -103,6 +103,17 @@ describe("SwiftGuest (v1alpha1)", () => {
       expect(SwiftGuest.getHypervisor(object)).toBe("cloud-hypervisor");
     });
 
+    // KubeSwift v0.15.0 (SPEC-0019 T2).
+    it("reads the launcher pod's IP, and nothing when it is cleared", () => {
+      const object = buildSwiftGuest(
+        { guestClassRef },
+        { network: { primaryIP: "192.168.100.2", primaryIPScope: "Pod", podIP: "10.244.1.7" } },
+      );
+
+      expect(SwiftGuest.getPodIP(object)).toBe("10.244.1.7");
+      expect(SwiftGuest.getPodIP(buildSwiftGuest({ guestClassRef }, { network: { podIP: "" } }))).toBeUndefined();
+    });
+
     it("defaults the restart count to zero on a guest without status", () => {
       expect(SwiftGuest.getRestartCount(buildSwiftGuest({ guestClassRef }))).toBe(0);
     });

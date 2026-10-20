@@ -1,6 +1,7 @@
 import { Common, Renderer } from "@freelensapp/extensions";
 import * as MobxReact from "mobx-react";
 import { maybe } from "../../common/utils";
+import { SwiftArtifactVerificationPolicy } from "../api/kubeswift/swiftartifactverificationpolicy-v1alpha1";
 import { SwiftGPUNode } from "../api/kubeswift/swiftgpunode-v1alpha1";
 import { describeTier, SwiftGPUProfile } from "../api/kubeswift/swiftgpuprofile-v1alpha1";
 import { SwiftKernel } from "../api/kubeswift/swiftkernel-v1alpha1";
@@ -9,7 +10,10 @@ import {
   defaultKernelTooltip,
   describeEnvSource,
   describeNetworkMode,
+  describeProbe,
   describeRootfsMode,
+  describeSecretFileItem,
+  formatFileMode,
   imageEntrypointLabel,
   SwiftSandbox,
 } from "../api/kubeswift/swiftsandbox-v1alpha1";
@@ -19,7 +23,8 @@ import { canOpenSandboxConsole, sandboxConsoleDrawerExplanation } from "../compo
 import { existingObjectRef, objectExists } from "../components/object-existence";
 import { findDefaultContainerOfPod } from "../components/pod-logs";
 import { useReferenceStores } from "../components/reference-loader";
-import { classifySandbox } from "../components/sandbox-status";
+import { SandboxNetworkSection } from "../components/sandbox-network-drawer";
+import { classifySandbox, classifySandboxArtifact } from "../components/sandbox-status";
 import styles from "./swiftsandbox-details.module.scss";
 
 import type { ReferenceRequest } from "../components/reference-loader";
@@ -65,6 +70,41 @@ const timeoutTooltip =
 const ttlTooltip =
   "Retention after the sandbox turns terminal: the controller deletes it once it has been Completed or Failed " +
   "for at least this long. It is anchored on terminalAt, not on startedAt";
+
+const drainPeriodTooltip =
+  "How long the workload keeps running after deletion has taken the sandbox out of Service endpoints, before the " +
+  "microVM is stopped. 5s by default when the sandbox exposes ports, else 0s";
+
+const podIPTooltip = "The launcher pod's IP, which unlike the guest IP is unique in the cluster";
+
+const ipScopeTooltips = new Map<string, string>([
+  [
+    "Pod",
+    "The guest sits behind its launcher's NAT: the address is on the launcher pod's private network, repeats " +
+      "across sandboxes, and is reachable only from inside that launcher pod",
+  ],
+  ["Network", "The address is reachable on the network it was given from"],
+]);
+
+const readinessTooltip =
+  "Its result is the WorkloadReady condition and, when the sandbox exposes ports, the launcher pod's readiness, " +
+  "so a Service routes to the sandbox only while it passes";
+const livenessTooltip =
+  "After failureThreshold failures in a row the workload is stopped and the sandbox ends Failed with reason " +
+  "LivenessProbeFailed. Nothing restarts it";
+const readinessStartupTooltip =
+  "The readiness probe runs at this interval from the workload's start until it first passes or the window ends, " +
+  "and failures in that time do not count";
+
+const podLabelsTooltip = "Added to the launcher pod, or to the slot a checkout claims, so a Service can select it";
+
+const artifactRefTagTooltip = "A tag, resolved to a digest when the sandbox starts and recorded in the status";
+const fetchTimeoutTooltip =
+  "How long this optional artifact may delay the workload, counted from the sandbox's creation. 10s by default";
+const claimsTooltip =
+  "Signed annotations the platform verification must find. An artifact whose claims no policy governs is refused";
+const requirePlatformVerificationTooltip =
+  "Refused (skipped, if optional) unless a SwiftArtifactVerificationPolicy governs it in this namespace";
 
 const rootfsSharedTooltip = "The materialized rootfs is node-local and shared by every sandbox running the same digest";
 
@@ -189,6 +229,9 @@ const SandboxSection = observer(({ object }: SectionProps) => {
       <DrawerItem name="TTL" hidden={!spec?.ttl}>
         <WithTooltip tooltip={ttlTooltip}>{spec?.ttl}</WithTooltip>
       </DrawerItem>
+      <DrawerItem name="Drain Period" hidden={!spec?.termination?.drainPeriod}>
+        <WithTooltip tooltip={drainPeriodTooltip}>{spec?.termination?.drainPeriod}</WithTooltip>
+      </DrawerItem>
     </>
   );
 });
@@ -279,7 +322,13 @@ const GuestSection = observer(({ object }: SectionProps) => {
 const RuntimeSection = observer(({ object }: SectionProps) => {
   const status = object.status;
 
-  if (!status?.nodeName && !status?.podRef && !status?.runtime && !status?.network?.primaryIP) {
+  if (
+    !status?.nodeName &&
+    !status?.podRef &&
+    !status?.runtime &&
+    !status?.network?.primaryIP &&
+    !status?.network?.podIP
+  ) {
     return null;
   }
 
@@ -291,6 +340,7 @@ const RuntimeSection = observer(({ object }: SectionProps) => {
   // The affordance is absent, not disabled, when there is nothing to open: a
   // pod that is gone, or one whose containers the store has not reported.
   const container = pod ? findDefaultContainerOfPod(pod) : undefined;
+  const scope = SwiftSandbox.getPrimaryIPScope(object);
 
   return (
     <>
@@ -322,8 +372,17 @@ const RuntimeSection = observer(({ object }: SectionProps) => {
           ) : null}
         </span>
       </DrawerItem>
-      <DrawerItem name="IP" hidden={!SwiftSandbox.getPrimaryIP(object)}>
+      {/* Named after the printer column since v0.18.0 added the pod's own
+          address next to it; the scope says where the guest's can be reached
+          from, which for a sandbox is only inside its launcher pod. */}
+      <DrawerItem name="Guest IP" hidden={!SwiftSandbox.getPrimaryIP(object)}>
         <WithTooltip>{SwiftSandbox.getPrimaryIP(object)}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="IP Scope" hidden={!scope}>
+        <WithTooltip tooltip={scope ? ipScopeTooltips.get(scope) : undefined}>{scope}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Pod IP" hidden={!SwiftSandbox.getPodIP(object)}>
+        <WithTooltip tooltip={podIPTooltip}>{SwiftSandbox.getPodIP(object)}</WithTooltip>
       </DrawerItem>
       <DrawerItem name="Hypervisor" hidden={!SwiftSandbox.getHypervisor(object)}>
         <WithTooltip>{SwiftSandbox.getHypervisor(object)}</WithTooltip>
@@ -532,6 +591,211 @@ const GpuSection = observer(({ object }: SectionProps) => {
 });
 
 /**
+ * The two probes and the fast start of the readiness one, each summarized on
+ * one line with the schema's defaults filled in (SPEC-0019 T2).
+ */
+function HealthSection({ object }: SectionProps) {
+  const spec = object.spec;
+  const readiness = describeProbe(spec?.readinessProbe);
+  const liveness = describeProbe(spec?.livenessProbe);
+  const startup = spec?.readinessStartup;
+
+  if (!readiness && !liveness && !startup) {
+    return null;
+  }
+
+  return (
+    <>
+      <DrawerTitle>Health</DrawerTitle>
+      <DrawerItem name="Readiness Probe" hidden={!readiness}>
+        <WithTooltip tooltip={readinessTooltip}>{readiness}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Liveness Probe" hidden={!liveness}>
+        <WithTooltip tooltip={livenessTooltip}>{liveness}</WithTooltip>
+      </DrawerItem>
+      <DrawerItem name="Readiness Startup" hidden={!startup}>
+        <WithTooltip tooltip={readinessStartupTooltip}>
+          {`every ${startup?.interval || "100ms"} for ${startup?.window || "30s"}`}
+        </WithTooltip>
+      </DrawerItem>
+    </>
+  );
+}
+
+/** What the launcher pod is given on top of what KubeSwift sets itself. */
+function PodMetadataSection({ object }: SectionProps) {
+  const labels = Object.entries(object.spec?.podMetadata?.labels ?? {});
+  const annotations = Object.entries(object.spec?.podMetadata?.annotations ?? {});
+
+  if (labels.length === 0 && annotations.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      <DrawerTitle>Pod Metadata</DrawerTitle>
+      <DrawerItem name="Labels" hidden={labels.length === 0} labelsOnly>
+        {labels.map(([key, value]) => (
+          <Badge key={key} label={`${key}=${value}`} tooltip={podLabelsTooltip} />
+        ))}
+      </DrawerItem>
+      <DrawerItem name="Annotations" hidden={annotations.length === 0} labelsOnly>
+        {annotations.map(([key, value]) => (
+          <Badge key={key} label={`${key}=${value}`} />
+        ))}
+      </DrawerItem>
+    </>
+  );
+}
+
+/** A Secret row: a link while the Secret is in its store, its name otherwise. */
+function SecretReference({ name, namespace }: { name?: string; namespace: string }) {
+  return objectExists(secretsStore, name, namespace) ? (
+    <LinkToSecret name={name} namespace={namespace} />
+  ) : (
+    <WithTooltip>{name}</WithTooltip>
+  );
+}
+
+/**
+ * Every artifact, as its spec entry and its status entry joined on the name, one
+ * titled group each: an artifact has a dozen facts of its own, which a table row
+ * could not hold on one line (DESIGN.md section 3).
+ */
+const ArtifactsSection = observer(({ object }: SectionProps) => {
+  const views = SwiftSandbox.getArtifactViews(object);
+
+  if (views.length === 0) {
+    return null;
+  }
+
+  const namespace = object.getNs();
+  const policyStore = maybe(() => SwiftArtifactVerificationPolicy.getStore<SwiftArtifactVerificationPolicy>());
+
+  return (
+    <>
+      {views.map(({ name, spec, status }) => {
+        const condition = status ? classifySandboxArtifact(status.state, status.reason) : undefined;
+        const claims = Object.entries(spec?.claims ?? {});
+        const policies = status?.policies ?? [];
+        const ref = spec?.ref;
+
+        return (
+          <div key={name} data-testid={`swiftsandbox-artifact-${name}`}>
+            <DrawerTitle>{`Artifact: ${name}`}</DrawerTitle>
+            <DrawerItem name="State" hidden={!condition} labelsOnly>
+              {condition ? (
+                <Badge className={condition.className} label={condition.state} tooltip={condition.explanation} />
+              ) : null}
+            </DrawerItem>
+            <DrawerItem name="Reason" hidden={!status?.reason}>
+              <WithTooltip>{status?.reason}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="Message" hidden={!status?.message}>
+              <WithTooltip>{status?.message}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="Ref" hidden={!ref}>
+              <WithTooltip tooltip={ref && !ref.includes("@") ? artifactRefTagTooltip : undefined}>{ref}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="Digest" hidden={!status?.digest}>
+              <WithTooltip>{status?.digest}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="Mount Path">
+              <WithTooltip>{status?.mountPath ?? spec?.mountPath ?? notAvailable}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="Layout" hidden={!spec?.layout}>
+              <WithTooltip>{spec?.layout}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="Optional" hidden={!spec?.optional} labelsOnly>
+              <BadgeBoolean value={spec?.optional} />
+            </DrawerItem>
+            <DrawerItem name="Fetch Timeout" hidden={!spec?.fetchTimeout}>
+              <WithTooltip tooltip={fetchTimeoutTooltip}>{spec?.fetchTimeout}</WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="Pull Secret" hidden={!spec?.pullSecretRef?.name}>
+              <SecretReference name={spec?.pullSecretRef?.name} namespace={namespace} />
+            </DrawerItem>
+            <DrawerItem name="Verify Key Secret" hidden={!spec?.verifyKeySecretRef?.name}>
+              <SecretReference name={spec?.verifyKeySecretRef?.name} namespace={namespace} />
+            </DrawerItem>
+            <DrawerItem name="Require Platform Verification" hidden={!spec?.requirePlatformVerification} labelsOnly>
+              <WithTooltip tooltip={requirePlatformVerificationTooltip}>
+                <BadgeBoolean value={spec?.requirePlatformVerification} />
+              </WithTooltip>
+            </DrawerItem>
+            <DrawerItem name="Claims" hidden={claims.length === 0} labelsOnly>
+              {claims.map(([key, value]) => (
+                <Badge key={key} label={`${key}=${value}`} tooltip={claimsTooltip} />
+              ))}
+            </DrawerItem>
+            <DrawerItem name="Policies" hidden={policies.length === 0}>
+              <span className={styles.policies}>
+                {policies.map((policy) => {
+                  const policyRef = existingObjectRef(policyStore, SwiftArtifactVerificationPolicy.kind, policy.name);
+                  const generation = policy.generation === undefined ? "" : ` (generation ${policy.generation})`;
+
+                  return (
+                    <span key={policy.name}>
+                      {policyRef ? <LinkToObject objectRef={policyRef} object={object} /> : policy.name}
+                      {generation}
+                    </span>
+                  );
+                })}
+              </span>
+            </DrawerItem>
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
+/** The Secrets whose keys are written into the guest as files. */
+const SecretFilesSection = observer(({ object }: SectionProps) => {
+  const files = SwiftSandbox.getSecretFiles(object);
+
+  if (files.length === 0) {
+    return null;
+  }
+
+  const namespace = object.getNs();
+
+  return (
+    <>
+      <DrawerTitle>Secret Files</DrawerTitle>
+      <Table scrollable={false} sortSyncWithUrl={false} className={styles.secretFiles}>
+        <TableHead flat sticky={false}>
+          <TableCell className="secret">Secret</TableCell>
+          <TableCell className="items">Files</TableCell>
+          <TableCell className="mode">Mode</TableCell>
+          <TableCell className="optional">Optional</TableCell>
+        </TableHead>
+        {files.map((file, index) => {
+          const items = (file.items ?? []).map(describeSecretFileItem).join(", ");
+
+          return (
+            <TableRow key={`${index}-${file.secretName}`} nowrap>
+              <TableCell className="secret">
+                <SecretReference name={file.secretName} namespace={namespace} />
+              </TableCell>
+              <TableCell className="items">
+                <WithTooltip>{items || notAvailable}</WithTooltip>
+              </TableCell>
+              <TableCell className="mode">
+                <WithTooltip tooltip="0400 when unset">{formatFileMode(file.mode) ?? "0400"}</WithTooltip>
+              </TableCell>
+              <TableCell className="optional">
+                <BadgeBoolean value={Boolean(file.optional)} />
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </Table>
+    </>
+  );
+});
+
+/**
  * The environment the workload is given, merged by the controller over the
  * image config's own.
  *
@@ -728,17 +992,34 @@ export const SwiftSandboxDetails = observer((props: SwiftSandboxDetailsProps) =>
     requests.push({ label: SwiftGPUNode.crd.plural, store: gpuNodeStore, lookups: [{ name: gpuNodeName }] });
   }
 
+  // The verification policies an artifact's status names. Cluster-scoped, so
+  // no namespaces; asked for only when a status names one.
+  const policyNames = SwiftSandbox.getArtifactPolicyNames(object);
+
+  if (policyNames.length > 0) {
+    requests.push({
+      label: SwiftArtifactVerificationPolicy.crd.plural,
+      store: maybe(() => SwiftArtifactVerificationPolicy.getStore<SwiftArtifactVerificationPolicy>()),
+      lookups: policyNames.map((name) => ({ name })),
+    });
+  }
+
   useReferenceStores(requests);
 
   return (
     <>
       <SandboxSection object={object} />
       <GuestSection object={object} />
+      <SandboxNetworkSection network={object.spec?.network} egressAllowed={SwiftSandbox.getEgressAllowed(object)} />
+      <HealthSection object={object} />
+      <PodMetadataSection object={object} />
       <RuntimeSection object={object} />
       <RootfsSection object={object} />
       <ModelSection object={object} />
       <ScratchDiskSection object={object} />
       <GpuSection object={object} />
+      <ArtifactsSection object={object} />
+      <SecretFilesSection object={object} />
       <EnvironmentSection object={object} />
       <KubeObjectConditionsDrawer object={object} />
     </>

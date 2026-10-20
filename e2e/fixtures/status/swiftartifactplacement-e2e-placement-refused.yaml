@@ -1,0 +1,48 @@
+# Merge patch applied to the status subresource of
+# swiftartifactplacement/e2e-placement-refused. See
+# swiftartifactplacement-e2e-placement-ready.yaml for why statuses are
+# injected.
+#
+# Refused: legacy-data comes from a repository the invalid policy governs, so
+# the Prepared condition is False with ArtifactRefused, and neither target node
+# is prepared. The first is the cluster's own node, still preparing; the second
+# names a node that does not exist, whose row must stay plain text, after three
+# failed attempts.
+status:
+  observedGeneration: 1
+  targetNodes: 2
+  preparedNodes: 0
+  artifacts:
+    - name: tools
+      digest: sha256:0cc61bdbd38ccc089cbc9776c90b3413b6c64e7303924c555d9ddf55c23c9851
+      reason: Authorized
+      preparedNodes: 0
+      policies:
+        - name: e2e-policy-signed
+          generation: 1
+    - name: legacy-data
+      reason: PolicyDenied
+      message: SwiftArtifactVerificationPolicy e2e-policy-invalid is not ready, so it refuses every artifact it governs.
+      preparedNodes: 0
+      policies:
+        - name: e2e-policy-invalid
+          generation: 1
+  nodes:
+    - name: __NODE_NAME__
+      prepared: false
+      reason: Preparing
+      observedGeneration: 1
+    - name: e2e-artifact-node-gone
+      prepared: false
+      reason: PrepareFailed
+      message: the node cache could not be reached
+      failures: 3
+      lastFailureTime: "2026-10-19T08:40:00Z"
+      observedGeneration: 1
+  conditions:
+    - type: Prepared
+      status: "False"
+      reason: ArtifactRefused
+      message: 'legacy-data: refused by SwiftArtifactVerificationPolicy e2e-policy-invalid.'
+      lastTransitionTime: "2026-10-19T08:35:00Z"
+      observedGeneration: 1

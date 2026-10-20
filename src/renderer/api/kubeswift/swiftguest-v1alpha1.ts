@@ -229,8 +229,28 @@ export interface SwiftGuestNetworkStatus {
   interface?: string;
   interfaces?: SwiftGuestInterfaceStatus[];
   primaryIP?: string;
+  /**
+   * Where `primaryIP` is reachable from (KubeSwift v0.15.0+): `Pod` is the
+   * launcher's private nat network, the same subnet in every launcher;
+   * `Network` is a network outside the pod.
+   */
+  primaryIPScope?: SwiftGuestPrimaryIPScope;
+  /** The current launcher pod's IP, cleared while no launcher runs the guest (v0.15.0+). */
+  podIP?: string;
   ready?: boolean;
   serviceRef?: LocalObjectReference;
+}
+
+export type SwiftGuestPrimaryIPScope = "Pod" | "Network";
+
+/** Where a shared-base guest's node-local root disk lives (KubeSwift v0.14.0+), recorded once. */
+export interface SwiftGuestSharedBaseDiskStatus {
+  /** The node holding the disk; the guest runs there or not at all. */
+  node: string;
+  baseKey?: string;
+  /** Whether the disk has been built on the node yet. */
+  created?: boolean;
+  sizeBytes?: number;
 }
 
 export interface SwiftGuestRuntimeStatus {
@@ -258,6 +278,7 @@ export interface SwiftGuestStatus {
   podRef?: ObjectReference;
   restartCount?: number;
   runtime?: SwiftGuestRuntimeStatus;
+  sharedBaseDisk?: SwiftGuestSharedBaseDiskStatus;
   storage?: SwiftGuestStorageStatus;
 }
 
@@ -295,6 +316,11 @@ export class SwiftGuest extends Renderer.K8sApi.LensExtensionKubeObject<
 
   static getPrimaryIP(object: SwiftGuest): string | undefined {
     return object.status?.network?.primaryIP;
+  }
+
+  /** The launcher pod's IP, where a nat guest's declared ports are reachable (KubeSwift v0.15.0+). */
+  static getPodIP(object: SwiftGuest): string | undefined {
+    return object.status?.network?.podIP || undefined;
   }
 
   static getRestartCount(object: SwiftGuest): number {

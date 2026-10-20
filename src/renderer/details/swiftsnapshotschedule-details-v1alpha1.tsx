@@ -82,6 +82,15 @@ export const SwiftSnapshotScheduleDetails = observer((props: SwiftSnapshotSchedu
       <DrawerItem name="Backend">
         <WithTooltip>{templateSpec?.backend?.type ?? notAvailable}</WithTooltip>
       </DrawerItem>
+      {/* KubeSwift v0.16.0 (SPEC-0019 T2): the storage location every
+          scheduled snapshot uses, instead of the defaults. */}
+      <DrawerItem name="Storage Location" hidden={!templateSpec?.backend?.locationRef?.name}>
+        <WithTooltip>
+          {templateSpec?.backend?.locationRef?.kind === "SwiftClusterStorageLocation"
+            ? `cluster/${templateSpec.backend.locationRef.name}`
+            : templateSpec?.backend?.locationRef?.name}
+        </WithTooltip>
+      </DrawerItem>
       <DrawerItem name="Deletion Policy">
         <WithTooltip>{templateSpec?.deletionPolicy ?? "Delete"}</WithTooltip>
       </DrawerItem>
