@@ -53,6 +53,7 @@ import {
   addArgvRow,
   addEnvRow,
   argvErrors,
+  clearEnvSecrets,
   createSandboxTitle,
   defaultNetworkMode,
   defaultRootfsMode,
@@ -63,6 +64,9 @@ import {
   defaultSlotMemory,
   envErrors,
   envFieldLabels,
+  envSourceLabels,
+  envSources,
+  envWarnings,
   goDurationGrammar,
   imageEntrypointFact,
   nodeSelectorErrors,
@@ -112,6 +116,7 @@ import {
   sandboxSubmitBlockReason,
   sandboxWorkloadContext,
   scratchVolumeModeFact,
+  setEnvRowSource,
   setSandboxGpuBackend,
   setSandboxScratchSource,
   slotShapeWarnings,
@@ -148,7 +153,9 @@ import type { PickerFacts } from "./guest-create-dialog";
 import type {
   ArgvList,
   ArgvRow,
+  EnvMessages,
   EnvRow,
+  EnvSource,
   SandboxFormInputs,
   SandboxFormValues,
   SandboxGpuBackend,
@@ -163,7 +170,7 @@ import type { SandboxWorkloadOwner } from "./sandbox-workload-sections";
 const { observer } = MobxReact;
 
 const {
-  Component: { ConfirmDialog, Input, NamespaceSelect, Notifications, Radio, RadioGroup, Select },
+  Component: { Checkbox, ConfirmDialog, Input, NamespaceSelect, Notifications, Radio, RadioGroup, Select },
   K8sApi: { namespaceStore, pvcApi },
 } = Renderer;
 
@@ -292,15 +299,16 @@ export const toggleSandboxFormSection = Mobx.action(
  * Moves the form to another namespace.
  *
  * Everything namespaced goes with it: the pool, the scratch claim, the kernel
- * and GPU profiles, the two Secrets and the workload's Secrets (the artifacts'
- * pull and verification keys, the Secret files) all named objects of the previous
- * namespace and name nothing in this one, which is the stale-selection bug
- * upstream's own wizard carries across cluster switches.
+ * and GPU profiles, the two Secrets, the environment's Secrets and the workload's
+ * Secrets (the artifacts' pull and verification keys, the Secret files) all named
+ * objects of the previous namespace and name nothing in this one, which is the
+ * stale-selection bug upstream's own wizard carries across cluster switches.
  */
 export const changeSandboxNamespace = Mobx.action((model: SandboxDialogModel, namespace: string) => {
   model.values.namespace = namespace;
   model.values.pool = "";
   model.values.scratchClaim = "";
+  model.values.env = clearEnvSecrets(model.values.env);
   model.values.workload = clearWorkloadSecrets(model.values.workload);
   Object.assign(model.values.shape, {
     kernelProfile: "",
@@ -711,26 +719,33 @@ const WorkingDirField = observer(({ model }: { model: SandboxDialogModel }) => (
 ));
 
 /**
- * The environment, as literal values only.
+ * The environment, one row per variable: a literal value or one key of a Secret.
  *
  * Since v0.18.0 `valueFrom.secretKeyRef` is honoured (the launcher reads the
- * Secret with its own account) and every other source is refused. This form
- * writes literal values only; the hint and the footer say where a Secret-backed
- * variable is written instead.
+ * Secret with its own account) and every other source is refused, so a row
+ * offers exactly those two sources and the footer says why the others are not.
  */
 const EnvSection = observer(({ model }: { model: SandboxDialogModel }) => {
   const messages = envErrors(model.values);
+  const warnings = envWarnings(sandboxFormInputs(model), model.values);
 
   return (
     <div className={styles.field} data-testid="sandbox-create-env">
       <div className={styles.label}>Environment</div>
       <div className={styles.hint}>
-        Merged over the image config's own environment. Literal values only here: a value from a Secret
-        (env[].valueFrom.secretKeyRef, the one source KubeSwift accepts) is written in the YAML editor.
+        Merged over the image config's own environment. Each variable is a literal value or one key of a Secret of this
+        namespace, which the launcher reads with its own account and hands to the guest.
       </div>
 
       {model.values.env.map((row, index) => (
-        <EnvFields key={row.id} model={model} row={row} index={index} messages={messages[index] ?? {}} />
+        <EnvFields
+          key={row.id}
+          model={model}
+          row={row}
+          index={index}
+          messages={messages[index] ?? {}}
+          warning={warnings[index]}
+        />
       ))}
 
       <AddRowButton
@@ -742,18 +757,22 @@ const EnvSection = observer(({ model }: { model: SandboxDialogModel }) => {
   );
 });
 
-/** One environment variable: a name and a literal value. */
+const envSecretUnverifiedHint = "The Secrets of this namespace could not be listed, so the name is not verified.";
+
+/** One environment variable: a name, and a literal value or a Secret key. */
 const EnvFields = observer(
   ({
     model,
     row,
     index,
     messages,
+    warning,
   }: {
     model: SandboxDialogModel;
     row: EnvRow;
     index: number;
-    messages: Partial<Record<"name" | "value", string>>;
+    messages: EnvMessages;
+    warning?: string;
   }) => {
     const prefix = `sandbox-create-env-${index}`;
     const update = (patch: Partial<EnvRow>) => applySandboxForm(model, updateEnvRow(model.values, row.id, patch));
@@ -775,14 +794,65 @@ const EnvFields = observer(
           />
         </Field>
 
-        <Field label={envFieldLabels.value} hint="Empty is a real value: the variable is set and it is empty.">
-          <Input
-            value={row.value}
-            placeholder="fast"
-            data-testid={`${prefix}-value`}
-            onChange={(value: string) => update({ value })}
+        <Field label="Source" hint="A value and a Secret key are mutually exclusive on one variable.">
+          <Select
+            id={`${prefix}-source`}
+            themeName="light"
+            menuClass={styles.selectMenu}
+            value={row.source}
+            options={envSources.map((source) => ({ value: source, label: envSourceLabels[source] }))}
+            onChange={(option: { value: EnvSource } | null) =>
+              option ? applySandboxForm(model, setEnvRowSource(model.values, row.id, option.value)) : undefined
+            }
           />
         </Field>
+
+        {row.source === "secret" ? (
+          <>
+            <ObjectPickerField
+              id={`${prefix}-secret`}
+              inputTestId={`${prefix}-secret-input`}
+              label={envFieldLabels.secretName}
+              hint="A Secret of this namespace. The launcher reads it with its own account and hands the value to the guest without writing it to any object, log or node disk."
+              unverifiedHint={envSecretUnverifiedHint}
+              placeholder="Pick a Secret"
+              value={row.secretName}
+              facts={model.secrets}
+              error={messages.secretName}
+              warning={warning}
+              onChange={(value: string) => update({ secretName: value })}
+            />
+
+            <Field label={envFieldLabels.secretKey} hint="The Secret's data key to read." error={messages.secretKey}>
+              <Input
+                value={row.secretKey}
+                placeholder="token"
+                data-testid={`${prefix}-key`}
+                onChange={(value: string) => update({ secretKey: value })}
+              />
+            </Field>
+
+            <div className={styles.checkboxRow} data-testid={`${prefix}-optional`}>
+              <Checkbox
+                label="Optional"
+                value={row.optional}
+                onChange={(value: boolean) => update({ optional: value })}
+              />
+              <div className={styles.hint}>
+                A missing Secret or key then does not keep the sandbox Pending, as it otherwise does.
+              </div>
+            </div>
+          </>
+        ) : (
+          <Field label={envFieldLabels.value} hint="Empty is a real value: the variable is set and it is empty.">
+            <Input
+              value={row.value}
+              placeholder="fast"
+              data-testid={`${prefix}-value`}
+              onChange={(value: string) => update({ value })}
+            />
+          </Field>
+        )}
       </FormRow>
     );
   },

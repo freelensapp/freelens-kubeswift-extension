@@ -79,6 +79,7 @@ import type {
   SwiftSandboxEnvVar,
   SwiftSandboxGpuResourceClaim,
   SwiftSandboxScratchDisk,
+  SwiftSandboxSecretKeySelector,
   SwiftSandboxSpec,
 } from "../api/kubeswift/swiftsandbox-v1alpha1";
 import type { SwiftSandboxPoolSpec } from "../api/kubeswift/swiftsandboxpool-v1alpha1";
@@ -1667,7 +1668,8 @@ export const sandboxPoolFooter =
 //   made UNBUILDABLE by the three-way control below rather than validated (S7).
 // - `env[].valueFrom` takes one source since v0.18.0, `secretKeyRef`: the
 //   launcher reads the Secret with its own account and hands the value to the
-//   guest. Every other source is refused. This form writes literal values only.
+//   guest. Every other source is refused. This form writes a literal value or a
+//   Secret key, never both on one variable.
 // - `scratchDisk.blank.volumeMode` is a no-op on three legs: enum-allowed,
 //   webhook-rejected and controller-hardcoded to `Block`.
 //
@@ -1739,11 +1741,35 @@ export interface ArgvRow {
   value: string;
 }
 
-/** One literal entry of `spec.env`. `valueFrom` is not offered; see the footer. */
+/** Where one variable's value comes from: typed here, or one key of a Secret of this namespace. */
+export type EnvSource = "value" | "secret";
+
+/** The sources the row's select offers, in the order it offers them. */
+export const envSources: EnvSource[] = ["value", "secret"];
+
+export const envSourceLabels: Record<EnvSource, string> = {
+  value: "Literal value",
+  secret: "Secret key",
+};
+
+/**
+ * One entry of `spec.env`: a literal `value`, or a `valueFrom.secretKeyRef`.
+ *
+ * The two are mutually exclusive, so the row holds a source and the payload
+ * reads only the fields of that source. The other `valueFrom` sources are
+ * refused by KubeSwift and are not offered; see the footer.
+ */
 export interface EnvRow {
   id: string;
   name: string;
+  source: EnvSource;
   value: string;
+  /** `valueFrom.secretKeyRef.name`, a Secret of the sandbox's OWN namespace. */
+  secretName: string;
+  /** `valueFrom.secretKeyRef.key`, the one key the schema requires. */
+  secretKey: string;
+  /** `valueFrom.secretKeyRef.optional`, sent only when set. */
+  optional: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1825,7 +1851,7 @@ export interface SandboxFormValues {
   args: ArgvRow[];
   /** `spec.workingDir`, which overrides the image config's working directory. */
   workingDir: string;
-  /** `spec.env`, literal values only. */
+  /** `spec.env`, a literal value or a Secret key per variable. */
   env: EnvRow[];
   /** The shape slice 1 built, shared field for field with the pool form. */
   shape: SlotShapeValues;
@@ -1920,9 +1946,9 @@ export function newArgvRow(id: string): ArgvRow {
   return { id, value: "" };
 }
 
-/** A fresh, empty environment row. */
+/** A fresh, empty environment row, with a literal value. */
 export function newEnvRow(id: string): EnvRow {
-  return { id, name: "", value: "" };
+  return { id, name: "", source: "value", value: "", secretName: "", secretKey: "", optional: false };
 }
 
 /** Which of the two argv lists a row helper is acting on. */
@@ -1950,6 +1976,34 @@ export function removeEnvRow(values: SandboxFormValues, id: string): SandboxForm
 
 export function updateEnvRow(values: SandboxFormValues, id: string, patch: Partial<EnvRow>): SandboxFormValues {
   return { ...values, env: values.env.map((row) => (row.id === id ? { ...row, ...patch } : row)) };
+}
+
+/**
+ * Moves one variable to another source, emptying the fields of the one it leaves.
+ *
+ * The same rule as the form's other mode switches: `value` and `valueFrom` are
+ * mutually exclusive, so a field left behind by the source the user moved away
+ * from would be visible in the form and absent from the object.
+ */
+export function setEnvRowSource(values: SandboxFormValues, id: string, source: EnvSource): SandboxFormValues {
+  return {
+    ...values,
+    env: values.env.map((row) =>
+      row.id !== id || row.source === source
+        ? row
+        : source === "secret"
+          ? { ...row, source, value: "" }
+          : { ...row, source, secretName: "", secretKey: "", optional: false },
+    ),
+  };
+}
+
+/**
+ * Empties every variable's Secret name, for a move to another namespace: each
+ * named a Secret of the namespace the form left and names nothing in the new one.
+ */
+export function clearEnvSecrets(rows: readonly EnvRow[]): EnvRow[] {
+  return rows.map((row) => (row.secretName ? { ...row, secretName: "" } : row));
 }
 
 /**
@@ -2375,13 +2429,24 @@ export function argvErrors(rows: readonly ArgvRow[], list: ArgvList): ArgvMessag
 }
 
 /** The fields one environment row can carry a message on. */
-export type EnvField = "name" | "value";
+export type EnvField = "name" | "value" | "secretName" | "secretKey";
 
 export type EnvMessages = Partial<Record<EnvField, string>>;
 
-export const envFieldLabels: Record<EnvField, string> = { name: "Name", value: "Value" };
+export const envFieldLabels: Record<EnvField, string> = {
+  name: "Name",
+  value: "Value",
+  secretName: "Secret",
+  secretKey: "Key",
+};
 
-const envFieldOrder: EnvField[] = ["name", "value"];
+const envFieldOrder: EnvField[] = ["name", "value", "secretName", "secretKey"];
+
+/** What a Secret's data key may be: the API server refuses a Secret holding any other. */
+const secretDataKeyPattern = /^[-._a-zA-Z0-9]+$/;
+
+/** The longest a Secret's data key may be. */
+const maxSecretDataKeyLength = 253;
 
 /**
  * Everything that would make an environment row wrong.
@@ -2411,7 +2476,55 @@ export function envErrors(values: SandboxFormValues): EnvMessages[] {
       messages.name = `Another row already sets ${name}. The merge keeps one of the two and says nothing about the other.`;
     }
 
+    if (row.source === "secret") {
+      const secretName = row.secretName.trim();
+      const key = row.secretKey.trim();
+
+      if (!secretName) {
+        messages.secretName =
+          "A Secret is required: the value is read from one of its keys, and a reference with no name points at nothing.";
+      } else if (secretName.length > maxObjectNameLength || !dnsSubdomainPattern.test(secretName)) {
+        messages.secretName =
+          "A Secret name is at most 253 lowercase letters, digits, '-' and '.', starting and ending with a letter or a digit.";
+      }
+
+      if (!key) {
+        messages.secretKey = "A key is required: the schema needs it, and it names the entry whose value is used.";
+      } else if (key.length > maxSecretDataKeyLength || !secretDataKeyPattern.test(key)) {
+        messages.secretKey =
+          "A Secret key is at most 253 letters, digits, '-', '_' and '.': no Secret can hold any other, so the sandbox would wait for it forever.";
+      }
+    }
+
     return messages;
+  });
+}
+
+/**
+ * Per variable, a Secret the namespace read did not return - which never blocks.
+ *
+ * Nothing refuses the sandbox for it: a missing Secret or key keeps it Pending
+ * unless the reference is optional, and the list may simply be stale.
+ */
+export function envWarnings(inputs: SandboxCreateInputs, values: SandboxFormValues): (string | undefined)[] {
+  return values.env.map((row) => {
+    const secretName = row.secretName.trim();
+
+    if (row.source !== "secret" || !secretName) {
+      return undefined;
+    }
+
+    const consequence = row.optional
+      ? "The reference is optional, so a missing Secret or key does not hold the sandbox Pending."
+      : "Nothing refuses the sandbox for it: it waits Pending until the Secret and its key exist, or until the reference is made optional.";
+
+    if (inputs.secretsUnverified) {
+      return `The Secrets of this namespace could not be listed from here, so ${secretName} is unverified. ${consequence}`;
+    }
+
+    return inputs.secrets.includes(secretName)
+      ? undefined
+      : `No Secret named ${secretName} is in this namespace. ${consequence}`;
   });
 }
 
@@ -2992,21 +3105,50 @@ export function argvPayload(rows: readonly ArgvRow[]): string[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
-/** The environment as the CRD declares it: literal values only, and never an empty name. */
+/**
+ * The environment as the CRD declares it: a literal `value` or a
+ * `valueFrom.secretKeyRef` per variable, never both, never an empty name and
+ * never a reference with an empty Secret name or key.
+ */
 export function envPayload(values: SandboxFormValues): SwiftSandboxEnvVar[] | undefined {
-  const rows = values.env
-    .filter((row) => row.name.trim() !== "")
-    .map((row) => {
-      const entry: SwiftSandboxEnvVar = { name: row.name.trim() };
+  const rows: SwiftSandboxEnvVar[] = [];
 
-      // An empty value is a real environment variable - it is set, and it is
-      // empty - so it is sent as one rather than dropped.
-      if (row.value !== "") {
-        entry.value = row.value;
+  for (const row of values.env) {
+    const name = row.name.trim();
+
+    if (!name) {
+      continue;
+    }
+
+    if (row.source === "secret") {
+      const secretName = row.secretName.trim();
+      const key = row.secretKey.trim();
+
+      // Blocked by `envErrors` anyway; never sent as an empty-name reference.
+      if (!secretName || !key) {
+        continue;
       }
 
-      return entry;
-    });
+      const secretKeyRef: SwiftSandboxSecretKeySelector = { name: secretName, key };
+
+      if (row.optional) {
+        secretKeyRef.optional = true;
+      }
+
+      rows.push({ name, valueFrom: { secretKeyRef } });
+      continue;
+    }
+
+    const entry: SwiftSandboxEnvVar = { name };
+
+    // An empty value is a real environment variable - it is set, and it is
+    // empty - so it is sent as one rather than dropped.
+    if (row.value !== "") {
+      entry.value = row.value;
+    }
+
+    rows.push(entry);
+  }
 
   return rows.length > 0 ? rows : undefined;
 }
@@ -3401,11 +3543,25 @@ export function sandboxWorkloadFact(values: SandboxFormValues): string {
     parts.push(`It runs in ${workingDir}, which overrides the image config's own working directory.`);
   }
 
-  const env = envPayload(values);
+  const env = envPayload(values) ?? [];
+  const literal = env.filter((entry) => !entry.valueFrom);
+  const fromSecret = env.flatMap((entry) => {
+    const ref = entry.valueFrom?.secretKeyRef;
 
-  if (env) {
+    return ref ? [`${entry.name} from ${ref.name}/${ref.key}${ref.optional ? " (optional)" : ""}`] : [];
+  });
+
+  if (literal.length > 0) {
     parts.push(
-      `${env.length} environment ${env.length === 1 ? "variable is" : "variables are"} merged over the image config's own environment, as literal values.`,
+      `${literal.length} environment ${literal.length === 1 ? "variable is" : "variables are"} merged over the image config's own environment, as literal values.`,
+    );
+  }
+
+  if (fromSecret.length > 0) {
+    parts.push(
+      `${fromSecret.length} ${fromSecret.length === 1 ? "variable reads" : "variables read"} a Secret key (${fromSecret.join(", ")}): ` +
+        "the launcher reads it with its own account and hands it to the guest without writing it to any object, " +
+        "log or node disk. A missing Secret or key keeps the sandbox Pending unless the reference is optional.",
     );
   }
 
@@ -3561,6 +3717,12 @@ export function sandboxCreateSummary(inputs: SandboxFormInputs, values: SandboxF
     warnings.push(own.pool);
   }
 
+  for (const warning of envWarnings(inputs, values)) {
+    if (warning) {
+      warnings.push(warning);
+    }
+  }
+
   const scratchWarning = sandboxScratchWarnings(inputs, values).claim;
 
   if (scratchWarning) {
@@ -3651,13 +3813,13 @@ export function sandboxCreateFailureMessage(
  * What this form does NOT author, said rather than left to be discovered (A10).
  *
  * Each leaf with the reason it is absent rather than a bare list. Since v0.18.0
- * env[].valueFrom is no longer ignored: a secretKeyRef is honoured and every
- * other source refused, so the sentence says that instead of the old "ignored".
+ * env[].valueFrom is no longer ignored: a secretKeyRef is honoured, and offered
+ * above, and every other source is refused, which is why those are not offered.
  */
 export const sandboxCreateFooter =
   "What this form deliberately does not author, each reachable in Freelens' own YAML editor. " +
-  "env[].valueFrom: the one source KubeSwift accepts is secretKeyRef, which the launcher reads with its own account " +
-  "and hands to the guest; every other source is refused, and this form writes literal values only. " +
+  "env[].valueFrom's other sources - configMapKeyRef, fieldRef, resourceFieldRef and fileKeyRef - are refused by " +
+  "KubeSwift, so they are not offered; a Secret key is. " +
   "podMetadata.annotations and readinessStartup are not offered either, nor matchExpressions and combined " +
   "selectors in an ingress source. A probe is an HTTP GET or a TCP connect, the two KubeSwift supports; its HTTP " +
   "headers and success threshold are left to the editor. " +

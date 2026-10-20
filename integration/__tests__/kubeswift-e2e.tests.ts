@@ -480,6 +480,34 @@ async function addEnvRow(frame: Frame, index: number, name: string, value: strin
 }
 
 /**
+ * Picks the option of a create form's select whose whole text is `text`.
+ * Anchored and case-sensitive, because Playwright's plain `hasText` is a
+ * case-insensitive substring.
+ */
+async function pickExactCreateOption(frame: Frame, id: string, text: string): Promise<void> {
+  const exact = new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+
+  await createFormControl(frame, id).click();
+  await frame.locator(`.${id}-options .Select__option`, { hasText: exact }).first().click();
+}
+
+/**
+ * Adds one environment row of the Create Sandbox form whose value is read from
+ * a key of a Secret of the namespace, picked from the namespace's Secrets.
+ */
+async function addSecretEnvRow(frame: Frame, index: number, name: string, secret: string, key: string): Promise<void> {
+  const prefix = `sandbox-create-env-${index}`;
+
+  await frame.locator('[data-testid="sandbox-create-add-env"]').click();
+  await frame.locator(`[data-testid="${prefix}-name"]`).fill(name);
+  await pickExactCreateOption(frame, `${prefix}-source`, "Secret key");
+  // The picker is a text input until the namespace's Secrets answer.
+  await frame.waitForSelector(`.Select:has(#${prefix}-secret)`, { state: "visible", timeout: 60_000 });
+  await pickExactCreateOption(frame, `${prefix}-secret`, secret);
+  await frame.locator(`[data-testid="${prefix}-key"]`).fill(key);
+}
+
+/**
  * Adds one port row of the Network section both sandbox forms share, and fills
  * it. The section must be open: it ships shut like every optional one.
  */
@@ -6457,6 +6485,9 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       await frame.locator('[data-testid="sandbox-create-working-dir"]').fill("/workspace");
       await addEnvRow(frame, 0, "SANDBOX_MODE", "fast");
       await addEnvRow(frame, 1, "SANDBOX_SEED", "7");
+      // A value from a Secret key (v0.18.0). The Secret is
+      // 125-sandbox-references.yaml's, which holds a `token` key.
+      await addSecretEnvRow(frame, 2, "SANDBOX_TOKEN", "e2e-sandbox-registry", "token");
 
       await frame.locator('[data-testid="sandbox-create-timeout"]').fill("30m");
       await frame.locator('[data-testid="sandbox-create-ttl"]').fill("1h");
@@ -6483,6 +6514,9 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       // The workload, as argv rather than as a string.
       expect(dialog).toContain("The workload is /bin/sh -c echo hello world");
       expect(dialog).toContain("nothing is split on whitespace");
+      expect(dialog).toContain("2 environment variables are merged over the image config's own environment");
+      expect(dialog).toContain("1 variable reads a Secret key (SANDBOX_TOKEN from e2e-sandbox-registry/token)");
+      expect(dialog).not.toContain("No Secret named e2e-sandbox-registry");
       // The will-not-heal vocabulary, and the phase honesty behind it.
       expect(dialog).toContain("EMPTY phase, not Pending");
       expect(dialog).toContain("empty phase with one False condition");
@@ -6520,7 +6554,15 @@ describe.skipIf(!(await kubeswift.appReady()))("KubeSwift views against the fixt
       expect(spec.env).toEqual([
         { name: "SANDBOX_MODE", value: "fast" },
         { name: "SANDBOX_SEED", value: "7" },
+        { name: "SANDBOX_TOKEN", valueFrom: { secretKeyRef: { name: "e2e-sandbox-registry", key: "token" } } },
       ]);
+      // Key-exact, read on its own: a Secret-sourced variable carries no value
+      // and no optional the form was not asked for.
+      expect(JSON.parse(cluster.kubectlField("swiftsandboxes.sandbox.kubeswift.io", name, "{.spec.env}"))).toEqual(
+        spec.env,
+      );
+      expect(Object.keys(spec.env[2]).sort()).toEqual(["name", "valueFrom"]);
+      expect(Object.keys(spec.env[2].valueFrom.secretKeyRef).sort()).toEqual(["key", "name"]);
       expect(spec.timeout).toBe("30m");
       expect(spec.ttl).toBe("1h");
       expect(spec.scratchDisk.blank.size).toBe("100Gi");

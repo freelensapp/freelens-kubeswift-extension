@@ -375,3 +375,13 @@ decisions, and listed in the phase report for confirmation:
   cluster (TESTING.md, TRY-IT.md).
 - **Validation (2026-10-20).** On the v0.18.0 lab: integration 1/1, E2E
   107/107, pre-review 92 PASS / 0 FAIL over 19 views in both themes.
+- **T4 addition (2026-10-20, maintainer decision):** Create Sandbox offers env
+  values from a Secret key (`valueFrom.secretKeyRef`), on both modes: each
+  variable is a literal value or a Secret of the namespace (picker, with the
+  missing-Secret warning that never blocks: Pending unless optional), a key
+  (required, `[-._a-zA-Z0-9]+`, at most 253) and an optional checkbox. The
+  payload sends `value` or `valueFrom`, never both, and `optional` only when
+  set; a namespace change empties the Secret names. The summary names the
+  Secret-sourced variables; the footer says only the other `valueFrom`
+  sources are refused by KubeSwift and not offered. E2E: the cold-path case
+  adds one Secret-sourced variable and reads `{.spec.env}` back key-exact.
