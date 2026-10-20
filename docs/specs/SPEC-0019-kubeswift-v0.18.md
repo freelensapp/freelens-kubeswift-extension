@@ -3,7 +3,7 @@
 - **Status:** Implemented (approved: all four tiers, Roberto, 2026-10-19)
 - **Milestone:** v2 port (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.18.0` (from `v0.13.12`)
-- **Tracking issue:** feature F of the v2 migration ([SPEC-0018](SPEC-0018-v2-port.md))
+- **Tracking issue:** #136, feature F of the v2 migration #130 ([SPEC-0018](SPEC-0018-v2-port.md))
 - **Author / date:** Roberto Bandini, with a coding agent, 2026-10-19
 
 ## Goal
