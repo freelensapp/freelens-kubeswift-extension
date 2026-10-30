@@ -43,6 +43,6 @@ status:
     - type: Prepared
       status: "False"
       reason: ArtifactRefused
-      message: 'legacy-data: refused by SwiftArtifactVerificationPolicy e2e-policy-invalid.'
+      message: "legacy-data: refused by SwiftArtifactVerificationPolicy e2e-policy-invalid."
       lastTransitionTime: "2026-10-19T08:35:00Z"
       observedGeneration: 1

@@ -125,7 +125,7 @@ shape the dialog:
   highest-severity find (drift D1), and the dialog closes it client-side:
   it computes the same resolution the controller will, shows it ("auto
   will resolve to: live, because..."), and applies the storage gate to
-  the *resolved* mode, not just the selected one.
+  the _resolved_ mode, not just the selected one.
 - **`offline` means: stop, move nothing, restart.** Preparing patches
   `runPolicy: Stopped` plus a claim annotation in one write and deletes
   the launcher pod (grace 30 s); no data is copied anywhere - the same
@@ -209,24 +209,24 @@ Absent on `deletionTimestamp`.
 
 **Guard** (`{ enabled, reason }`, W4 contract test):
 
-| Situation | Outcome |
-| --- | --- |
-| `spec.migration.enabled === false` | disabled: migrations are not permitted for this guest; upstream refuses it at admission and in the controller |
-| guest has an SR-IOV interface | disabled: upstream's admission rule refuses migration of SR-IOV guests in every mode, and nothing re-checks it when the webhook is off |
-| everything else, including stopped and unsettled guests | enabled - offline migration of a stopped guest is legitimate (and disclosed), and unknown state permits (W4) |
+| Situation                                               | Outcome                                                                                                                                |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `spec.migration.enabled === false`                      | disabled: migrations are not permitted for this guest; upstream refuses it at admission and in the controller                          |
+| guest has an SR-IOV interface                           | disabled: upstream's admission rule refuses migration of SR-IOV guests in every mode, and nothing re-checks it when the webhook is off |
+| everything else, including stopped and unsettled guests | enabled - offline migration of a stopped guest is legitimate (and disclosed), and unknown state permits (W4)                           |
 
 **Fields**, top to bottom:
 
-| Field | Widget | Shown when | Default | Notes |
-| --- | --- | --- | --- | --- |
-| Target node | picker over `nodesApi.list()` on open | always | none - required | Options: Ready, schedulable, not the guest's current node. A node lacking `kubeswift.io/kernel-node: "true"` is disabled with the reason when the guest boots a kernel (`kernelRef`). Empty result renders the honest empty sentence, not an empty control. Degrades to a text input when the list is refused (T3 verdict), with the summary marking the node as unverified |
-| Mode | select `auto` / `live` / `offline` | always | `auto` | Each option carries one sentence of what it means to this guest (not generic prose): auto shows its **predicted resolution** live, recomputed from the same inputs the controller uses; live and offline carry their per-guest availability (below) |
-| IP consent | locked checked checkbox | primary interface has no `networkRef` | checked, locked | "The guest's address does not survive a cross-node move on default networking: it will get a fresh IP." Locked because consent is the only thing the flag controls - refusing it changes the outcome only into a rejection (webhook on) or a silent IP change (webhook off). Hidden entirely for guests whose IP is preserved |
-| Timeout | text, Go duration | mode live (selected or predicted) | empty = schema default `30m` | Validated: at least `60s`, at most `24h` (the webhook's bounds). Hidden for offline, where upstream never reads it - rendering it would be the option-dropping violation W12 forbids |
-| Downtime target | text, Go duration | mode live | empty | Validated to the webhook's `[10ms, 10s]` window; explained as the CH pause-window hint, echoed back in `status.appliedDowntimeMs` |
-| Parallel connections | number | mode live | empty | 0-16 (webhook bound); 2+ becomes CH `connections` |
-| Reason | text | always | empty | Max 256 chars, no control characters (webhook rules, validated inline); lands in `spec.reason` for the audit trail |
-| TTL | text, Go duration | always | empty | Must be positive; explained as "the record self-deletes this long after finishing", with the scoped-RBAC caveat sentence when it applies |
+| Field                | Widget                                | Shown when                            | Default                      | Notes                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------- | ------------------------------------- | ------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Target node          | picker over `nodesApi.list()` on open | always                                | none - required              | Options: Ready, schedulable, not the guest's current node. A node lacking `kubeswift.io/kernel-node: "true"` is disabled with the reason when the guest boots a kernel (`kernelRef`). Empty result renders the honest empty sentence, not an empty control. Degrades to a text input when the list is refused (T3 verdict), with the summary marking the node as unverified |
+| Mode                 | select `auto` / `live` / `offline`    | always                                | `auto`                       | Each option carries one sentence of what it means to this guest (not generic prose): auto shows its **predicted resolution** live, recomputed from the same inputs the controller uses; live and offline carry their per-guest availability (below)                                                                                                                         |
+| IP consent           | locked checked checkbox               | primary interface has no `networkRef` | checked, locked              | "The guest's address does not survive a cross-node move on default networking: it will get a fresh IP." Locked because consent is the only thing the flag controls - refusing it changes the outcome only into a rejection (webhook on) or a silent IP change (webhook off). Hidden entirely for guests whose IP is preserved                                               |
+| Timeout              | text, Go duration                     | mode live (selected or predicted)     | empty = schema default `30m` | Validated: at least `60s`, at most `24h` (the webhook's bounds). Hidden for offline, where upstream never reads it - rendering it would be the option-dropping violation W12 forbids                                                                                                                                                                                        |
+| Downtime target      | text, Go duration                     | mode live                             | empty                        | Validated to the webhook's `[10ms, 10s]` window; explained as the CH pause-window hint, echoed back in `status.appliedDowntimeMs`                                                                                                                                                                                                                                           |
+| Parallel connections | number                                | mode live                             | empty                        | 0-16 (webhook bound); 2+ becomes CH `connections`                                                                                                                                                                                                                                                                                                                           |
+| Reason               | text                                  | always                                | empty                        | Max 256 chars, no control characters (webhook rules, validated inline); lands in `spec.reason` for the audit trail                                                                                                                                                                                                                                                          |
+| TTL                  | text, Go duration                     | always                                | empty                        | Must be positive; explained as "the record self-deletes this long after finishing", with the scoped-RBAC caveat sentence when it applies                                                                                                                                                                                                                                    |
 
 Not rendered, with the reason recorded here: `target.nodeSelector`
 (upstream-unshipped, webhook-refused, infinite-retry without the
@@ -236,13 +236,13 @@ webhook), `timeoutStrategy` (never read by any handler),
 **Per-guest mode availability**, every disabled option carrying its
 reason (W4), evaluated live from the guest, its class and the stores:
 
-| Situation | live | offline |
-| --- | --- | --- |
-| Guest not `Running`, or no launcher pod recorded | disabled: upstream fails a live migration of a non-running guest | enabled, with the boots-it-on-the-target summary line for a stopped guest |
-| Guest has VFIO devices (`gpuProfileRef` or GPU claim) | disabled: upstream's rule; GPU guests move offline, with the GPU released and re-reserved | enabled |
-| Guest has node-local virtio backends (filesystems, vhost-user) | disabled: upstream's rule | enabled |
-| Resolved storage is not RWX+Block (from the guest class merge; kernel-boot guests exempt) | disabled: live migration needs storage both nodes can hold at once - **the rule upstream enforces only at admission, which ships disabled** | enabled |
-| Class not in the store / storage unresolvable | enabled with a warning line (a refused read never blocks - the W4 stance), the summary marking the storage as unverified | enabled |
+| Situation                                                                                 | live                                                                                                                                        | offline                                                                   |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Guest not `Running`, or no launcher pod recorded                                          | disabled: upstream fails a live migration of a non-running guest                                                                            | enabled, with the boots-it-on-the-target summary line for a stopped guest |
+| Guest has VFIO devices (`gpuProfileRef` or GPU claim)                                     | disabled: upstream's rule; GPU guests move offline, with the GPU released and re-reserved                                                   | enabled                                                                   |
+| Guest has node-local virtio backends (filesystems, vhost-user)                            | disabled: upstream's rule                                                                                                                   | enabled                                                                   |
+| Resolved storage is not RWX+Block (from the guest class merge; kernel-boot guests exempt) | disabled: live migration needs storage both nodes can hold at once - **the rule upstream enforces only at admission, which ships disabled** | enabled                                                                   |
+| Class not in the store / storage unresolvable                                             | enabled with a warning line (a refused read never blocks - the W4 stance), the summary marking the storage as unverified                    | enabled                                                                   |
 
 The `auto` option's predicted-resolution line is derived from the same
 table plus upstream's own resolver order, and it is exactly the
@@ -336,32 +336,32 @@ describe the previous release.
 
 Adopted:
 
-| # | Improvement | Where |
-| --- | --- | --- |
-| M1 | The create confirms, enumerating the write and the per-mode consequences from live facts (W12) | Dialog |
-| M2 | Mode semantics stated per guest, not per enum - and `auto` shows its predicted resolution with the because-clause, computed from the controller's own inputs | Fields |
-| M3 | The storage gate applied client-side to the **resolved** mode, closing upstream's auto-into-RWO hole (D1) on every install, webhook or not | Mode availability |
-| M4 | SR-IOV, VFIO, virtio-backend and non-running refusals enforced with reasons where upstream enforces them only in a webhook that ships disabled | Guard, mode availability |
-| M5 | The node picker matches upstream's one strength and adds the kernel-node constraint, the same-node exclusion as a hard rule, and honest degradation when nodes cannot be listed | Fields |
-| M6 | The in-flight-migration warning from the extension's own store - a guard no upstream surface has at all | Dialog |
-| M7 | The IP consent shown only where it means something, locked where refusing it changes nothing, with the fresh-IP fact as its reason | Fields |
-| M8 | Offline truths disclosed at the moment they are chosen: stop + reattach-not-copy + unverified StorageClass, no timeout ever, and boots-a-stopped-guest | Write summary |
-| M9 | Live truths disclosed: two pods, measured downtime, post-cutover orphan risk | Write summary |
-| M10 | Option dropping instead of dead inputs: no `nodeSelector`, no `timeoutStrategy`, no timeout field in offline mode where upstream never reads it | Fields |
-| M11 | Success acknowledged and the created object observable in the shipped Migrations views (upstream discards the reference its own RPC returns) | Outcome |
-| M12 | The On Delete row distinguishing the three deletion outcomes and naming `cancelRequested` as the safe live-mode lever - none of which any upstream surface states | On Delete |
+| #   | Improvement                                                                                                                                                                     | Where                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| M1  | The create confirms, enumerating the write and the per-mode consequences from live facts (W12)                                                                                  | Dialog                   |
+| M2  | Mode semantics stated per guest, not per enum - and `auto` shows its predicted resolution with the because-clause, computed from the controller's own inputs                    | Fields                   |
+| M3  | The storage gate applied client-side to the **resolved** mode, closing upstream's auto-into-RWO hole (D1) on every install, webhook or not                                      | Mode availability        |
+| M4  | SR-IOV, VFIO, virtio-backend and non-running refusals enforced with reasons where upstream enforces them only in a webhook that ships disabled                                  | Guard, mode availability |
+| M5  | The node picker matches upstream's one strength and adds the kernel-node constraint, the same-node exclusion as a hard rule, and honest degradation when nodes cannot be listed | Fields                   |
+| M6  | The in-flight-migration warning from the extension's own store - a guard no upstream surface has at all                                                                         | Dialog                   |
+| M7  | The IP consent shown only where it means something, locked where refusing it changes nothing, with the fresh-IP fact as its reason                                              | Fields                   |
+| M8  | Offline truths disclosed at the moment they are chosen: stop + reattach-not-copy + unverified StorageClass, no timeout ever, and boots-a-stopped-guest                          | Write summary            |
+| M9  | Live truths disclosed: two pods, measured downtime, post-cutover orphan risk                                                                                                    | Write summary            |
+| M10 | Option dropping instead of dead inputs: no `nodeSelector`, no `timeoutStrategy`, no timeout field in offline mode where upstream never reads it                                 | Fields                   |
+| M11 | Success acknowledged and the created object observable in the shipped Migrations views (upstream discards the reference its own RPC returns)                                    | Outcome                  |
+| M12 | The On Delete row distinguishing the three deletion outcomes and naming `cancelRequested` as the safe live-mode lever - none of which any upstream surface states               | On Delete                |
 
 Considered and rejected:
 
-| Candidate | Rejected because |
-| --- | --- |
-| A Cancel action | A separate verb with its own spec (see Scope); the On Delete row carries the interim knowledge |
+| Candidate                                                          | Rejected because                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A Cancel action                                                    | A separate verb with its own spec (see Scope); the On Delete row carries the interim knowledge                                                                                                                                                 |
 | Capacity display in the node picker (allocatable vs class request) | The controller re-checks capacity and fails cleanly with a good message; duplicating the arithmetic client-side invents a second source of truth for a case that already fails honestly. Revisit if the review finds the failure loop too slow |
-| A downtime estimate | Nothing in the recon supports predicting it; the system measures it afterwards and our views show it (the SPEC-0011 pause-window stance) |
-| Blocking on the in-flight warning or on collisions | Store staleness; warn-and-permit is the W4 stance throughout |
-| Detecting primary-UDN namespaces for the auto prediction | The extension would need to read NAD kinds it does not model; declared as the prediction's stated assumption instead of half-implemented |
-| Rendering `spec.cancelRequested` as a create-time toggle | Meaningless at create; it is a lever for later, documented where the user will look later |
-| A migrations-page Cancel/rollback affordance | Same verb question, same future spec |
+| A downtime estimate                                                | Nothing in the recon supports predicting it; the system measures it afterwards and our views show it (the SPEC-0011 pause-window stance)                                                                                                       |
+| Blocking on the in-flight warning or on collisions                 | Store staleness; warn-and-permit is the W4 stance throughout                                                                                                                                                                                   |
+| Detecting primary-UDN namespaces for the auto prediction           | The extension would need to read NAD kinds it does not model; declared as the prediction's stated assumption instead of half-implemented                                                                                                       |
+| Rendering `spec.cancelRequested` as a create-time toggle           | Meaningless at create; it is a lever for later, documented where the user will look later                                                                                                                                                      |
+| A migrations-page Cancel/rollback affordance                       | Same verb question, same future spec                                                                                                                                                                                                           |
 
 ### Where the code lives
 

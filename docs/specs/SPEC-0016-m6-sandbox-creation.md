@@ -40,7 +40,7 @@ are terminal and which park forever, because nothing here self-heals.
 
 - The two CRDs - **44 spec leaves** for the sandbox (16 of them the
   `env[].valueFrom` boilerplate) and **14** for the pool; `image` and
-  `memory` required on both, `memory` required *and* defaulted so the
+  `memory` required on both, `memory` required _and_ defaulted so the
   API server always fills it; **zero CEL rules on either**; `status` on
   both and `scale` on the pool alone (`specReplicasPath:
   .spec.minWarm`). SPEC-0008 records every field, default and enum, and
@@ -79,7 +79,7 @@ are terminal and which park forever, because nothing here self-heals.
 - **The dead proto.** `proto/kubeswift/v1/sandbox.proto` declares a
   sandbox service with a sixteen-field create message and an
   eleven-field create-pool message, and **nothing implements it in Go
-  or wires a client in Angular**. The sixteen is therefore *not* a live
+  or wires a client in Angular**. The sixteen is therefore _not_ a live
   baseline the way SPEC-0013's fifteen-field guest RPC was.
 
 Host references: the four shipped M6 dialogs and the W12 create
@@ -108,7 +108,7 @@ editor edits, and what an edit can and cannot do is said in the write
 summary instead. **A scale stepper on the pool**: `spec.minWarm` is the
 `scale` subresource's spec path, so `kubectl scale` and an HPA move the
 number this form sets, but changing it later is an action with its own
-findings - among them that upstream's drawer stepper does *not* use the
+findings - among them that upstream's drawer stepper does _not_ use the
 subresource but applies a four-key object through the generic apply.
 SPEC-0008 deferred the stepper to M6; it is the actions row. **A
 warm-slot table**: SPEC-0008's deferral stands. **Exec, attach and the
@@ -131,14 +131,14 @@ with init containers for materialize, the model and the GPU before a
 privileged launcher holding `/dev/kvm`. Six facts shape the form, four
 of them existing only because the webhook ships disabled:
 
-| Fact | Consequence for the form |
-| --- | --- |
-| **The first observable state is an empty `status.phase`, not `Pending`** - that phase is in the enum, the metrics labels and a test, and is written by no controller, while both upstream docs and SPEC-0008's manual-check sentence present it as the first state | No summary line may promise a `Pending` row (correction 3, open item O2) |
+| Fact                                                                                                                                                                                                                                                                                                                                                                                                                          | Consequence for the form                                                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **The first observable state is an empty `status.phase`, not `Pending`** - that phase is in the enum, the metrics labels and a test, and is written by no controller, while both upstream docs and SPEC-0008's manual-check sentence present it as the first state                                                                                                                                                            | No summary line may promise a `Pending` row (correction 3, open item O2)                                                                                                 |
 | **Nothing self-heals.** **Terminal**: an invalid pull secret, an image or model resolve failure, a non-zero materialize exit, a `timeout` breach, a Failed pod. **Parks and never turns terminal on its own**: a GPU profile missing, out of capacity or on an unsupported tier (30-second requeue), and a scratch PVC missing or not Bound (3-second requeue) - indefinitely, as an **empty phase with one False condition** | SPEC-0013's "create early, it heals" sentence must not be borrowed: terminal says delete-and-recreate, parked says it waits forever and names the pair a reader will see |
-| **The whole spec except `ttl` is immutable** - webhook-only, no CEL, no controller check - so with the webhook off every field becomes mutable and the edit is a **silent no-op**: the launch is built only when the launcher pod is missing | The summary says what an edit can and cannot do; no edit path is offered |
-| **`spec.scratchDisk: {}` makes the controller dereference a nil pointer**, the sharpest webhook-off consequence in the domain | The object must be inexpressible, not validated (A5) |
-| **`env[].valueFrom` is schema-complete and behaviourally ignored**: the merge takes the literal value only, for an in-code reason - a microVM has no downward-API or Secret path - so a `secretKeyRef` variable reaches the guest **empty** | Not offered, with the reason in its place (A3) |
-| **`scratchDisk.blank.volumeMode` is a no-op on three legs**: enum-allowed, webhook-rejected, controller-hardcoded to `Block`; SPEC-0008 has the first two | Not offered; "always Block" is stated as a derived fact (A5) |
+| **The whole spec except `ttl` is immutable** - webhook-only, no CEL, no controller check - so with the webhook off every field becomes mutable and the edit is a **silent no-op**: the launch is built only when the launcher pod is missing                                                                                                                                                                                  | The summary says what an edit can and cannot do; no edit path is offered                                                                                                 |
+| **`spec.scratchDisk: {}` makes the controller dereference a nil pointer**, the sharpest webhook-off consequence in the domain                                                                                                                                                                                                                                                                                                 | The object must be inexpressible, not validated (A5)                                                                                                                     |
+| **`env[].valueFrom` is schema-complete and behaviourally ignored**: the merge takes the literal value only, for an in-code reason - a microVM has no downward-API or Secret path - so a `secretKeyRef` variable reaches the guest **empty**                                                                                                                                                                                   | Not offered, with the reason in its place (A3)                                                                                                                           |
+| **`scratchDisk.blank.volumeMode` is a no-op on three legs**: enum-allowed, webhook-rejected, controller-hardcoded to `Block`; SPEC-0008 has the first two                                                                                                                                                                                                                                                                     | Not offered; "always Block" is stated as a derived fact (A5)                                                                                                             |
 
 **Checkout.** Setting `spec.poolRef.name` at create time **is the
 entire client-side protocol**: no claim field, no lease, no annotation
@@ -176,10 +176,10 @@ question this milestone carried.
 from the hard TTL** exists for either kind, since pool scale-to-zero is
 HPA-on-`minWarm`, which the code says is not a pool-side idle timer.
 
-| Field | Enforcer | Effect |
-| --- | --- | --- |
-| `timeout` | the controller, on every five-second poll from `status.startedAt`; on a checkout the node agent enforces it in-guest too | deletes the launcher or slot pod and marks the sandbox Failed with a deadline reason |
-| `ttl` | the controller, once the sandbox has been terminal that long, requeue capped at one hour | **deletes the SwiftSandbox object itself**, not just its pod. Unset means keep forever |
+| Field     | Enforcer                                                                                                                 | Effect                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `timeout` | the controller, on every five-second poll from `status.startedAt`; on a checkout the node agent enforces it in-guest too | deletes the launcher or slot pod and marks the sandbox Failed with a deadline reason   |
+| `ttl`     | the controller, once the sandbox has been terminal that long, requeue capped at one hour                                 | **deletes the SwiftSandbox object itself**, not just its pod. Unset means keep forever |
 
 Neither carries a schema pattern or format, and the rules refusing a
 non-positive duration are webhook-only: a negative `timeout`
@@ -200,15 +200,15 @@ only when slots are being created. Per slot: an intent ConfigMap and a
 launcher Pod, both pool-owned, plus a deny-ingress NetworkPolicy when
 the slot is networked, with a **soft** spread over hostname.
 
-| Fact | Consequence for the form |
-| --- | --- |
-| **The pool is not a template of a sandbox**: it flattens a subset of the shape and **deliberately omits every workload field** (`command`, `args`, `env`, `workingDir`, `timeout`, `ttl`), which belong to the claiming sandbox | Every pool field except the two warm-buffer counts is a sandbox field, so the two forms share one section and one pure module |
-| **`memory` is per slot**: N warm slots hold N times it, idle, and a warm GPU pool holds one whole GPU idle per slot | The sizing line, arithmetic on the form's own values (B3) |
-| **`maxWarm: 0` or absent means no cap beyond `minWarm`**, and a cap *below* the floor is silently folded to the larger of the two - the controller's comment says bounds are the webhook's job, and there is no webhook | Both zeroes explained; the fold named as the reason for the refusal (B3) |
-| **No immutability at all**: every field is editable, the controller re-resolves, new slots take the new shape and **existing slots keep the old one** | Said in the pool's summary, and it is why the sandbox's derivation is a snapshot |
-| **Replica naming is `<pool>-slot-<five lowercase alphanumerics>`** - not ordinal, not stable across recreation, unlike SwiftGuestPool's ordinals; scale-down prefers not-launcher-ready slots and never drains claimed ones | The naming fact in the summary, and the 242-character name cap (B1) |
-| **Status honesty**: `Pending` is never written here either; a reconcile that errors before the status update **writes no phase at all**; `warmReplicas` counts launcher-ready slots only against a `claimedReplicas` counting every live non-warm one, so **warm plus claimed is not a conserved total**; `observedGeneration` is stale on a Degraded pool | The summary promises no phase, and the picker's counts are read as what they are |
-| **An HGX GPU profile has no status surface at all**: the tier is rejected when the first slot is allocated, on a path that returns before the status update, so the pool never reaches Degraded, never gets a message, and error-backoffs forever with an empty phase | The form refuses it (B4, S11) |
+| Fact                                                                                                                                                                                                                                                                                                                                                       | Consequence for the form                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **The pool is not a template of a sandbox**: it flattens a subset of the shape and **deliberately omits every workload field** (`command`, `args`, `env`, `workingDir`, `timeout`, `ttl`), which belong to the claiming sandbox                                                                                                                            | Every pool field except the two warm-buffer counts is a sandbox field, so the two forms share one section and one pure module |
+| **`memory` is per slot**: N warm slots hold N times it, idle, and a warm GPU pool holds one whole GPU idle per slot                                                                                                                                                                                                                                        | The sizing line, arithmetic on the form's own values (B3)                                                                     |
+| **`maxWarm: 0` or absent means no cap beyond `minWarm`**, and a cap _below_ the floor is silently folded to the larger of the two - the controller's comment says bounds are the webhook's job, and there is no webhook                                                                                                                                    | Both zeroes explained; the fold named as the reason for the refusal (B3)                                                      |
+| **No immutability at all**: every field is editable, the controller re-resolves, new slots take the new shape and **existing slots keep the old one**                                                                                                                                                                                                      | Said in the pool's summary, and it is why the sandbox's derivation is a snapshot                                              |
+| **Replica naming is `<pool>-slot-<five lowercase alphanumerics>`** - not ordinal, not stable across recreation, unlike SwiftGuestPool's ordinals; scale-down prefers not-launcher-ready slots and never drains claimed ones                                                                                                                                | The naming fact in the summary, and the 242-character name cap (B1)                                                           |
+| **Status honesty**: `Pending` is never written here either; a reconcile that errors before the status update **writes no phase at all**; `warmReplicas` counts launcher-ready slots only against a `claimedReplicas` counting every live non-warm one, so **warm plus claimed is not a conserved total**; `observedGeneration` is stale on a Degraded pool | The summary promises no phase, and the picker's counts are read as what they are                                              |
+| **An HGX GPU profile has no status surface at all**: the tier is rejected when the first slot is allocated, on a path that returns before the status update, so the pool never reaches Degraded, never gets a message, and error-backoffs forever with an empty phase                                                                                      | The form refuses it (B4, S11)                                                                                                 |
 
 ### The forms
 
@@ -222,18 +222,18 @@ kebab would otherwise sit under the button.
 A collapsed section states its consequence on the header line whether
 it is open or shut.
 
-| # | Section | Fields, rules and facts |
-| --- | --- | --- |
-| A1 | Identity | Namespace (`NamespaceSelect`, `light` theme, prefilled only when the page filter names exactly one namespace - never the literal `default` upstream stamps); name as a DNS-1123 **subdomain**, not the label SPEC-0013 argued for a guest, because the name becomes a Pod name and a PVC stem and **no Service is ever created** - capped at 245 on the blank-scratch branch, since the claim is `<name>-scratch` and a sandbox whose PVC cannot be created is admitted and then waits on Binding forever; the store collision warning, which warns and never blocks |
-| A2 | Source | The two modes, below |
-| A3 | Workload | `command` and `args` as **repeatable argv rows**, one row per argument, which makes upstream's whitespace-splitting bug inexpressible; `workingDir`; `env` rows of name and literal value, with **`valueFrom` not offered** and the reason in its place. An absent command says what the schema says: the image's own entrypoint runs |
-| A4 | Slot shape and placement | `cpu`, `memory`, `rootfsMode`, `network.mode`, `kernelProfileRef` (namespace-scoped picker), `nodeSelector` rows merged with the kernel-node label. Replaced in checkout mode by the pool's shape as read (O4) |
-| A5 | Scratch disk (collapsed) | A three-way control - **None** / **Blank** / **Existing claim** - so `spec.scratchDisk: {}`, the nil dereference, cannot be built at all, and `None` omits the block. Blank takes a size (refused when not positive: the schema has no minimum, and a zero request fails at the PVC create and hangs the sandbox on Binding) and a storage class, with **`volumeMode` not offered** and "always Block" in its place. Existing claim is the host's `pvcApi` picker with SPEC-0013's T3 degradation, never emitting an empty name (an empty one is looked up and reported not-found forever), warning rather than refusing on a `Filesystem` claim, because that is a schema description enforced nowhere |
-| A6 | GPU (collapsed, new-microVM only) | One control chooses the native profile **or** the DRA claim, so the exclusivity cannot be violated; inside the DRA branch, exactly one of claim name and template name is a refusal naming both fields. No empty-name profile reference is ever emitted. The parks-forever expectation sits on the header line |
-| A7 | Lifecycle | `timeout` and `ttl`, validated as positive Go durations with their consequences as the reason. **TTL's sentence is the one this form exists to say**: the object being created deletes itself once it has been terminal that long, and unset means kept forever. Upstream offers neither field |
-| A8 | Registry and verification (collapsed) | `imagePullSecret` and `verifyKeySecretRef` as Secret pickers with T3 degradation, the verify block emitted only with a name, and the re-pin fact stated |
-| A9 | Model (collapsed) | `imageRef` (the block is emitted only with one) and `mountPath`, refused when relative, `/model` shown as the effective value rather than re-sent |
-| A10 | YAML footer | Scope's three exclusions, each with its reason |
+| #   | Section                               | Fields, rules and facts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | Identity                              | Namespace (`NamespaceSelect`, `light` theme, prefilled only when the page filter names exactly one namespace - never the literal `default` upstream stamps); name as a DNS-1123 **subdomain**, not the label SPEC-0013 argued for a guest, because the name becomes a Pod name and a PVC stem and **no Service is ever created** - capped at 245 on the blank-scratch branch, since the claim is `<name>-scratch` and a sandbox whose PVC cannot be created is admitted and then waits on Binding forever; the store collision warning, which warns and never blocks                                                                                                                                    |
+| A2  | Source                                | The two modes, below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| A3  | Workload                              | `command` and `args` as **repeatable argv rows**, one row per argument, which makes upstream's whitespace-splitting bug inexpressible; `workingDir`; `env` rows of name and literal value, with **`valueFrom` not offered** and the reason in its place. An absent command says what the schema says: the image's own entrypoint runs                                                                                                                                                                                                                                                                                                                                                                   |
+| A4  | Slot shape and placement              | `cpu`, `memory`, `rootfsMode`, `network.mode`, `kernelProfileRef` (namespace-scoped picker), `nodeSelector` rows merged with the kernel-node label. Replaced in checkout mode by the pool's shape as read (O4)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| A5  | Scratch disk (collapsed)              | A three-way control - **None** / **Blank** / **Existing claim** - so `spec.scratchDisk: {}`, the nil dereference, cannot be built at all, and `None` omits the block. Blank takes a size (refused when not positive: the schema has no minimum, and a zero request fails at the PVC create and hangs the sandbox on Binding) and a storage class, with **`volumeMode` not offered** and "always Block" in its place. Existing claim is the host's `pvcApi` picker with SPEC-0013's T3 degradation, never emitting an empty name (an empty one is looked up and reported not-found forever), warning rather than refusing on a `Filesystem` claim, because that is a schema description enforced nowhere |
+| A6  | GPU (collapsed, new-microVM only)     | One control chooses the native profile **or** the DRA claim, so the exclusivity cannot be violated; inside the DRA branch, exactly one of claim name and template name is a refusal naming both fields. No empty-name profile reference is ever emitted. The parks-forever expectation sits on the header line                                                                                                                                                                                                                                                                                                                                                                                          |
+| A7  | Lifecycle                             | `timeout` and `ttl`, validated as positive Go durations with their consequences as the reason. **TTL's sentence is the one this form exists to say**: the object being created deletes itself once it has been terminal that long, and unset means kept forever. Upstream offers neither field                                                                                                                                                                                                                                                                                                                                                                                                          |
+| A8  | Registry and verification (collapsed) | `imagePullSecret` and `verifyKeySecretRef` as Secret pickers with T3 degradation, the verify block emitted only with a name, and the re-pin fact stated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| A9  | Model (collapsed)                     | `imageRef` (the block is emitted only with one) and `mountPath`, refused when relative, `/model` shown as the effective value rather than re-sent                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| A10 | YAML footer                           | Scope's three exclusions, each with its reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 **A2, the two modes**, is a radio group (the host's `Radio`, the
 SPEC-0013 slice-2 precedent): **New microVM** and **Check out a warm
@@ -273,13 +273,13 @@ webhook-off cluster.
 
 **Dialog B: Create Sandbox Pool** (flat, two collapsed sections).
 
-| # | Section | Fields, rules and facts |
-| --- | --- | --- |
-| B1 | Identity | Namespace and name, DNS-1123 subdomain capped at 242, because every slot pod is `<name>-slot-<five characters>` |
-| B2 | Slot shape | A4 minus the workload - `image`, `cpu`, `memory`, `rootfsMode`, `network.mode`, `kernelProfileRef`, `nodeSelector` - with `memory` labelled per slot |
-| B3 | Warm buffer | `minWarm` and `maxWarm`, below |
-| B4 | GPU (collapsed) | The native profile picker only - the pool schema has no DRA backend at all. An **HGX-tier profile is refused**, with what upstream does about it: the rejection happens when the first slot is allocated, on a path that writes no status, so the pool never reaches Degraded and reports nothing at all. When the profile could not be read the refusal degrades to a warning |
-| B5 | Registry, verification and model (collapsed) | Pull secret, verify key (every slot verifies), model image ref and mount path |
+| #   | Section                                      | Fields, rules and facts                                                                                                                                                                                                                                                                                                                                                        |
+| --- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| B1  | Identity                                     | Namespace and name, DNS-1123 subdomain capped at 242, because every slot pod is `<name>-slot-<five characters>`                                                                                                                                                                                                                                                                |
+| B2  | Slot shape                                   | A4 minus the workload - `image`, `cpu`, `memory`, `rootfsMode`, `network.mode`, `kernelProfileRef`, `nodeSelector` - with `memory` labelled per slot                                                                                                                                                                                                                           |
+| B3  | Warm buffer                                  | `minWarm` and `maxWarm`, below                                                                                                                                                                                                                                                                                                                                                 |
+| B4  | GPU (collapsed)                              | The native profile picker only - the pool schema has no DRA backend at all. An **HGX-tier profile is refused**, with what upstream does about it: the rejection happens when the first slot is allocated, on a path that writes no status, so the pool never reaches Degraded and reports nothing at all. When the profile could not be read the refusal degrades to a warning |
+| B5  | Registry, verification and model (collapsed) | Pull secret, verify key (every slot verifies), model image ref and mount path                                                                                                                                                                                                                                                                                                  |
 
 **B3, the warm buffer.** A cap below the floor is **refused**, with
 both halves of the fact: upstream's own wizard refuses it too, and
@@ -311,32 +311,32 @@ count; the command split on whitespace; a field written that the CRD
 does not declare; presence-only validation; and an Edit mode for an
 immutable kind that omits its one mutable field.
 
-| # | Improvement | Where |
-| --- | --- | --- |
-| S1 | `store.create`, so a name clash is the API server's own `AlreadyExists` reopened with the form intact, where upstream's forced apply overwrites the existing object and reports success | Outcome |
-| S2 | The namespace never guessed: prefilled only from a single-namespace page filter, never the literal `default` | A1, B1 |
-| S3 | The claimant's shape **derived from the picked pool** and sent from it, closing the "must match" rule four schema descriptions state and nothing enforces; upstream prefills the image and leaves it editable | A2 |
-| S4 | The pool picker scoped to the sandbox's own namespace, carrying phase, warm and claimed on every option, and never disabled - a miss is a cold boot | A2 |
-| S5 | A command-less checkout warned about, since it always cold-falls-back; upstream warns nowhere | A2 |
-| S6 | `command` and `args` authored as argv arrays, so upstream's whitespace-splitting of a quoted argument is inexpressible | A3 |
-| S7 | `spec.scratchDisk: {}` - the nil dereference in the reconcile loop - made unbuildable by a three-way control rather than validated | A5 |
-| S8 | Every other webhook-only rule inline (the sixteen-row matrix), because the sandbox webhook ships disabled and the pool has none at all | A5-A9, B3, B4 |
-| S9 | Only declared fields written and no empty-name reference ever emitted (SPEC-0013's G7 in a new place), against upstream's phantom `scratchDisk.mountPath`; and the two no-ops not offered at all - `scratchDisk.blank.volumeMode` stated as always `Block`, `env[].valueFrom` with the literal-only merge as its reason | Payload, A5, A3 |
-| S10 | `timeout` and `ttl` offered at all, validated positive, with the expiry consequences named - including that `ttl` deletes the object itself | A7 |
-| S11 | An HGX pool refused at the form (upstream's own rejection writes no status at all), and `maxWarm` below `minWarm` refused with the silent fold stated as the reason - upstream's wizard agrees, its controller does not | B3, B4 |
-| S12 | The will-not-heal vocabulary: terminal failures say delete-and-recreate, parked ones say they wait forever with an empty phase and one False condition, and no line promises a `Pending` row | Summaries |
+| #   | Improvement                                                                                                                                                                                                                                                                                                             | Where           |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| S1  | `store.create`, so a name clash is the API server's own `AlreadyExists` reopened with the form intact, where upstream's forced apply overwrites the existing object and reports success                                                                                                                                 | Outcome         |
+| S2  | The namespace never guessed: prefilled only from a single-namespace page filter, never the literal `default`                                                                                                                                                                                                            | A1, B1          |
+| S3  | The claimant's shape **derived from the picked pool** and sent from it, closing the "must match" rule four schema descriptions state and nothing enforces; upstream prefills the image and leaves it editable                                                                                                           | A2              |
+| S4  | The pool picker scoped to the sandbox's own namespace, carrying phase, warm and claimed on every option, and never disabled - a miss is a cold boot                                                                                                                                                                     | A2              |
+| S5  | A command-less checkout warned about, since it always cold-falls-back; upstream warns nowhere                                                                                                                                                                                                                           | A2              |
+| S6  | `command` and `args` authored as argv arrays, so upstream's whitespace-splitting of a quoted argument is inexpressible                                                                                                                                                                                                  | A3              |
+| S7  | `spec.scratchDisk: {}` - the nil dereference in the reconcile loop - made unbuildable by a three-way control rather than validated                                                                                                                                                                                      | A5              |
+| S8  | Every other webhook-only rule inline (the sixteen-row matrix), because the sandbox webhook ships disabled and the pool has none at all                                                                                                                                                                                  | A5-A9, B3, B4   |
+| S9  | Only declared fields written and no empty-name reference ever emitted (SPEC-0013's G7 in a new place), against upstream's phantom `scratchDisk.mountPath`; and the two no-ops not offered at all - `scratchDisk.blank.volumeMode` stated as always `Block`, `env[].valueFrom` with the literal-only merge as its reason | Payload, A5, A3 |
+| S10 | `timeout` and `ttl` offered at all, validated positive, with the expiry consequences named - including that `ttl` deletes the object itself                                                                                                                                                                             | A7              |
+| S11 | An HGX pool refused at the form (upstream's own rejection writes no status at all), and `maxWarm` below `minWarm` refused with the silent fold stated as the reason - upstream's wizard agrees, its controller does not                                                                                                 | B3, B4          |
+| S12 | The will-not-heal vocabulary: terminal failures say delete-and-recreate, parked ones say they wait forever with an empty phase and one False condition, and no line promises a `Pending` row                                                                                                                            | Summaries       |
 
 Considered and rejected:
 
-| Candidate | Rejected because |
-| --- | --- |
-| CanI / RBAC pre-flight, which upstream does have here | W7 unchanged: `SelfSubjectAccessReview` is itself a write and is not exported to extensions. It also pre-flights against a permission set upstream's own RBAC presets never grant |
-| A slot picker, or a "return this slot" control | The API has neither: no slot custom resource, no claim field, no way to choose or release. Inventing one would be inventing behaviour (W11) |
-| Blocking a checkout against an empty or cold pool | A miss is never a failure upstream, and making it one here would be a worse product rather than a stricter one |
-| A scale stepper, or any edit path, in these dialogs | Creation is the row; the sandbox is immutable except `ttl`, and the pool's stepper is an action with its own findings |
-| Cluster capacity math against `minWarm` x `memory` or the GPU count | The SPEC-0012/0013 verdict unchanged. Arithmetic on the form's own values is stated; a second source of truth about the cluster is not |
-| Re-sending values the API server stamps | The SPEC-0013 rule: `cpu`, `memory`, `rootfsMode`, `network.mode`, `model.mountPath`, `gpuResourceClaim.tier` and `minWarm` are effective values, not sent |
-| Warning that a pooled sandbox's `model` or `scratchDisk` is ignored | The recon settles the GPU case only. O3 stays an open item rather than a sentence the product cannot support |
+| Candidate                                                           | Rejected because                                                                                                                                                                  |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CanI / RBAC pre-flight, which upstream does have here               | W7 unchanged: `SelfSubjectAccessReview` is itself a write and is not exported to extensions. It also pre-flights against a permission set upstream's own RBAC presets never grant |
+| A slot picker, or a "return this slot" control                      | The API has neither: no slot custom resource, no claim field, no way to choose or release. Inventing one would be inventing behaviour (W11)                                       |
+| Blocking a checkout against an empty or cold pool                   | A miss is never a failure upstream, and making it one here would be a worse product rather than a stricter one                                                                    |
+| A scale stepper, or any edit path, in these dialogs                 | Creation is the row; the sandbox is immutable except `ttl`, and the pool's stepper is an action with its own findings                                                             |
+| Cluster capacity math against `minWarm` x `memory` or the GPU count | The SPEC-0012/0013 verdict unchanged. Arithmetic on the form's own values is stated; a second source of truth about the cluster is not                                            |
+| Re-sending values the API server stamps                             | The SPEC-0013 rule: `cpu`, `memory`, `rootfsMode`, `network.mode`, `model.mountPath`, `gpuResourceClaim.tier` and `minWarm` are effective values, not sent                        |
+| Warning that a pooled sandbox's `model` or `scratchDisk` is ignored | The recon settles the GPU case only. O3 stays an open item rather than a sentence the product cannot support                                                                      |
 
 ### Where the code lives
 
@@ -346,8 +346,8 @@ summary facts), `components/sandbox-create-dialog.tsx` and
 `components/sandbox-pool-create-dialog.tsx` (the two W12 forms), plus
 the create control and the clearance rule on both pages. **One pure
 module for both kinds**, deliberately: every pool field except the two
-counts is a sandbox field, and the sandbox form *reads the pool's
-shape*, so two modules would be one rule with two implementations. The
+counts is a sandbox field, and the sandbox form _reads the pool's
+shape_, so two modules would be one rule with two implementations. The
 models need **no field work**; the PR adds the schema defaults as
 constants and the immutability boundary as one exported fact, and types
 the pool's verify-key reference by reusing the sandbox's.
@@ -364,8 +364,8 @@ the pool's verify-key reference by reusing the sandbox's.
    SPEC-0013 slice-1 logic, where everything after the first slice is
    fields - and lands the two self-contained refusals.
 2. **Slice 2 - Create Sandbox**: the workload, the two expiries, the
-   scratch disk, the GPU exclusivities and the checkout, which *derives
-   from* the section slice 1 built and can be demonstrated against a
+   scratch disk, the GPU exclusivities and the checkout, which _derives
+   from_ the section slice 1 built and can be demonstrated against a
    pool the extension itself created.
 
 The alternative (sandbox first, as the milestone's real subject) is
@@ -378,7 +378,7 @@ carrying machinery it also had to invent.
 The W12 catalogue unchanged. Specific here: **every picker degrades to
 a text input on a refused list** (T3), and the pool one degrades
 furthest, because the derivation depends on it. **A cold sandbox
-store** makes the collision warning *unverifiable* rather than absent
+store** makes the collision warning _unverifiable_ rather than absent
 (SPEC-0013's `existingNamesUnverified`): an empty list from a refused
 read is never "the name is free". **403 is the expected failure on a
 well-run cluster**, since upstream's RBAC presets grant only read on
@@ -411,17 +411,17 @@ are defined by SPEC-0014, which landed first (O5, resolved).
 - **E2E**, per slice, with the honest split stated once: **no
   controller runs in the E2E cluster**, so a created sandbox stays
   phaseless, no pod is built and no slot is claimed - unusually kind
-  here, since a phaseless sandbox is what a *real* cluster shows first.
+  here, since a phaseless sandbox is what a _real_ cluster shows first.
   A checkout case **can** prove the whole client protocol: a create
   carrying `spec.poolRef.name` admitted and read back with exactly that
   field, against the `e2e-sandbox-pool` fixture, plus the shape derived
   from it. It **cannot** prove the claim, the re-parent, the
   cold-fallback event or the counts moving; those are manual.
-  - *Slice 1*: creates a pool, read back key-exact with the stamped
+  - _Slice 1_: creates a pool, read back key-exact with the stamped
     defaults asserted; refuses `maxWarm` below `minWarm` with the fold
     as its reason; refuses an HGX profile with the no-status reason;
     cancel writes nothing.
-  - *Slice 2*: creates a cold sandbox with the workload, a blank
+  - _Slice 2_: creates a cold sandbox with the workload, a blank
     scratch disk and a model, read back key-exact with the sent keys
     and the stamped defaults; creates a checkout and asserts `poolRef`
     and the derived shape, with the four controls rendered as facts;
@@ -430,7 +430,7 @@ are defined by SPEC-0014, which landed first (O5, resolved).
     unbuildable rather than validated), the GPU exclusivity, the DRA
     one-of, a relative mount path and a negative duration, each with
     its reason; and the `AlreadyExists` reopen that keeps the form.
-  - *Fixture additions*: `210-sandbox-create.yaml` with
+  - _Fixture additions_: `210-sandbox-create.yaml` with
     `e2e-sandbox-pool-cold` (no status injected, so the no-warm-slot
     branch and the cold-boot warning have something real to render),
     `e2e-sandbox-create-taken` and `e2e-sandbox-pool-create-taken` for
@@ -777,9 +777,9 @@ from, the text above:
     reopen through `dialogReopenDelay`, none of them declares a delay of its
     own, and the shared assert runs on the shipped Take Snapshot dialog as well
     - the one this pass reproduced the defect on, which failed that assert
-    before the fix and passes it after. The `Animate` bug itself goes on the
-    upstream-Freelens list next to the kebab-unmount finding and the hardcoded
-    white box.
+      before the fix and passes it after. The `Animate` bug itself goes on the
+      upstream-Freelens list next to the kebab-unmount finding and the hardcoded
+      white box.
 - **The scratch-disk section's header line was saying, in the same screen,
   what its three radio descriptions and its always-Block fact say one scroll
   below.** That is the duplication SPEC-0013 slice 3 removed from the GPU

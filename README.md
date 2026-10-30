@@ -1,7 +1,5 @@
 # @freelensapp/kubeswift-extension
 
-<!-- markdownlint-disable MD013 -->
-
 [![Home](https://img.shields.io/badge/%F0%9F%8F%A0-freelens.app-02a7a0)](https://freelens.app)
 [![GitHub](https://img.shields.io/github/stars/freelensapp/freelens-kubeswift-extension?style=flat&label=GitHub%20%E2%AD%90)](https://github.com/freelensapp/freelens-kubeswift-extension)
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/freelensapp/freelens-kubeswift-extension)
@@ -9,8 +7,6 @@
 [![Unit tests](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/unit-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/unit-tests.yaml)
 [![Integration tests](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/integration-tests.yaml/badge.svg?branch=main)](https://github.com/freelensapp/freelens-kubeswift-extension/actions/workflows/integration-tests.yaml)
 [![npm](https://img.shields.io/npm/v/@freelensapp/kubeswift-extension.svg)](https://www.npmjs.com/package/@freelensapp/kubeswift-extension)
-
-<!-- markdownlint-enable MD013 -->
 
 ## Overview
 
@@ -39,7 +35,7 @@ boundary).
 
 ## Requirements
 
-- **Freelens >= 2.0.0.** Version 1.x of the extension is for Freelens 1.x.
+- **Freelens >= 2.0.0.** Versions 0.x of the extension are for Freelens 1.x.
 - **Kubernetes >= 1.24.**
 - **KubeSwift v0.18.x.** The views track the v0.18.0 CRDs. The upstream API
   is `v1alpha1` and may change between KubeSwift releases; the extension
@@ -51,22 +47,18 @@ boundary).
 
 All resources are `v1alpha1`.
 
-<!-- markdownlint-disable MD013 -->
-
-| API group | Kinds |
-| --- | --- |
-| `swift.kubeswift.io` | SwiftGuest, SwiftGuestClass, SwiftGuestPool |
-| `image.kubeswift.io` | SwiftImage |
-| `seed.kubeswift.io` | SwiftSeedProfile |
-| `kernel.kubeswift.io` | SwiftKernel |
-| `gpu.kubeswift.io` | SwiftGPUProfile, SwiftGPUNode |
-| `snapshot.kubeswift.io` | SwiftSnapshot, SwiftRestore, SwiftSnapshotSchedule |
-| `migration.kubeswift.io` | SwiftMigration |
-| `sandbox.kubeswift.io` | SwiftSandbox, SwiftSandboxPool, SwiftArtifactPlacement, SwiftArtifactVerificationPolicy |
-| `storage.kubeswift.io` | SwiftStorageLocation, SwiftClusterStorageLocation |
-| `fleet.kubeswift.io` | Cluster |
-
-<!-- markdownlint-enable MD013 -->
+| API group                | Kinds                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| `swift.kubeswift.io`     | SwiftGuest, SwiftGuestClass, SwiftGuestPool                                             |
+| `image.kubeswift.io`     | SwiftImage                                                                              |
+| `seed.kubeswift.io`      | SwiftSeedProfile                                                                        |
+| `kernel.kubeswift.io`    | SwiftKernel                                                                             |
+| `gpu.kubeswift.io`       | SwiftGPUProfile, SwiftGPUNode                                                           |
+| `snapshot.kubeswift.io`  | SwiftSnapshot, SwiftRestore, SwiftSnapshotSchedule                                      |
+| `migration.kubeswift.io` | SwiftMigration                                                                          |
+| `sandbox.kubeswift.io`   | SwiftSandbox, SwiftSandboxPool, SwiftArtifactPlacement, SwiftArtifactVerificationPolicy |
+| `storage.kubeswift.io`   | SwiftStorageLocation, SwiftClusterStorageLocation                                       |
+| `fleet.kubeswift.io`     | Cluster                                                                                 |
 
 ## Install
 
@@ -86,8 +78,8 @@ Alternatively, open the following URL in the browser to install directly:
 
 Each [release](https://github.com/freelensapp/freelens-kubeswift-extension/releases)
 has the extension as `freelensapp-kubeswift-extension-<version>.tgz`, with its
-checksum in `freelensapp-kubeswift-extension-<version>.tgz.sha256`. Use a
-release whose major version matches your Freelens version.
+checksum in `freelensapp-kubeswift-extension-<version>.tgz.sha256`. Releases
+1.0.0 and later are for Freelens 2.x, and 0.x releases for Freelens 1.x.
 
 - Enter the URL of the `.tgz` asset and press Install. Freelens downloads the
   `.tgz.sha256` next to it and checks the tarball against it.

@@ -86,14 +86,14 @@ conclusion**: the schemas do prune unknown status fields, but every field the
 M1 views read is declared in them, so every status those views need can be
 injected.
 
-| CRD | Status subresource | Injection | Outcome |
-| --- | --- | --- | --- |
-| SwiftGuest | yes | `kubectl patch --subresource=status` | Works. `phase`, `nodeName`, `restartCount`, `lastRestartTime`, `network` (`primaryIP`, `interfaces`, `exposedPorts`, `serviceRef`), `runtime`, `storage`, `podRef`, `console` and `conditions` all read back unchanged |
-| SwiftGuestPool | yes (plus `scale`) | same | Works. All five replica counters, `serviceRef`, `currentTemplateHash` and `conditions` read back unchanged |
-| SwiftImage | yes | same | Works. `phase`, `sourceFormat`, `preparedFormat`, `preparedArtifact` (with `pvcRef` and `size`), `cloneSeed` and `conditions` read back unchanged |
-| SwiftKernel | yes | same | Works. `phase`, `kernelDigest`, `initramfsDigest`, `nodeStatuses` and `conditions` read back unchanged |
-| SwiftGuestClass | **no** | not applicable | The schema declares no `status` at all, and the CRD no subresource, so `--subresource=status` answers `NotFound`. Also cluster-scoped. The views read the spec only |
-| SwiftSeedProfile | **no** | not applicable | Same: no `status` in the schema, `--subresource=status` answers `NotFound` |
+| CRD              | Status subresource | Injection                            | Outcome                                                                                                                                                                                                                |
+| ---------------- | ------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SwiftGuest       | yes                | `kubectl patch --subresource=status` | Works. `phase`, `nodeName`, `restartCount`, `lastRestartTime`, `network` (`primaryIP`, `interfaces`, `exposedPorts`, `serviceRef`), `runtime`, `storage`, `podRef`, `console` and `conditions` all read back unchanged |
+| SwiftGuestPool   | yes (plus `scale`) | same                                 | Works. All five replica counters, `serviceRef`, `currentTemplateHash` and `conditions` read back unchanged                                                                                                             |
+| SwiftImage       | yes                | same                                 | Works. `phase`, `sourceFormat`, `preparedFormat`, `preparedArtifact` (with `pvcRef` and `size`), `cloneSeed` and `conditions` read back unchanged                                                                      |
+| SwiftKernel      | yes                | same                                 | Works. `phase`, `kernelDigest`, `initramfsDigest`, `nodeStatuses` and `conditions` read back unchanged                                                                                                                 |
+| SwiftGuestClass  | **no**             | not applicable                       | The schema declares no `status` at all, and the CRD no subresource, so `--subresource=status` answers `NotFound`. Also cluster-scoped. The views read the spec only                                                    |
+| SwiftSeedProfile | **no**             | not applicable                       | Same: no `status` in the schema, `--subresource=status` answers `NotFound`                                                                                                                                             |
 
 Three limits found while probing, all worth knowing before writing a fixture
 for a later milestone:
@@ -215,7 +215,7 @@ the namespace filter is moved, which is standard Freelens behaviour for every
 resource type, not something the extension can or should override.
 
 To keep the next failure cheap to read, a failing row assertion now
-screenshots the window and lists the rows that *are* on the page, a failing
+screenshots the window and lists the rows that _are_ on the page, a failing
 page assertion lists the sidebar test ids present, and the workflow uploads
 `e2e-artifacts/` when the job fails.
 

@@ -164,7 +164,7 @@ green in CI (ubuntu-24.04-arm) throughout. Root-caused as follows:
 - **View list is a hand-maintained constant, not read from
   `src/renderer/index.tsx`.** That file is JSX bundled for the renderer
   process and is not reachable from the Node/Playwright context that
-  drives a *built* Freelens (the suite runs inside a checkout of
+  drives a _built_ Freelens (the suite runs inside a checkout of
   `freelensapp/freelens`, against the packed extension tarball). Per the
   MVP allowance in this spec's Design section, the list lives once in
   `integration/helpers/kubeswift-views.ts` (menu id, page title, one

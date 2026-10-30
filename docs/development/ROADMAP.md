@@ -16,38 +16,38 @@ KubeSwift v0.13.12, 15 CRDs across 9 API groups).
 
 ### M1 — Read-only core workload views
 
-| Feature | Spec | Status |
-| --- | --- | --- |
-| SwiftGuest list + detail | [SPEC-0001](../specs/SPEC-0001-swiftguest-read-only-views.md) | Done |
-| SwiftGuestClass list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
-| SwiftGuestPool list + detail (replicas, rollout) | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
-| SwiftImage list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
-| SwiftSeedProfile list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
-| SwiftKernel list + detail | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md) | Done |
+| Feature                                          | Spec                                                          | Status |
+| ------------------------------------------------ | ------------------------------------------------------------- | ------ |
+| SwiftGuest list + detail                         | [SPEC-0001](../specs/SPEC-0001-swiftguest-read-only-views.md) | Done   |
+| SwiftGuestClass list + detail                    | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md)    | Done   |
+| SwiftGuestPool list + detail (replicas, rollout) | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md)    | Done   |
+| SwiftImage list + detail                         | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md)    | Done   |
+| SwiftSeedProfile list + detail                   | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md)    | Done   |
+| SwiftKernel list + detail                        | [SPEC-0002](../specs/SPEC-0002-m1-remaining-core-views.md)    | Done   |
 
 ### M2 — Snapshots and migrations (read-only)
 
-| Feature | Spec | Status |
-| --- | --- | --- |
-| SwiftSnapshot list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done |
-| SwiftRestore list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done |
-| SwiftSnapshotSchedule list + detail | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done |
-| SwiftMigration list + detail (status, progress) | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done |
+| Feature                                         | Spec                                                           | Status |
+| ----------------------------------------------- | -------------------------------------------------------------- | ------ |
+| SwiftSnapshot list + detail                     | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done   |
+| SwiftRestore list + detail                      | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done   |
+| SwiftSnapshotSchedule list + detail             | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done   |
+| SwiftMigration list + detail (status, progress) | [SPEC-0004](../specs/SPEC-0004-m2-snapshot-migration-views.md) | Done   |
 
 ### M3 — GPU views (read-only)
 
-| Feature | Spec | Status |
-| --- | --- | --- |
-| SwiftGPUProfile list + detail | [SPEC-0007](../specs/SPEC-0007-m3-gpu-read-only-views.md) | Done |
-| SwiftGPUNode list + detail (per-node inventory) | [SPEC-0007](../specs/SPEC-0007-m3-gpu-read-only-views.md) | Done |
+| Feature                                         | Spec                                                      | Status |
+| ----------------------------------------------- | --------------------------------------------------------- | ------ |
+| SwiftGPUProfile list + detail                   | [SPEC-0007](../specs/SPEC-0007-m3-gpu-read-only-views.md) | Done   |
+| SwiftGPUNode list + detail (per-node inventory) | [SPEC-0007](../specs/SPEC-0007-m3-gpu-read-only-views.md) | Done   |
 
 ### M4 — Sandbox views (read-only)
 
-| Feature | Spec | Status |
-| --- | --- | --- |
-| SwiftSandbox list + detail | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done |
-| SwiftSandboxPool list + detail | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done |
-| Launcher pod logs from the sandbox drawer | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done |
+| Feature                                   | Spec                                                          | Status |
+| ----------------------------------------- | ------------------------------------------------------------- | ------ |
+| SwiftSandbox list + detail                | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done   |
+| SwiftSandboxPool list + detail            | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done   |
+| Launcher pod logs from the sandbox drawer | [SPEC-0008](../specs/SPEC-0008-m4-sandbox-read-only-views.md) | Done   |
 
 M4 ships in two slices: SwiftSandbox (with the launcher-pod logs affordance and
 the new Sandboxes sidebar group) first, SwiftSandboxPool second. See
@@ -63,9 +63,9 @@ owns.
 
 ### M5 — Fleet view (read-only)
 
-| Feature | Spec | Status |
-| --- | --- | --- |
-| Cluster (fleet.kubeswift.io) list + detail | [SPEC-0009](../specs/SPEC-0009-m5-fleet-read-only-views.md) | Done |
+| Feature                                    | Spec                                                        | Status |
+| ------------------------------------------ | ----------------------------------------------------------- | ------ |
+| Cluster (fleet.kubeswift.io) list + detail | [SPEC-0009](../specs/SPEC-0009-m5-fleet-read-only-views.md) | Done   |
 
 M5 is one CRD and ships in a single slice. It is the view of the KubeSwift
 fleet that the Kubernetes API can serve on its own: which member clusters a
@@ -85,15 +85,15 @@ a cluster without a gateway the page exists, stays empty, and is right to.
 kubeswift-ui offers create wizards and action dialogs. For the extension this
 means (each item needs its own spec before implementation):
 
-| Feature | Spec | Status |
-| --- | --- | --- |
-| Guest actions: start/stop (runPolicy), delete | [SPEC-0010](../specs/SPEC-0010-m6-guest-actions.md) | Done |
-| Create SwiftGuest (form) | [SPEC-0013](../specs/SPEC-0013-m6-create-guest-form.md) | Done |
-| Create SwiftGuestClass / Image / Kernel / SeedProfile (forms) | [SPEC-0014](../specs/SPEC-0014-m6-simple-creation-forms.md) | Done |
-| Create SwiftGuestPool (form) | [SPEC-0015](../specs/SPEC-0015-m6-create-guest-pool-form.md) | Done |
-| Snapshot now / restore dialogs | [SPEC-0011](../specs/SPEC-0011-m6-snapshot-restore-dialogs.md) | Done |
-| Start migration dialog | [SPEC-0012](../specs/SPEC-0012-m6-start-migration-dialog.md) | Done |
-| Sandbox / SandboxPool creation | [SPEC-0016](../specs/SPEC-0016-m6-sandbox-creation.md) | Done |
+| Feature                                                       | Spec                                                           | Status |
+| ------------------------------------------------------------- | -------------------------------------------------------------- | ------ |
+| Guest actions: start/stop (runPolicy), delete                 | [SPEC-0010](../specs/SPEC-0010-m6-guest-actions.md)            | Done   |
+| Create SwiftGuest (form)                                      | [SPEC-0013](../specs/SPEC-0013-m6-create-guest-form.md)        | Done   |
+| Create SwiftGuestClass / Image / Kernel / SeedProfile (forms) | [SPEC-0014](../specs/SPEC-0014-m6-simple-creation-forms.md)    | Done   |
+| Create SwiftGuestPool (form)                                  | [SPEC-0015](../specs/SPEC-0015-m6-create-guest-pool-form.md)   | Done   |
+| Snapshot now / restore dialogs                                | [SPEC-0011](../specs/SPEC-0011-m6-snapshot-restore-dialogs.md) | Done   |
+| Start migration dialog                                        | [SPEC-0012](../specs/SPEC-0012-m6-start-migration-dialog.md)   | Done   |
+| Sandbox / SandboxPool creation                                | [SPEC-0016](../specs/SPEC-0016-m6-sandbox-creation.md)         | Done   |
 
 M6 is where the extension starts writing. Everything through M5 reads, so the
 first row carries more than its own feature: SPEC-0010 sets the ground rules
@@ -118,10 +118,10 @@ here when it is written.
 
 ### M7 — Console and exec
 
-| Feature | Spec | Status |
-| --- | --- | --- |
-| VM serial console | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Done |
-| Sandbox workload console tail (the interactive in-guest shell is excluded: it needs the gateway's vsock frame protocol, which is upstream's AGPL wire format, see SPEC-0017) | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Done |
+| Feature                                                                                                                                                                      | Spec                                                   | Status |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------ |
+| VM serial console                                                                                                                                                            | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Done   |
+| Sandbox workload console tail (the interactive in-guest shell is excluded: it needs the gateway's vsock frame protocol, which is upstream's AGPL wire format, see SPEC-0017) | [SPEC-0017](../specs/SPEC-0017-m7-console-and-exec.md) | Done   |
 
 ### v2 port
 
@@ -130,17 +130,17 @@ release for Freelens 2.x. The port changes no behaviour of M1-M7; it comes
 with the alignment to the current KubeSwift release (SPEC-0019: compatibility,
 new fields, new kinds and the new fields in the forms).
 
-| Feature | Spec | Status |
-| --- | --- | --- |
-| Port to the Freelens v2 extension API (data layer, views, writes, console, test suites) | [SPEC-0018](../specs/SPEC-0018-v2-port.md) | Approved |
-| Alignment to KubeSwift v0.18.0 | [SPEC-0019](../specs/SPEC-0019-kubeswift-v0.18.md) | Approved |
+| Feature                                                                                 | Spec                                               | Status   |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------- | -------- |
+| Port to the Freelens v2 extension API (data layer, views, writes, console, test suites) | [SPEC-0018](../specs/SPEC-0018-v2-port.md)         | Approved |
+| Alignment to KubeSwift v0.18.0                                                          | [SPEC-0019](../specs/SPEC-0019-kubeswift-v0.18.md) | Approved |
 
 ### Cross-cutting
 
-| Item | Status |
-| --- | --- |
-| E2E test infrastructure (kind + CRDs + simulated statuses + Playwright) | [SPEC-0003](../specs/SPEC-0003-e2e-infrastructure.md) — Done (see [TESTING.md](TESTING.md)) |
-| Local demo cluster for manual testing (`pnpm demo:up`, milestone review gate) | [SPEC-0005](../specs/SPEC-0005-local-demo-cluster.md) — Done (see [TRY-IT.md](TRY-IT.md)) |
+| Item                                                                          | Status                                                                                      |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| E2E test infrastructure (kind + CRDs + simulated statuses + Playwright)       | [SPEC-0003](../specs/SPEC-0003-e2e-infrastructure.md) — Done (see [TESTING.md](TESTING.md)) |
+| Local demo cluster for manual testing (`pnpm demo:up`, milestone review gate) | [SPEC-0005](../specs/SPEC-0005-local-demo-cluster.md) — Done (see [TRY-IT.md](TRY-IT.md))   |
 
 ## Out of scope for v1
 

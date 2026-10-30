@@ -150,7 +150,7 @@ open `kind-kubeswift-demo` from the catalog.
 - **A sandbox's Workload Console follows its console file and can never be
   typed into**: for a sandbox the hypervisor writes the guest's serial
   line to a file rather than to a socket, so the console is read-only by
-  construction (SPEC-0017). For a shell *inside* a sandbox's microVM, use
+  construction (SPEC-0017). For a shell _inside_ a sandbox's microVM, use
   `swiftctl sandbox attach` (or `swiftctl sandbox exec`): that channel is
   the guest agent's vsock protocol, which is not expressible as a command
   line in a terminal tab, so this extension deliberately offers no control

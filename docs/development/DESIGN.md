@@ -74,15 +74,15 @@ repositories.
   (defined in core `app.scss` on top of `--colorSuccess` etc.), or, for
   custom elements, to the semantic theme tokens:
 
-  | Meaning | Token |
-  | --- | --- |
-  | healthy / running / ready | `--colorOk` |
-  | completed / succeeded | `--colorSuccess` |
-  | pending / waiting / in progress | `--colorWarning` |
-  | failed / error | `--colorError` |
+  | Meaning                              | Token               |
+  | ------------------------------------ | ------------------- |
+  | healthy / running / ready            | `--colorOk`         |
+  | completed / succeeded                | `--colorSuccess`    |
+  | pending / waiting / in progress      | `--colorWarning`    |
+  | failed / error                       | `--colorError`      |
   | terminated / terminating / suspended | `--colorTerminated` |
-  | informational / neutral | `--colorInfo` |
-  | unknown | `--colorVague` |
+  | informational / neutral              | `--colorInfo`       |
+  | unknown                              | `--colorVague`      |
 
   This mirrors core's `workloads-mixins.scss`, the canonical status
   color map extensions must not contradict.

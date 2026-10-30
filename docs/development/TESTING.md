@@ -54,20 +54,20 @@ VMs), driven through Freelens dev by Playwright over CDP (layer 2).
 #### Prerequisites
 
 - A running Docker daemon, plus `kind` and `kubectl` on `PATH`.
-- A checkout of `freelensapp/freelens` at `main`, the only ref with the v2
-  extension API until Freelens 2.0.0 is released, in `./freelens`
+- A checkout of `freelensapp/freelens` at the tag `v2.0.0`, the release CI
+  tests against, or at a later ref with the v2 extension API, in `./freelens`
   (gitignored) or wherever `FREELENS_DIR` points, with `pnpm install` and
   `pnpm build:resources` (kubectl and the cluster proxy) run there once.
 
 #### Commands
 
-| Command | What it does |
-| --- | --- |
-| `pnpm e2e:cluster:up` | Creates the cluster, applies the CRDs, the fixtures and their statuses |
-| `pnpm e2e:cluster:down` | Deletes the cluster and its kubeconfig |
-| `pnpm e2e:freelens` | Starts Freelens dev on a fresh profile that syncs the lab kubeconfigs alone |
-| `pnpm e2e` | Cluster up, build, run the suite, cluster down (Freelens dev running) |
-| `pnpm test:integration` | The integration test and the E2E suite, as CI runs them |
+| Command                 | What it does                                                                |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `pnpm e2e:cluster:up`   | Creates the cluster, applies the CRDs, the fixtures and their statuses      |
+| `pnpm e2e:cluster:down` | Deletes the cluster and its kubeconfig                                      |
+| `pnpm e2e:freelens`     | Starts Freelens dev on a fresh profile that syncs the lab kubeconfigs alone |
+| `pnpm e2e`              | Cluster up, build, run the suite, cluster down (Freelens dev running)       |
+| `pnpm test:integration` | The integration test and the E2E suite, as CI runs them                     |
 
 `E2E_KEEP_CLUSTER=1 pnpm e2e` leaves the cluster running for inspection.
 `pnpm e2e:cluster:up` is idempotent, so it doubles as "re-apply the fixtures",
@@ -84,10 +84,12 @@ pnpm e2e:freelens > /tmp/freelens-dev.log 2>&1 &
 FREELENS_MAIN_LOG=/tmp/freelens-dev.log e2e/scripts/run-suite.sh
 ```
 
-`pnpm e2e:freelens` (`e2e/scripts/freelens-dev.sh`) is what keeps a local run
-to the lab. Freelens dev otherwise syncs the developer's `~/.kube`, every
-context of which, production clusters included, is one click away from a
-suite that drives the UI. The script creates a fresh profile under the
+`pnpm e2e:freelens` (`e2e/scripts/freelens-dev.sh`) is what gives a local run
+the lab, and the lab alone. A fresh profile of Freelens dev syncs no
+kubeconfig, so its catalog would have no cluster to test, and the developer's
+own `FreelensDev` profile syncs whatever was added there, such as `~/.kube`,
+every context of which, production clusters included, is one click away from
+a suite that drives the UI. The script creates a fresh profile under the
 system's temporary directory (`FREELENS_INTEGRATION_TESTING_DIR`, which the app
 accepts only there), writes its preferences so that the only synced files are
 `.e2e/kubeconfig` and, when it exists, `.demo/kubeconfig`, refuses a
@@ -438,8 +440,8 @@ cluster is created. Nothing from KubeSwift is vendored into this repository
   under `.e2e/`, and `pnpm e2e:freelens` gives Freelens dev a profile that
   syncs that file alone (see "Running locally"). Freelens resolves `~/.kube`
   through `os.userInfo().homedir`, which ignores `$HOME`, so a sandboxed HOME
-  would not have been enough. In CI the runner's `~/.kube/config` is a copy of
-  the lab kubeconfig.
+  would not have been enough. In CI the workflow seeds a fresh profile of
+  Freelens dev whose only synced file is the lab kubeconfig.
 - The Freelens checkout: the suites only attach to the app it runs.
 
 The activation case fails on any error either process logs, with one

@@ -46,6 +46,13 @@ const ARTIFACTS_DIR = process.env.E2E_ARTIFACTS_DIR || path.join(process.cwd(), 
 
 const ANSI_ESCAPE_PATTERN = /\u001b\[[0-9;]*m/g;
 
+// The Kubernetes proxy of Freelens logs a request that the renderer aborts as
+// an error. Freelens dev renders in React.StrictMode, which mounts every view
+// twice and aborts the requests of the first mount, so the line comes and goes
+// with the timing of a run. It names no request, and says nothing about the
+// extension.
+const ABORTED_PROXY_REQUEST_PATTERN = /proxy_server\.go:\d+\] Error while proxying request: context canceled$/;
+
 /**
  * Screenshots the whole app window. Never throws: a failed screenshot must
  * not replace the failure that asked for it.
@@ -167,7 +174,7 @@ function collectErrors(window: Page) {
       for (const line of buffer.toString("utf8").split("\n")) {
         const text = line.replaceAll(ANSI_ESCAPE_PATTERN, "");
 
-        if (/^(?:[\w@/.-]+:[\w:-]+: )?\s*error:/.test(text)) {
+        if (/^(?:[\w@/.-]+:[\w:-]+: )?\s*error:/.test(text) && !ABORTED_PROXY_REQUEST_PATTERN.test(text.trim())) {
           errorLogs.push(`[main] ${text.trim()}`);
         }
       }
@@ -308,7 +315,9 @@ export async function installExtension({ window }: AppSession, { reinstall = fal
     .waitFor({ timeout: ELEMENT_TIMEOUT });
 
   if (await row.count()) {
-    const inPlace = await row.locator(`[title="Loaded in place from ${EXTENSION_DIR}"]`).count();
+    // An extension loaded in place reads "development" in the version column,
+    // with the directory in its title.
+    const inPlace = await row.locator(`[title="Loaded from ${EXTENSION_DIR}"]`).count();
 
     if (!reinstall && inPlace && (await enabled.count())) {
       return;

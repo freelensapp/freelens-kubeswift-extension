@@ -58,7 +58,7 @@ a black rectangle.
   serial **file** (digest B1).
 - `rust/swiftletd/src/report.rs`, `internal/controller/swiftguest/status.go`
   - the launcher-pod annotation that becomes `status.console.serialSocket`
-  (digest A2).
+    (digest A2).
 - kubeswift-ui `main` `c4e53ce`: `src/app/console/`,
   `src/app/sandbox-logs/`, `src/app/sandbox-exec/` - three xterm.js
   overlays over the gateway's WebSockets. **UX reference only.**
@@ -141,7 +141,7 @@ kubectl exec -i -t -n <ns> <launcherPod> -c launcher -- \
 The wait loop is kept because upstream keeps it and it turns the one
 common race - attaching while the hypervisor is still creating the socket
 - into a wait instead of an error (digest A3.6). `socat` is in the
-launcher image (digest A3).
+  launcher image (digest A3).
 
 **For a sandbox.** There is no socket to connect to and there never will
 be: for a sandbox the hypervisor is told to write the guest console **to
@@ -161,10 +161,10 @@ No `-i`, no `-t`, no stdin: this is a read and the command line says so
 **The two path rules are inverses, and this is the single easiest thing
 in the milestone to get backwards** (digest A2, B3):
 
-| Kind | Run-directory key | Because |
-| --- | --- | --- |
-| SwiftGuest | `<ns>-<guestName>` | keyed on the **guest**, so it survives the `<guest>-mig-<uid>` pod rename a live migration produces |
-| SwiftSandbox | `<ns>-<podName>` | keyed on the **launcher pod**, so a warm-slot checkout's directory lives in the claimed slot's pod (`<pool>-slot-xxxxx`), not in a pod named after the sandbox |
+| Kind         | Run-directory key  | Because                                                                                                                                                        |
+| ------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SwiftGuest   | `<ns>-<guestName>` | keyed on the **guest**, so it survives the `<guest>-mig-<uid>` pod rename a live migration produces                                                            |
+| SwiftSandbox | `<ns>-<podName>`   | keyed on the **launcher pod**, so a warm-slot checkout's directory lives in the claimed slot's pod (`<pool>-slot-xxxxx`), not in a pod named after the sandbox |
 
 The pure module owns both rules and a unit test pins each, including the
 case where they coincide (a cold sandbox, whose pod is named after
@@ -202,16 +202,16 @@ Freelens exports exactly two functions for this and no third
   of kind terminal, taking a title and an id.
 - `Renderer.Component.terminalStore.sendCommand(command, { enter, tabId })`
   - waits for that tab's shell to be ready and writes the string on its
-  stdin.
+    stdin.
 
 Nothing else is exported: not the host's own `PodShellMenu`, not
 `dockStore`, not `TerminalApi`, not `WebSocketApi`, and no `pods/exec`
 client anywhere in `Renderer.K8sApi` (digest C1). So the brief's option 2
 - reusing the host's pod-shell affordance for an arbitrary pod - **is
-impossible as reuse**; what is reusable is its *recipe*, which is MIT,
-and which this repository already has a precedent for restating rather
-than importing (`components/pod-logs.ts` does exactly that for the
-default-container rule).
+impossible as reuse**; what is reusable is its _recipe_, which is MIT,
+  and which this repository already has a precedent for restating rather
+  than importing (`components/pod-logs.ts` does exactly that for the
+  default-container rule).
 
 The recipe (digest C2): compose the command line, `createTerminalTab`
 with a generated id and a title, `sendCommand(line, { enter: true, tabId })`.
@@ -240,10 +240,10 @@ the host in **both** the list row kebab and the drawer toolbar, with the
 `{ object, toolbar }` contract and the `<Icon interactive={toolbar} />`
 plus hidden-title idiom the shipped M6 items use.
 
-| Kind | Title | Icon | Tab title |
-| --- | --- | --- | --- |
-| SwiftGuest | `Serial Console` | `terminal` | `Console: <guest>` |
-| SwiftSandbox | `Workload Console` | `subject` | `Console: <sandbox> (<pod>)` |
+| Kind         | Title              | Icon       | Tab title                    |
+| ------------ | ------------------ | ---------- | ---------------------------- |
+| SwiftGuest   | `Serial Console`   | `terminal` | `Console: <guest>`           |
+| SwiftSandbox | `Workload Console` | `subject`  | `Console: <sandbox> (<pod>)` |
 
 The sandbox tab title names the **pod** as well as the sandbox, because
 for a checkout they differ and that difference is otherwise invisible
@@ -273,14 +273,14 @@ is already written and tested for exactly this and is reused.
 
 **SwiftGuest:**
 
-| State | Outcome | Reason |
-| --- | --- | --- |
-| `phase: Running` and `status.podRef` set | enabled | - |
-| `phase` anything else | disabled | names the phase, and for `Stopped` adds that a stop deletes the launcher pod, so no socket exists |
-| `phase: Migrating` | disabled | the launcher pod is being replaced; the socket path does not change, so retry when the phase settles (digest A7) |
-| `status.podRef` absent | disabled | the status names no launcher pod yet |
-| `deletionTimestamp` present | **absent**, not disabled | DESIGN.md section 12's stated exception |
-| unknown or unparseable phase | **enabled** | W4: the guard is a convenience, the API server is the authority |
+| State                                    | Outcome                  | Reason                                                                                                           |
+| ---------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `phase: Running` and `status.podRef` set | enabled                  | -                                                                                                                |
+| `phase` anything else                    | disabled                 | names the phase, and for `Stopped` adds that a stop deletes the launcher pod, so no socket exists                |
+| `phase: Migrating`                       | disabled                 | the launcher pod is being replaced; the socket path does not change, so retry when the phase settles (digest A7) |
+| `status.podRef` absent                   | disabled                 | the status names no launcher pod yet                                                                             |
+| `deletionTimestamp` present              | **absent**, not disabled | DESIGN.md section 12's stated exception                                                                          |
+| unknown or unparseable phase             | **enabled**              | W4: the guard is a convenience, the API server is the authority                                                  |
 
 Windows guests are **not** disabled. `osType: windows` skips the image
 import's serial-console patch and upstream manages Windows over RDP
@@ -290,17 +290,17 @@ would work. The fact is stated in the tooltip instead of taken as a veto.
 
 **SwiftSandbox:**
 
-| State | Outcome | Reason |
-| --- | --- | --- |
-| `status.podRef` set | enabled | - |
-| `status.podRef` absent | disabled | no launcher pod yet; a sandbox's first observable phase is empty, not `Pending` (SPEC-0016 correction 3) |
-| `deletionTimestamp` present | absent | as above |
+| State                       | Outcome  | Reason                                                                                                   |
+| --------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `status.podRef` set         | enabled  | -                                                                                                        |
+| `status.podRef` absent      | disabled | no launcher pod yet; a sandbox's first observable phase is empty, not `Pending` (SPEC-0016 correction 3) |
+| `deletionTimestamp` present | absent   | as above                                                                                                 |
 
 Deliberately **not** gated on the phase. A terminal sandbox whose pod
 still exists has the most interesting console in the milestone - the
 workload's whole output plus its exit marker - and upstream's Logs button
 is ungated too. Where upstream is wrong is the other direction: it is
-ungated even when there is *no pod*, which is the S1 improvement.
+ungated even when there is _no pod_, which is the S1 improvement.
 
 **Every guard is re-evaluated inside the click handler before anything
 opens.** `MenuItem`'s `disabled` prop only adds a class and sets
@@ -374,8 +374,8 @@ met by construction rather than by a notification.
 - **A sandbox, cold:** `tail -n +1 -F` starts at the first line of the
   file, so the whole console to date arrives at once and then follows
   live.
-- **A sandbox, checked out from a warm pool:** *nothing, until the
-  workload finishes.* A checkout's workload runs over vsock and its
+- **A sandbox, checked out from a warm pool:** _nothing, until the
+  workload finishes._ A checkout's workload runs over vsock and its
   output is appended to the console file in one lump when the call
   returns (digest B5). The tooltip says so. This is the milestone's
   single most valuable sentence and no upstream surface contains it.
@@ -393,7 +393,7 @@ own; the tab title and the tooltip carry that weight instead.
 - **Stopped** is a guard refusal with a mechanism in the reason: a stop
   is two writes and the second deletes the launcher pod (SPEC-0010), so
   there is no pod to exec into and no socket to connect to.
-- **Migrating** is a guard refusal that says what *does* survive: the
+- **Migrating** is a guard refusal that says what _does_ survive: the
   socket path is keyed on the guest, not the pod, so the same console
   returns at the destination once the phase settles (digest A2, A7).
 - **A replaced or Terminating pod** is not guessed at. `status.podRef`
@@ -414,37 +414,37 @@ console guarded on phase alone with no explanation when disabled, one
 sandbox shell that vanishes when the phase is not Running, and one
 sandbox logs button with no guard at all.
 
-| # | Improvement | Where |
-| --- | --- | --- |
-| K1 | The launcher pod resolved from `status.podRef`, as `swiftctl` does, where the gateway resolves by label selector only and can hand back a Terminating pod without saying so | Guest guard |
-| K2 | The socket path **read from `status.console.serialSocket`** rather than reconstructed, with the convention as fallback - upstream's own code warns the convention can be wrong after a restore whose snapshot points at another run dir | Guest command |
-| K3 | A disabled console **names its reason** - the phase, and for a stop the fact that the launcher pod is gone - where upstream greys the button and explains nothing | Guest guard |
-| K4 | A Windows guest told, before the terminal opens, that the serial console is expected to be silent because the import skips the GRUB serial patch | Guest tooltip |
-| K5 | A blank Linux console explained once, at the point of use, with the two guest-side causes named | Guest tooltip |
-| K6 | The sandbox console **guarded on having a pod at all**, where upstream's Logs button is ungated and will happily open a terminal against a pod that does not exist | Sandbox guard |
-| K7 | The sandbox control **disabled with a reason rather than removed**, where upstream's Shell button disappears - the vanishing control W4 forbids | Sandbox guard |
-| K8 | **A checkout's tail declared non-live**: its workload runs over vsock and its output is appended only when the workload ends, so the terminal is empty until then. Three upstream surfaces present it as a live tail | Sandbox tooltip |
-| K9 | The read-only-ness **explained by its mechanism**: a sandbox's hypervisor writes serial to a file, never to a socket, so there is nothing to type into - upstream says "read-only" without saying why | Sandbox tooltip |
-| K10 | The `KUBESWIFT-EXIT-CODE=` marker named where the tail is offered, next to the `status.exitCode` the drawer already shows, so the last line reads as machinery | Sandbox tooltip |
-| K11 | The **slot pod named in the tab title** for a checkout, which is otherwise the only place a user ever sees a slot pod (SPEC-0016's own manual list makes the same point) | Sandbox tab title |
-| K12 | The command line itself visible and re-runnable, so a failure is diagnosable and a session is reproducible outside Freelens - a property no WebSocket overlay can offer | Both |
-| K13 | The serial-socket string **validated before interpolation** into a shell command line, and **every interpolated value quoted**. The socket is a pod annotation; upstream never reads it and so never faces the question, and this extension will not introduce a command-injection path in exchange for K2 | Both commands |
+| #   | Improvement                                                                                                                                                                                                                                                                                                | Where             |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| K1  | The launcher pod resolved from `status.podRef`, as `swiftctl` does, where the gateway resolves by label selector only and can hand back a Terminating pod without saying so                                                                                                                                | Guest guard       |
+| K2  | The socket path **read from `status.console.serialSocket`** rather than reconstructed, with the convention as fallback - upstream's own code warns the convention can be wrong after a restore whose snapshot points at another run dir                                                                    | Guest command     |
+| K3  | A disabled console **names its reason** - the phase, and for a stop the fact that the launcher pod is gone - where upstream greys the button and explains nothing                                                                                                                                          | Guest guard       |
+| K4  | A Windows guest told, before the terminal opens, that the serial console is expected to be silent because the import skips the GRUB serial patch                                                                                                                                                           | Guest tooltip     |
+| K5  | A blank Linux console explained once, at the point of use, with the two guest-side causes named                                                                                                                                                                                                            | Guest tooltip     |
+| K6  | The sandbox console **guarded on having a pod at all**, where upstream's Logs button is ungated and will happily open a terminal against a pod that does not exist                                                                                                                                         | Sandbox guard     |
+| K7  | The sandbox control **disabled with a reason rather than removed**, where upstream's Shell button disappears - the vanishing control W4 forbids                                                                                                                                                            | Sandbox guard     |
+| K8  | **A checkout's tail declared non-live**: its workload runs over vsock and its output is appended only when the workload ends, so the terminal is empty until then. Three upstream surfaces present it as a live tail                                                                                       | Sandbox tooltip   |
+| K9  | The read-only-ness **explained by its mechanism**: a sandbox's hypervisor writes serial to a file, never to a socket, so there is nothing to type into - upstream says "read-only" without saying why                                                                                                      | Sandbox tooltip   |
+| K10 | The `KUBESWIFT-EXIT-CODE=` marker named where the tail is offered, next to the `status.exitCode` the drawer already shows, so the last line reads as machinery                                                                                                                                             | Sandbox tooltip   |
+| K11 | The **slot pod named in the tab title** for a checkout, which is otherwise the only place a user ever sees a slot pod (SPEC-0016's own manual list makes the same point)                                                                                                                                   | Sandbox tab title |
+| K12 | The command line itself visible and re-runnable, so a failure is diagnosable and a session is reproducible outside Freelens - a property no WebSocket overlay can offer                                                                                                                                    | Both              |
+| K13 | The serial-socket string **validated before interpolation** into a shell command line, and **every interpolated value quoted**. The socket is a pod annotation; upstream never reads it and so never faces the question, and this extension will not introduce a command-injection path in exchange for K2 | Both commands     |
 
 Considered and rejected:
 
-| Candidate | Rejected because |
-| --- | --- |
-| An extension-owned xterm over a `pods/exec` stream | No exported client, no exported WebSocket helper, a credential path of its own, and for the sandbox shell it still ends at reimplementing upstream's AGPL frame protocol. Several times M6's total machinery for one affordance (digest C3) |
-| A "Sandbox shell" into the microVM | Not expressible as a command line at all (digest B4). Shipping a control that cannot work would be worse than saying it needs `swiftctl` |
-| Composing the vsock handshake and frame protocol as an inline `python3` script - the launcher image has `python3` | It is *technically* expressible, and that is the whole trap: it would embed upstream's wire format in our source, in a form nobody can review, depending on an interpreter in an image we do not control. The recon went to the bottom of this one so it need not be revisited |
-| Shelling out to `swiftctl sandbox attach` from the tab | Depends on a CLI we neither ship nor can detect; its absence is a bare "command not found" in a tab we opened. If it appears at all it is a documented note (O6), never a control |
-| A "Launcher shell" item | The host already renders Pod Shell on the launcher pod, and both drawers link it. Duplicating the host is not parity |
-| A confirmation dialog before opening a console | Argued above: no API call is made, the command line is its own disclosure, and the host puts no dialog in front of the strictly more powerful Pod Shell |
-| Reproducing `swiftctl`'s Ctrl+O detach | The escape byte lives inside `swiftctl`'s own stdin wrapper. The terminal is the host's; we do not bind keys in it, and promising one would be inventing behaviour (W11's own limit) |
-| Disabling the console for Windows guests | "Expected to be silent" is not "impossible"; a serial-enabled Windows image would work. State the fact, do not veto |
-| Gating the sandbox console on `phase: Running` | A terminal sandbox with a surviving pod has the most complete console there is. Upstream's mistake here is the missing pod check, not the missing phase check |
-| Using `status.console.serialSocket`'s presence as the guard | Set and never cleared, so a stopped guest still carries it (digest A7). Right for "where", wrong for "whether" |
-| Streaming the console into a drawer panel instead of the dock | The dock is where Freelens users already look for terminals and logs, it survives navigation, and M4 already put this extension's other stream there |
+| Candidate                                                                                                         | Rejected because                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| An extension-owned xterm over a `pods/exec` stream                                                                | No exported client, no exported WebSocket helper, a credential path of its own, and for the sandbox shell it still ends at reimplementing upstream's AGPL frame protocol. Several times M6's total machinery for one affordance (digest C3)                                    |
+| A "Sandbox shell" into the microVM                                                                                | Not expressible as a command line at all (digest B4). Shipping a control that cannot work would be worse than saying it needs `swiftctl`                                                                                                                                       |
+| Composing the vsock handshake and frame protocol as an inline `python3` script - the launcher image has `python3` | It is _technically_ expressible, and that is the whole trap: it would embed upstream's wire format in our source, in a form nobody can review, depending on an interpreter in an image we do not control. The recon went to the bottom of this one so it need not be revisited |
+| Shelling out to `swiftctl sandbox attach` from the tab                                                            | Depends on a CLI we neither ship nor can detect; its absence is a bare "command not found" in a tab we opened. If it appears at all it is a documented note (O6), never a control                                                                                              |
+| A "Launcher shell" item                                                                                           | The host already renders Pod Shell on the launcher pod, and both drawers link it. Duplicating the host is not parity                                                                                                                                                           |
+| A confirmation dialog before opening a console                                                                    | Argued above: no API call is made, the command line is its own disclosure, and the host puts no dialog in front of the strictly more powerful Pod Shell                                                                                                                        |
+| Reproducing `swiftctl`'s Ctrl+O detach                                                                            | The escape byte lives inside `swiftctl`'s own stdin wrapper. The terminal is the host's; we do not bind keys in it, and promising one would be inventing behaviour (W11's own limit)                                                                                           |
+| Disabling the console for Windows guests                                                                          | "Expected to be silent" is not "impossible"; a serial-enabled Windows image would work. State the fact, do not veto                                                                                                                                                            |
+| Gating the sandbox console on `phase: Running`                                                                    | A terminal sandbox with a surviving pod has the most complete console there is. Upstream's mistake here is the missing pod check, not the missing phase check                                                                                                                  |
+| Using `status.console.serialSocket`'s presence as the guard                                                       | Set and never cleared, so a stopped guest still carries it (digest A7). Right for "where", wrong for "whether"                                                                                                                                                                 |
+| Streaming the console into a drawer panel instead of the dock                                                     | The dock is where Freelens users already look for terminals and logs, it survives navigation, and M4 already put this extension's other stream there                                                                                                                           |
 
 ### Where the code lives
 
@@ -495,7 +495,7 @@ guest's four states arrive.
 DESIGN.md section 6's four states, plus what is specific here.
 
 - **No pod, no phase, nothing yet:** guard disabled with the reason. For
-  a sandbox this is the *normal* first state, because its first
+  a sandbox this is the _normal_ first state, because its first
   observable phase is empty (SPEC-0016 correction 3).
 - **`pods/exec` forbidden:** the expected failure on a locked-down
   cluster. It arrives as kubectl's own 403 in the terminal, naming the
@@ -510,7 +510,7 @@ DESIGN.md section 6's four states, plus what is specific here.
 - **A store that never loads:** the guard reads the object it was handed,
   so a cold store degrades to "enabled, and kubectl will say", never to a
   silent no-op.
-- **The terminal tab fails to open:** the one failure that is *ours*, and
+- **The terminal tab fails to open:** the one failure that is _ours_, and
   the only one that produces a `Notifications.checkedError` with a
   call-site-specific fallback (W9). Everything past `sendCommand` belongs
   to the terminal.
@@ -594,27 +594,27 @@ DESIGN.md section 6's four states, plus what is specific here.
     (digest C4). The M4 log-dock case is the precedent for asserting the
     dock tab itself (`.Dock .Tab` by text) and for being the last UI case
     in the file, because the dock covers the page underneath it.
-  - *Slice 1*: the Serial Console item on `e2e-guest-running` opens a
+  - _Slice 1_: the Serial Console item on `e2e-guest-running` opens a
     terminal tab titled after the guest and types a command naming
     `e2e-guest-running-launcher`, the `launcher` container and the
     guest-keyed socket path; the item is **disabled with its reason** on
     a stopped fixture and on one whose status names no pod; and the
     reason is present in both the kebab and the drawer toolbar.
-  - *M7 milestone review*: the disabled console in the drawer toolbar is
+  - _M7 milestone review_: the disabled console in the drawer toolbar is
     also **visibly dimmed** - the icon's own computed opacity below 1 and
     the product with the item's at or below 0.4 - next to an enabled
     neighbour at 1, while in the kebab the item is dimmed and its icon is
     not, which is how "the host's greying, not doubled" is asserted. The
     same pair is asserted on the SPEC-0010 Start-on-a-running-guest case,
     since the mechanism is shared by all seven actions.
-  - *Slice 2*: the Workload Console item on `e2e-sandbox-running` types
+  - _Slice 2_: the Workload Console item on `e2e-sandbox-running` types
     a `tail -n +1 -F` command naming the sandbox's own launcher pod and
     the pod-keyed path; on `e2e-sandbox-pooled` it names
-    **`e2e-sandbox-pool-slot-1`** and *not* the sandbox - the B3
+    **`e2e-sandbox-pool-slot-1`** and _not_ the sandbox - the B3
     inversion asserted as a string, which is the one assertion that
     would catch the milestone's likeliest bug; and it is disabled with
     its reason on a sandbox with no podRef.
-  - *One transport case, and one new fixture* (O5): a single schedulable
+  - _One transport case, and one new fixture_ (O5): a single schedulable
     pod running a sleeping shell, with a file the case can tail, so that
     exactly one assertion proves that a `kubectl exec` **issued from a
     terminal tab Freelens spawned actually connects and echoes**. Without

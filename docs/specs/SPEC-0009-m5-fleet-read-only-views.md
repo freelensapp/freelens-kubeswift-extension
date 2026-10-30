@@ -23,7 +23,7 @@ reason the gateway recorded is in the list, not two clicks away.
 ## Upstream reference
 
 kubeswift-ui (v0.12.3) has **no Cluster management screen at all**. Its
-`/fleet` route is a cross-cluster *VM inventory*: a cluster selector built
+`/fleet` route is a cross-cluster _VM inventory_: a cluster selector built
 from `displayName || name` plus a Ready flag, a per-cluster error list, and
 one table of guests aggregated across every member. There is no
 `cluster-drawer`, no `clusters` list, and no create-cluster wizard next to
@@ -130,16 +130,16 @@ Freelens is an application whose central noun is "cluster". A CRD kind of
 other extensions at one more. Each was checked against the host's source
 (`freelensapp/freelens`, `main`) rather than assumed:
 
-| Surface | Collides? | Handling |
-| --- | --- | --- |
-| Sidebar leaf title | **Yes.** Core registers a root sidebar item titled exactly **"Cluster"** (`cluster-overview-sidebar-item.injectable.tsx`), and the catalog outside the cluster frame calls kubeconfig entries "Clusters". A KubeSwift leaf titled "Clusters" would sit a few pixels from both. | The leaf is titled **"Member Clusters"**, the schema's own first words ("Cluster is a member cluster federated by the kubeswift-gateway hub"). Declared deviation, argued below. |
-| Sidebar menu id | No. The host renders `data-testid="sidebar-item-<sanitizedExtensionId>-<menuId>"`, so ids are namespaced per extension. | The id is `fleetclusters` anyway, so the E2E and pre-review test ids read unambiguously in failure output. |
-| Page id / route | No. Routes are `/extension/<sanitizedExtensionId>/<pageId>` (`getExtensionRoutePath`). | `fleetclusters`, matching the menu id. |
-| `kubeObjectDetailItems` | No. The host matches on kind **and** apiVersion (`kubeObjectMatchesToKindAndApiVersion`: `item.kind === kind && apiVersions.includes(item.apiVersion)`). | Registered with `apiVersions: ["fleet.kubeswift.io/v1alpha1"]`, so a Cluster API (`cluster.x-k8s.io`) or a Rancher Fleet (`fleet.cattle.io`) `Cluster` object in the same cluster never receives this drawer, and ours never receives theirs. |
-| `getApi()` / `getStore()` | No. `apiManager.getApiByKind` compares `api.kind === kind && api.apiVersionWithGroup === apiVersion`, and `apiVersionWithGroup` carries the group. | Nothing to do, but the model must never acquire a kind-only lookup path. |
-| Drawer title | **Yes, and not fixable.** The host writes the title itself as `` `${kind}: ${name}` ``, so the drawer reads **"Cluster: edge-1"**. There is no hook to change it, and DESIGN.md section 4 says the kind stays technical wherever it is a kind. | Accepted, and mitigated from inside the content: the drawer's first `DrawerTitle` is **"Member Cluster"** and its second row states the federation role, so the first two lines under the host's title remove the ambiguity. |
-| `tableId` (core's `table_settings` storage) | Possible. Sort preferences are persisted under a **globally keyed** map (`createStorage<TableStorageModel>("table_settings")`), shared by core and every extension. `clustersTable`, the value DESIGN.md section 4's rule would produce, is a plausible id for another extension to pick. | The literal `fleetclustersTable`. Declared deviation, and exactly what the sveltos extension already does (`capiclustersTable`). |
-| Another freelensapp extension | **Yes, today.** `freelens-sveltos-extension` already models `cluster.x-k8s.io/v1beta1` `Cluster`, and a Sveltos-managed KubeSwift hub would have both extensions installed. | Nothing to coordinate: the apiVersion guard above keeps the two apart. The precedent is also the answer to the two deviations: sveltos names its class `CapiCluster`, titles it "ClusterAPI Clusters", and uses `capiclustersTable`. This spec is doing what a sibling MIT extension already did when it met the same word. |
+| Surface                                     | Collides?                                                                                                                                                                                                                                                                                 | Handling                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sidebar leaf title                          | **Yes.** Core registers a root sidebar item titled exactly **"Cluster"** (`cluster-overview-sidebar-item.injectable.tsx`), and the catalog outside the cluster frame calls kubeconfig entries "Clusters". A KubeSwift leaf titled "Clusters" would sit a few pixels from both.            | The leaf is titled **"Member Clusters"**, the schema's own first words ("Cluster is a member cluster federated by the kubeswift-gateway hub"). Declared deviation, argued below.                                                                                                                                            |
+| Sidebar menu id                             | No. The host renders `data-testid="sidebar-item-<sanitizedExtensionId>-<menuId>"`, so ids are namespaced per extension.                                                                                                                                                                   | The id is `fleetclusters` anyway, so the E2E and pre-review test ids read unambiguously in failure output.                                                                                                                                                                                                                  |
+| Page id / route                             | No. Routes are `/extension/<sanitizedExtensionId>/<pageId>` (`getExtensionRoutePath`).                                                                                                                                                                                                    | `fleetclusters`, matching the menu id.                                                                                                                                                                                                                                                                                      |
+| `kubeObjectDetailItems`                     | No. The host matches on kind **and** apiVersion (`kubeObjectMatchesToKindAndApiVersion`: `item.kind === kind && apiVersions.includes(item.apiVersion)`).                                                                                                                                  | Registered with `apiVersions: ["fleet.kubeswift.io/v1alpha1"]`, so a Cluster API (`cluster.x-k8s.io`) or a Rancher Fleet (`fleet.cattle.io`) `Cluster` object in the same cluster never receives this drawer, and ours never receives theirs.                                                                               |
+| `getApi()` / `getStore()`                   | No. `apiManager.getApiByKind` compares `api.kind === kind && api.apiVersionWithGroup === apiVersion`, and `apiVersionWithGroup` carries the group.                                                                                                                                        | Nothing to do, but the model must never acquire a kind-only lookup path.                                                                                                                                                                                                                                                    |
+| Drawer title                                | **Yes, and not fixable.** The host writes the title itself as `` `${kind}: ${name}` ``, so the drawer reads **"Cluster: edge-1"**. There is no hook to change it, and DESIGN.md section 4 says the kind stays technical wherever it is a kind.                                            | Accepted, and mitigated from inside the content: the drawer's first `DrawerTitle` is **"Member Cluster"** and its second row states the federation role, so the first two lines under the host's title remove the ambiguity.                                                                                                |
+| `tableId` (core's `table_settings` storage) | Possible. Sort preferences are persisted under a **globally keyed** map (`createStorage<TableStorageModel>("table_settings")`), shared by core and every extension. `clustersTable`, the value DESIGN.md section 4's rule would produce, is a plausible id for another extension to pick. | The literal `fleetclustersTable`. Declared deviation, and exactly what the sveltos extension already does (`capiclustersTable`).                                                                                                                                                                                            |
+| Another freelensapp extension               | **Yes, today.** `freelens-sveltos-extension` already models `cluster.x-k8s.io/v1beta1` `Cluster`, and a Sveltos-managed KubeSwift hub would have both extensions installed.                                                                                                               | Nothing to coordinate: the apiVersion guard above keeps the two apart. The precedent is also the answer to the two deviations: sveltos names its class `CapiCluster`, titles it "ClusterAPI Clusters", and uses `capiclustersTable`. This spec is doing what a sibling MIT extension already did when it met the same word. |
 
 Two consequences on names inside the repository, both to keep an English
 word from becoming ambiguous in a file that also imports host types:
@@ -164,10 +164,10 @@ display and persistence identifiers are qualified.
 A new group **Fleet** (`kubeswift-fleet`), appended after "Sandboxes" as the
 seventh child of the `kubeswift` root, with one resource page under it:
 
-| Menu id | Title | Page id |
-| --- | --- | --- |
-| `kubeswift-fleet` | Fleet | (group, `target` = `fleetclusters`) |
-| `fleetclusters` | Member Clusters | `fleetclusters` |
+| Menu id           | Title           | Page id                                  |
+| ----------------- | --------------- | ---------------------------------------- |
+| `kubeswift-fleet` | Fleet           | a group, whose target is `fleetclusters` |
+| `fleetclusters`   | Member Clusters | `fleetclusters`                          |
 
 **A one-leaf group, and why that is right here.** SPEC-0007 rejected an
 arrangement precisely because it "would leave a one-leaf GPU group", so this
@@ -206,16 +206,16 @@ technical wherever it is a kind (the host's drawer title, YAML, search).
 
 Namespaced, so the full column grammar applies:
 
-| Column | id | Source | Notes |
-| --- | --- | --- | --- |
-| Name | `name` | `metadata.name` | `WithTooltip`, no link |
-| Namespace | `namespace` | `metadata.namespace` | `NamespaceSelectBadge` |
-| Server | `server` | `spec.server` | printer column; four readings, see below |
-| K8s | `k8s` | `status.kubernetesVersion` | printer column |
-| Guests | `guests` | `status.guestCount` | printer column; `0` kept, absent is `"N/A"` |
-| Condition | `condition` | classifier | `Badge` with the host's status class |
-| Status | `status` | condition message | `WithTooltip`, the gateway's own words |
-| Age | `age` | `getCreationTimestamp()` | `KubeObjectAge` |
+| Column    | id          | Source                     | Notes                                       |
+| --------- | ----------- | -------------------------- | ------------------------------------------- |
+| Name      | `name`      | `metadata.name`            | `WithTooltip`, no link                      |
+| Namespace | `namespace` | `metadata.namespace`       | `NamespaceSelectBadge`                      |
+| Server    | `server`    | `spec.server`              | printer column; four readings, see below    |
+| K8s       | `k8s`       | `status.kubernetesVersion` | printer column                              |
+| Guests    | `guests`    | `status.guestCount`        | printer column; `0` kept, absent is `"N/A"` |
+| Condition | `condition` | classifier                 | `Badge` with the host's status class        |
+| Status    | `status`    | condition message          | `WithTooltip`, the gateway's own words      |
+| Age       | `age`       | `getCreationTimestamp()`   | `KubeObjectAge`                             |
 
 The domain columns are the CRD's printer columns minus **Ready**, which the
 Condition/Status pair says better and in more detail, and minus
@@ -365,12 +365,12 @@ phase.
 
 `classifyFleetCluster`, evaluated in this order:
 
-| State | When | Class |
-| --- | --- | --- |
-| `Ready` | the `Ready` condition is `"True"` | `success` |
-| `Unreachable` | not Ready, and the `Reachable` condition is `"False"` | `error` |
-| `Not Ready` | not Ready, not unreachable, and `Ready` is `"False"` | `warning` |
-| `Unknown` | anything else, including no conditions at all | `info` |
+| State         | When                                                  | Class     |
+| ------------- | ----------------------------------------------------- | --------- |
+| `Ready`       | the `Ready` condition is `"True"`                     | `success` |
+| `Unreachable` | not Ready, and the `Reachable` condition is `"False"` | `error`   |
+| `Not Ready`   | not Ready, not unreachable, and `Ready` is `"False"`  | `warning` |
+| `Unknown`     | anything else, including no conditions at all         | `info`    |
 
 Four judgement calls, all recorded for the milestone review:
 
@@ -383,7 +383,7 @@ Four judgement calls, all recorded for the milestone review:
   the API publishes as a column is a contract; a type a Markdown file
   mentions is not. `Reachable` sits between the two — a Go constant with a
   documented meaning, no manifest standing — so it is read only to
-  *refine* a failure that `Ready` has already established, never to produce
+  _refine_ a failure that `Ready` has already established, never to produce
   a verdict on its own. Nothing in the classifier depends on
   `PrometheusEndpointResolved`.
 - **A `Ready: True` next to a `Reachable: False` is shown as Ready.** The
@@ -398,7 +398,7 @@ Four judgement calls, all recorded for the milestone review:
 - **`Not Ready` is `warning`, while `Unreachable` is `error`.** The two
   failures are different in kind. Unreachable means the member's API server
   did not answer a probe: an operator has to act, and the cause is outside
-  the gateway. `Ready: False` on a member that *is* reachable covers both a
+  the gateway. `Ready: False` on a member that _is_ reachable covers both a
   normal few seconds while the gateway builds its client and syncs its
   informer cache, and a permanent RBAC or credential problem — and the API
   gives no vocabulary to tell them apart, since the condition `reason`
@@ -454,8 +454,8 @@ The schema declares exactly one reference: `spec.credentialSecretRef`, a
 `namespace` field, whatever `docs/crds.md` calls the type), so it is
 namespace-local by construction.
 
-| Drawer | Store | Namespaces | Lookups |
-| --- | --- | --- | --- |
+| Drawer  | Store          | Namespaces                 | Lookups                         |
+| ------- | -------------- | -------------------------- | ------------------------------- |
 | Cluster | `secretsStore` | the object's own namespace | `spec.credentialSecretRef.name` |
 
 This is the smallest reference table in the extension, and the request is
@@ -525,8 +525,8 @@ either updates DESIGN.md in the same PR as the code or is dropped):
    titled "Cluster" one level up. Humanizing to "Clusters" would produce the
    very ambiguity the rule exists to prevent, so the schema's own qualifier
    is added instead: **"Member Clusters"**. The rule and its exception are
-   the same rule stated once: *a navigation title says which resource this
-   is, in the vocabulary of the sidebar it lives in*. Proposed DESIGN.md
+   the same rule stated once: _a navigation title says which resource this
+   is, in the vocabulary of the sidebar it lives in_. Proposed DESIGN.md
    wording, to be added to section 4: "When the humanized kind would collide
    with a name the host already uses in the same sidebar (`Cluster`,
    `Node`, `Event`, `Service`...), the title is qualified with the
@@ -798,7 +798,7 @@ Per PROCESS.md's upstream drift watch, at the start of the milestone:
     condition messages to any caller that could reach the port), and
     **v0.13.5** fixed the kubeswift-ui fleet view reporting an unreachable
     member as an empty one. That second one is worth recording even though
-    no code of ours is affected: it was a *fan-out* bug, in which a partial
+    no code of ours is affected: it was a _fan-out_ bug, in which a partial
     RPC answer was rendered as a confident empty state. A CRD-native view
     has no fan-out and structurally cannot reproduce it — the list either
     watches the API or does not — which is a small piece of evidence for

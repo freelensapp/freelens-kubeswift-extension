@@ -4,11 +4,13 @@
 # fresh profile that syncs the kubeconfigs of the local labs alone, for the
 # suites of integration/__tests__ and for checks by hand or by an agent.
 #
-# Freelens dev otherwise syncs ~/.kube of the user, whose contexts can be real
-# clusters, one click away from a suite or an agent that drives the UI. The
-# profile goes in FREELENS_INTEGRATION_TESTING_DIR, which the app accepts only
-# under the system's temporary directory, and its preferences are written
-# before the start with the lab kubeconfigs as the only synced files. Turbo
+# A fresh profile of Freelens dev syncs no kubeconfig, and the developer's own
+# FreelensDev profile syncs whatever was added there, such as ~/.kube, whose
+# contexts can be real clusters, one click away from a suite or an agent that
+# drives the UI. The profile goes in FREELENS_INTEGRATION_TESTING_DIR, which
+# the app accepts only under the system's temporary directory, and its
+# preferences are written before the start with the lab kubeconfigs as the
+# only synced files. Turbo
 # runs the `dev` task in loose environment mode, because its strict mode would
 # not pass that variable on, and the app would use the developer's own profile.
 #
