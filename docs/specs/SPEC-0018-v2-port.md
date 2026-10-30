@@ -1,6 +1,6 @@
 # SPEC-0018: Port to the Freelens v2 extension API
 
-- **Status:** Implemented (approved: Roberto, 2026-10-19)
+- **Status:** Verified (2026-10-30: non-regression tests green in CI on main after PR #143, against the Freelens v2.0.0 tag. On the official Freelens 2.0.0 packages the integration test and the 107 E2E cases pass on Linux and macOS, and on Windows all but the five console cases, which fail on a quoting defect that 0.1.0 has too, #144; the pre-review pass has 92 PASS and no FAIL in both themes. Item 2 of Manual verification stays open. Approved by Roberto, 2026-10-19)
 - **Milestone:** v2 port (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (raised to `v0.18.0` by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md))
 - **Freelens pin:** the release freelensapp/freelens@v2.0.0, `@freelensapp/extensions@2.0.0`. The port was written against freelensapp/freelens@f95000fc4ec90099b53920712ed2b9a52cddfd92 and `@freelensapp/extensions@2.0.0-0-nightly-2026-10-17`
@@ -159,6 +159,17 @@ To be run before the PR leaves draft; results recorded here (date, tester).
    views on a node with a GPU.
 3. macOS and Windows: install the build, open every page, open a console
    (the Windows command line has no `exec` prefix).
+
+Results (2026-10-30, coding agent, on the official Freelens 2.0.0 packages against the E2E lab):
+
+- Item 1: covered by the integration test and the E2E suite, which CI runs in Freelens dev at v2.0.0 and which
+  pass on the official packages for Linux and macOS. Not run by hand: the reload on rebuild, and a page that
+  Freelens restores before its CRDs are loaded.
+- Item 2: open. No real KubeSwift installation was available.
+- Item 3: on macOS and Windows the build installs in place and the E2E suite opens every page and drawer. The
+  consoles connect on macOS but not on Windows, #144: PowerShell, the default shell of the Freelens terminal
+  there, breaks the POSIX quoting of their line, as in 0.1.0. On a cluster without the KubeSwift CRDs every page
+  shows its not-installed state with no error, on both.
 
 ## Notes and deviations
 

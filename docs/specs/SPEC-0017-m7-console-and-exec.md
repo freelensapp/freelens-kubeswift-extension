@@ -1000,3 +1000,14 @@ icon's own opacity below 1 in the toolbar, the product at or below 0.4,
 an enabled neighbour at 1 in both surfaces, and - in the kebab - the
 item dimmed with its icon untouched, which is what "not dimmed twice"
 means as an assertion.
+
+### Windows (2026-10-30)
+
+The serial console and the workload console do not connect on Windows.
+The Freelens terminal runs PowerShell there, and the line, quoted the POSIX
+way by `shellQuote` (`'\''` for an embedded quote), reaches the launcher's
+`sh` broken: `syntax error: unexpected end of file (expecting "done")`.
+The E2E suite found it against the official Freelens 2.0.0 for Windows
+(SPEC-0018, Manual verification), and 0.1.0 types the same line. The
+host's own Pod Shell avoids it with a payload in double quotes and nothing
+a shell expands inside. Tracked in #144.

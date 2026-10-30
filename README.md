@@ -160,6 +160,10 @@ from a terminal instead.
   (such as the local demo cluster) statuses are simulated and frozen.
 - Behavior against real KVM-backed virtual machines has a manual test track
   of its own; see [TESTING.md](docs/development/TESTING.md).
+- On Windows the serial console and the workload console do not connect
+  yet: PowerShell, the default shell of the Freelens terminal there, breaks
+  their command line
+  ([#144](https://github.com/freelensapp/freelens-kubeswift-extension/issues/144)).
 
 ## Development
 
