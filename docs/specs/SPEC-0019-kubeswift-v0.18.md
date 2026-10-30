@@ -1,6 +1,6 @@
 # SPEC-0019: Alignment to KubeSwift v0.18.0
 
-- **Status:** Implemented (approved: all four tiers, Roberto, 2026-10-19)
+- **Status:** Verified (2026-10-30: non-regression tests green in CI on main after PR #143, and on the official Freelens 2.0.0 packages for Linux, macOS and Windows; approved: all four tiers, Roberto, 2026-10-19)
 - **Milestone:** v2 port (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.18.0` (from `v0.13.12`)
 - **Tracking issue:** #136, feature F of the v2 migration #130 ([SPEC-0018](SPEC-0018-v2-port.md))
