@@ -283,11 +283,11 @@ filter names exactly one) and name.
 - **Source** (radio, `HTTP URL` / `OCI artifact`): exactly-one is
   webhook-only and the control makes violating it inexpressible, which
   is stronger than validating it.
-  - *HTTP*: the URL, required and non-empty (the webhook rule), plus a
+  - _HTTP_: the URL, required and non-empty (the webhook rule), plus a
     scheme check upstream has nowhere, and one fact - there is **no
     checksum field and no verification of any kind** here; integrity
     exists only on the OCI path.
-  - *OCI*: repository (required); a **pin-by** control (`tag` /
+  - _OCI_: repository (required); a **pin-by** control (`tag` /
     `digest`) that makes the XOR inexpressible **and** closes the gap
     no layer closes, since with neither set the puller is handed an
     empty reference and fails opaquely; an `insecure` checkbox noting
@@ -390,43 +390,43 @@ unlock.
 
 Adopted:
 
-| # | Improvement | Where |
-| --- | --- | --- |
-| F1 | `store.create` instead of a forced apply: a name clash is the API server's own `AlreadyExists`, reopened with the form intact, where upstream replaces the object's fields and reports success | All four |
-| F2 | The namespace comes from the page's own filter when it names exactly one, and is otherwise empty and required - never the literal `default`, which looks deliberate and is not | Kernel, Image, Seed |
-| F3 | No namespace control at all on the cluster-scoped kind, where upstream's own create cannot write on any cluster: its catalog marks `swiftguestclasses` namespaced while the CRD is `scope: Cluster`, so the apply builds a namespaced request path | Guest Class |
-| F4 | Per-field errors that name their reason, against one boolean with no per-field channel and no reason attached to a disabled save (W4, W12) | All four |
-| F5 | Every webhook-only rule inline, because the webhook ships disabled: twelve for the image, five for the kernel, plus the class's one CEL rule, which upstream mirrors nowhere | All four |
-| F6 | Exclusivities made inexpressible rather than validated: one source control for the image, one pin-by control for the OCI reference, one origin control per seed document | Image, Seed |
-| F7 | The OCI reference gap **no layer closes** - neither tag nor digest is checked by schema, webhook or controller, and the puller is handed an empty reference - closed by requiring one | Image |
-| F8 | `cloneStrategy: snapshot` without a `volumeSnapshotClassName` refused at the field, where upstream checks it only on reaching `Snapshotting`, having already downloaded, converted and measured | Image |
-| F9 | The class's CEL rule mirrored client-side with its true shape (RWX with the mode **absent** is also rejected), where upstream offers RWX + Filesystem and lets the API server answer with a raw CEL message | Guest Class |
-| F10 | Live-migratability derived from the storage trio and shown at the moment of choice, which upstream's wizard does not compute and its API reference does not mention (`storage` is omitted from it entirely) | Guest Class |
-| F11 | Storage-class, Secret and ConfigMap pickers with T3 degradation, where upstream is free text in every one of those places and a typo is undetectable until a claim hangs or a credential volume is silently skipped | All four |
-| F12 | Consequence facts upstream discards: what the create sets in motion, the phase walk, and - read on open - the count of nodes carrying `kubeswift.io/kernel-node=true`, so a kernel that will park in `Pending` says so before the write | Kernel, Image |
-| F13 | Terminal-`Failed` vocabulary: the image and the kernel say a failure needs delete-and-recreate, and the kernel adds that deleting the Job (which the docs prescribe) does nothing on its own. SPEC-0013's self-heal sentence is **not** reused | Image, Kernel |
-| F14 | The credential-safe seed path is authorable at all - upstream offers three textareas and its own class comment calls YAML the escape hatch for references, so the path its API comments and GitOps docs prefer is the one path its GUI cannot express | Seed |
-| F15 | Documented-but-inert fields are not rendered and what they claim to control is stated instead (W12 option dropping): the image's `cloneStorageClassName` and the seed selectors' `optional` | Image, Seed |
-| F16 | `format` and `datasource` always sent explicitly, closing the two behaviours that differ between a webhook-on and a webhook-off cluster. SPEC-0013's G8 move, in two places where the divergence is inverted | Image, Seed |
-| F17 | Values the API server would stamp are never re-sent and are shown as effective: `osType: linux`, `cloneStrategy: copy`, `coreScheduling: off`, and an empty `storage` object dropped rather than emitted as `{}` | Guest Class, Image |
-| F18 | Names validated (RFC-1123) with the store's collision warning, which warns and never blocks, against presence-only validation on all four wizards | All four |
-| F19 | The pull secret's real reach stated at the field: it authenticates the ORAS container image, not the `oras pull` of the artifact. Upstream offers it as the answer to private registries and documents the limit nowhere | Kernel |
-| F20 | The seed's four silent precedences made unreachable by construction, one of which upstream's own edit path actively produces | Seed |
-| F21 | The two unenforced sizing rules named where the operator sets them: nothing checks the class's root disk format against the image's, and nothing checks the size, although the docs assert both - in opposite directions | Guest Class |
+| #   | Improvement                                                                                                                                                                                                                                           | Where               |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| F1  | `store.create` instead of a forced apply: a name clash is the API server's own `AlreadyExists`, reopened with the form intact, where upstream replaces the object's fields and reports success                                                        | All four            |
+| F2  | The namespace comes from the page's own filter when it names exactly one, and is otherwise empty and required - never the literal `default`, which looks deliberate and is not                                                                        | Kernel, Image, Seed |
+| F3  | No namespace control at all on the cluster-scoped kind, where upstream's own create cannot write on any cluster: its catalog marks `swiftguestclasses` namespaced while the CRD is `scope: Cluster`, so the apply builds a namespaced request path    | Guest Class         |
+| F4  | Per-field errors that name their reason, against one boolean with no per-field channel and no reason attached to a disabled save (W4, W12)                                                                                                            | All four            |
+| F5  | Every webhook-only rule inline, because the webhook ships disabled: twelve for the image, five for the kernel, plus the class's one CEL rule, which upstream mirrors nowhere                                                                          | All four            |
+| F6  | Exclusivities made inexpressible rather than validated: one source control for the image, one pin-by control for the OCI reference, one origin control per seed document                                                                              | Image, Seed         |
+| F7  | The OCI reference gap **no layer closes** - neither tag nor digest is checked by schema, webhook or controller, and the puller is handed an empty reference - closed by requiring one                                                                 | Image               |
+| F8  | `cloneStrategy: snapshot` without a `volumeSnapshotClassName` refused at the field, where upstream checks it only on reaching `Snapshotting`, having already downloaded, converted and measured                                                       | Image               |
+| F9  | The class's CEL rule mirrored client-side with its true shape (RWX with the mode **absent** is also rejected), where upstream offers RWX + Filesystem and lets the API server answer with a raw CEL message                                           | Guest Class         |
+| F10 | Live-migratability derived from the storage trio and shown at the moment of choice, which upstream's wizard does not compute and its API reference does not mention (`storage` is omitted from it entirely)                                           | Guest Class         |
+| F11 | Storage-class, Secret and ConfigMap pickers with T3 degradation, where upstream is free text in every one of those places and a typo is undetectable until a claim hangs or a credential volume is silently skipped                                   | All four            |
+| F12 | Consequence facts upstream discards: what the create sets in motion, the phase walk, and - read on open - the count of nodes carrying `kubeswift.io/kernel-node=true`, so a kernel that will park in `Pending` says so before the write               | Kernel, Image       |
+| F13 | Terminal-`Failed` vocabulary: the image and the kernel say a failure needs delete-and-recreate, and the kernel adds that deleting the Job (which the docs prescribe) does nothing on its own. SPEC-0013's self-heal sentence is **not** reused        | Image, Kernel       |
+| F14 | The credential-safe seed path is authorable at all - upstream offers three textareas and its own class comment calls YAML the escape hatch for references, so the path its API comments and GitOps docs prefer is the one path its GUI cannot express | Seed                |
+| F15 | Documented-but-inert fields are not rendered and what they claim to control is stated instead (W12 option dropping): the image's `cloneStorageClassName` and the seed selectors' `optional`                                                           | Image, Seed         |
+| F16 | `format` and `datasource` always sent explicitly, closing the two behaviours that differ between a webhook-on and a webhook-off cluster. SPEC-0013's G8 move, in two places where the divergence is inverted                                          | Image, Seed         |
+| F17 | Values the API server would stamp are never re-sent and are shown as effective: `osType: linux`, `cloneStrategy: copy`, `coreScheduling: off`, and an empty `storage` object dropped rather than emitted as `{}`                                      | Guest Class, Image  |
+| F18 | Names validated (RFC-1123) with the store's collision warning, which warns and never blocks, against presence-only validation on all four wizards                                                                                                     | All four            |
+| F19 | The pull secret's real reach stated at the field: it authenticates the ORAS container image, not the `oras pull` of the artifact. Upstream offers it as the answer to private registries and documents the limit nowhere                              | Kernel              |
+| F20 | The seed's four silent precedences made unreachable by construction, one of which upstream's own edit path actively produces                                                                                                                          | Seed                |
+| F21 | The two unenforced sizing rules named where the operator sets them: nothing checks the class's root disk format against the image's, and nothing checks the size, although the docs assert both - in opposite directions                              | Guest Class         |
 
 Considered and rejected:
 
-| Candidate | Rejected because |
-| --- | --- |
-| A Form/YAML toggle inside the dialog | The host's YAML editor is a real editor and is one click away on all four kinds; upstream's YAML side is a bare `<textarea>`. The "upstream has no YAML path" argument SPEC-0013 used for guests does not apply here and is not reused |
-| An edit mode in these forms | The host's YAML editor edits, and upstream's edit mode is where its worst bugs live. A create form that also edited would inherit the merge-preservation problem upstream solved with a deep-clone merge; if an edit form is ever added, that merge is the pattern to copy |
-| The image `upload` source | It exists on no side: an empty Go struct, a property-less CRD object, a controller that parks it as not-implemented with a pinning test, no gateway endpoint, no RPC, no CLI path. Offering it produces an object with a Failed condition and a permanently blank phase. **Not a place the MIT extension is at a disadvantage** |
-| The image `pvcClone` source | A stub that always fails. Offering it is offering a button that produces a `Failed` object, which is exactly what upstream's wizard does because its own docs present the path as working |
-| CanI / RBAC pre-flight of the create buttons | W7 unchanged, and a deliberate divergence rather than an oversight: `SelfSubjectAccessReview` is itself a write and is not exported to extensions. Worth saying too that upstream's pre-flight guards a permission set upstream never grants |
-| Prefilling the class's cpu / memory / root disk | Three upstream sources give three numbers for one field (20Gi, 10Gi, 40Gi), so there is nothing to inherit, and a sizing decision made by a prefill is the anti-pattern SPEC-0013 rejected for the class picker |
-| A magic-byte check on the image source | The client never sees the bytes. Upstream's own CLI does the check on the producer side and the controller does not, which is what makes the corruption possible; the form warns from the URL's filename and says it is a guess |
-| A cloud-init linter or template library | Beyond W11: upstream has none, and inventing one is inventing behaviour the recon could not confirm. Candidate follow-up, with upstream's own undocumented serial-getty requirement as the strongest case for it |
-| Counting the guests that reference a class, or reconciling the image's three size representations | Both are second sources of truth on a create surface. The reference count belongs to the class detail view, and the form sends one size and says which of the three it is |
+| Candidate                                                                                         | Rejected because                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A Form/YAML toggle inside the dialog                                                              | The host's YAML editor is a real editor and is one click away on all four kinds; upstream's YAML side is a bare `<textarea>`. The "upstream has no YAML path" argument SPEC-0013 used for guests does not apply here and is not reused                                                                                          |
+| An edit mode in these forms                                                                       | The host's YAML editor edits, and upstream's edit mode is where its worst bugs live. A create form that also edited would inherit the merge-preservation problem upstream solved with a deep-clone merge; if an edit form is ever added, that merge is the pattern to copy                                                      |
+| The image `upload` source                                                                         | It exists on no side: an empty Go struct, a property-less CRD object, a controller that parks it as not-implemented with a pinning test, no gateway endpoint, no RPC, no CLI path. Offering it produces an object with a Failed condition and a permanently blank phase. **Not a place the MIT extension is at a disadvantage** |
+| The image `pvcClone` source                                                                       | A stub that always fails. Offering it is offering a button that produces a `Failed` object, which is exactly what upstream's wizard does because its own docs present the path as working                                                                                                                                       |
+| CanI / RBAC pre-flight of the create buttons                                                      | W7 unchanged, and a deliberate divergence rather than an oversight: `SelfSubjectAccessReview` is itself a write and is not exported to extensions. Worth saying too that upstream's pre-flight guards a permission set upstream never grants                                                                                    |
+| Prefilling the class's cpu / memory / root disk                                                   | Three upstream sources give three numbers for one field (20Gi, 10Gi, 40Gi), so there is nothing to inherit, and a sizing decision made by a prefill is the anti-pattern SPEC-0013 rejected for the class picker                                                                                                                 |
+| A magic-byte check on the image source                                                            | The client never sees the bytes. Upstream's own CLI does the check on the producer side and the controller does not, which is what makes the corruption possible; the form warns from the URL's filename and says it is a guess                                                                                                 |
+| A cloud-init linter or template library                                                           | Beyond W11: upstream has none, and inventing one is inventing behaviour the recon could not confirm. Candidate follow-up, with upstream's own undocumented serial-getty requirement as the strongest case for it                                                                                                                |
+| Counting the guests that reference a class, or reconciling the image's three size representations | Both are second sources of truth on a create surface. The reference count belongs to the class detail view, and the form sends one size and says which of the three it is                                                                                                                                                       |
 
 ### Where the code lives
 
@@ -454,8 +454,8 @@ override it), `isKernelNode`, and `objectNameError`.
 and Secrets; in slice 2, a **key-in-object selector** that can never
 emit an empty name - the component upstream's UI does not have at all
 - and a **multi-line document field**. `ARCHITECTURE.md` gains the
-files per slice, and `swiftseedprofile-v1alpha1.ts`'s header comment
-is corrected in slice 2.
+  files per slice, and `swiftseedprofile-v1alpha1.ts`'s header comment
+  is corrected in slice 2.
 
 ### Implementation slices
 
@@ -529,7 +529,7 @@ the clone strategy out and collapse the import storage class alone.
   keeps exactly the keys it was sent plus the ones the server stamped.
   One real create per kind, read back key-exact with the stamped
   defaults asserted explicitly, plus the refusals.
-  - *Slice 1*: "creates a cluster-scoped guest class, and reads back
+  - _Slice 1_: "creates a cluster-scoped guest class, and reads back
     the leaves it sent with `coreScheduling` absent"; "refuses
     ReadWriteMany without Block, and again with the volume mode
     empty"; "offers no namespace control, and says why"; "creates a
@@ -537,7 +537,7 @@ the clone strategy out and collapse the import storage class alone.
     "refuses a padded image reference and a command line with a
     newline, each with its reason"; "says no node carries the
     kernel-node label, and creates anyway".
-  - *Slice 2*: "creates an OCI image pinned by digest, and reads back
+  - _Slice 2_: "creates an OCI image pinned by digest, and reads back
     the keys it sent with `osType` and `cloneStrategy` stamped by the
     server"; "refuses a snapshot strategy with no volume snapshot
     class"; "refuses an OCI source with neither a tag nor a digest";

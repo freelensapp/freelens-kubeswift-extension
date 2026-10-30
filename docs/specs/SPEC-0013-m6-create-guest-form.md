@@ -180,7 +180,7 @@ The recon facts the form is built on:
   `RestartOnFailure` / `Always`), exactly as `swiftctl guest import`
   does, so the stored object reads the same on every install.
 - **The seed can silently not run.** SwiftSeedProfile's `datasource`
-  is defaulted to `NoCloud` by *its* mutating webhook; on a
+  is defaulted to `NoCloud` by _its_ mutating webhook; on a
   webhook-off cluster a profile created without it stays empty and
   the guest's seed is skipped without a word. When the picked
   profile's `datasource` is empty, the form says so.
@@ -252,12 +252,12 @@ re-sent (except `runPolicy`, argued above).
 3. **Boot source**: one radio per source - image / kernel / clone from
    snapshot - each with a line saying what that source does (the host
    has no segmented control; slice 2's note below).
-   - *Image*: picker over the namespace's SwiftImages showing each
+   - _Image_: picker over the namespace's SwiftImages showing each
      option's phase and greying non-Ready ones (selectable, with the
      will-wait note - creating early is safe and the guest self-heals
      when the image turns Ready). OS type shown as a synced fact from
      the image, activating the Windows rules when `windows`.
-   - *Kernel*: picker over the namespace's SwiftKernels with the phase
+   - _Kernel_: picker over the namespace's SwiftKernels with the phase
      on every option, the non-Ready ones dimmed and still selectable
      with their own will-wait line (the recovery is the 30-second
      resync, not the watch an image gets); cmdline override text with
@@ -266,7 +266,7 @@ re-sent (except `runPolicy`, argued above).
      kernel-node label rule; the seed profile and the storage
      overrides are dropped (no root-disk clone); kernel boot disables
      GPU (the documented-unenforced rule) and Windows.
-   - *Clone*: picker over the namespace's Ready memory-backend
+   - _Clone_: picker over the namespace's Ready memory-backend
      SwiftSnapshots (backend shown), with what was left out counted
      underneath; conditional target node (node picker, required
      exactly for `s3`/`oci` - computed from the picked snapshot, not
@@ -355,35 +355,35 @@ clone-as-prefill, letting the watch deliver the row - is kept.
 
 Adopted:
 
-| # | Improvement | Where |
-| --- | --- | --- |
-| G1 | The whole operator surface authorable, with the exotic tail named and routed to the YAML editor instead of silently missing | Scope, YAML footer |
-| G2 | Pickers scoped to the namespace and readiness-aware, showing the phase upstream discards; non-Ready images selectable with the self-heals fact instead of a guess | Sections 3, 8 |
-| G3 | The class chosen explicitly, with its sizing and live-migratability visible at the moment of choice | Section 2 |
-| G4 | osType synced from the image, closing the born-Failed Windows trap, and activating the Windows rules client-side | Section 3 |
-| G5 | Every webhook-only rule inline - boot-source exclusivity by construction, GPU exclusivities, Windows rules, all data-disk and port/expose rules - because the webhook ships disabled | Sections 3, 8, 9, 10 |
-| G6 | The documented-but-unenforced `gpuProfileRef`+`kernelRef` exclusion enforced, citing upstream's own docs | Section 10 |
-| G7 | No empty-name references, ever - the schema quirk and the resolver/webhook nil-ness disagreement both closed by construction | Payload |
-| G8 | `runPolicy` sent explicitly (the `swiftctl guest import` precedent), so the stored object is identical with and without the mutating webhook | Section 5 |
-| G9 | ~~The seed empty-`datasource` silent-no-op warned at pick time~~ **Dropped during slice 1**: the SwiftSeedProfile schema makes `spec.datasource` required, with a single-member enum (`NoCloud`), so a stored profile cannot have an empty datasource and the warning could never fire on any cluster | - |
-| G10 | Clone boot with the target-node requirement computed from the snapshot's backend instead of asked of the user, the inert class explained, and the SPEC-0011 identity granularity | Section 3 |
-| G11 | Park-versus-fail expectations in the summary: what waits and self-heals, what fails and why, what parks in Pending | Write summary |
-| G12 | DNS-1123 name validation and the store collision warning (warn, never block) | Section 1 |
-| G13 | Success lands on the page the user is on, with the row delivered by the page's own store | Outcome |
-| G14 | The node pin against a native GPU profile warned about, which upstream documents in the `nodeName` field's own comment and shows nowhere: the GPU controller picks the node, so a pin that names another one makes the pod builder refuse to build with `Resolved=False` (added in slice 3, from the schema) | Sections 6, 10 |
+| #   | Improvement                                                                                                                                                                                                                                                                                                  | Where                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| G1  | The whole operator surface authorable, with the exotic tail named and routed to the YAML editor instead of silently missing                                                                                                                                                                                  | Scope, YAML footer   |
+| G2  | Pickers scoped to the namespace and readiness-aware, showing the phase upstream discards; non-Ready images selectable with the self-heals fact instead of a guess                                                                                                                                            | Sections 3, 8        |
+| G3  | The class chosen explicitly, with its sizing and live-migratability visible at the moment of choice                                                                                                                                                                                                          | Section 2            |
+| G4  | osType synced from the image, closing the born-Failed Windows trap, and activating the Windows rules client-side                                                                                                                                                                                             | Section 3            |
+| G5  | Every webhook-only rule inline - boot-source exclusivity by construction, GPU exclusivities, Windows rules, all data-disk and port/expose rules - because the webhook ships disabled                                                                                                                         | Sections 3, 8, 9, 10 |
+| G6  | The documented-but-unenforced `gpuProfileRef`+`kernelRef` exclusion enforced, citing upstream's own docs                                                                                                                                                                                                     | Section 10           |
+| G7  | No empty-name references, ever - the schema quirk and the resolver/webhook nil-ness disagreement both closed by construction                                                                                                                                                                                 | Payload              |
+| G8  | `runPolicy` sent explicitly (the `swiftctl guest import` precedent), so the stored object is identical with and without the mutating webhook                                                                                                                                                                 | Section 5            |
+| G9  | ~~The seed empty-`datasource` silent-no-op warned at pick time~~ **Dropped during slice 1**: the SwiftSeedProfile schema makes `spec.datasource` required, with a single-member enum (`NoCloud`), so a stored profile cannot have an empty datasource and the warning could never fire on any cluster        | -                    |
+| G10 | Clone boot with the target-node requirement computed from the snapshot's backend instead of asked of the user, the inert class explained, and the SPEC-0011 identity granularity                                                                                                                             | Section 3            |
+| G11 | Park-versus-fail expectations in the summary: what waits and self-heals, what fails and why, what parks in Pending                                                                                                                                                                                           | Write summary        |
+| G12 | DNS-1123 name validation and the store collision warning (warn, never block)                                                                                                                                                                                                                                 | Section 1            |
+| G13 | Success lands on the page the user is on, with the row delivered by the page's own store                                                                                                                                                                                                                     | Outcome              |
+| G14 | The node pin against a native GPU profile warned about, which upstream documents in the `nodeName` field's own comment and shows nowhere: the GPU controller picks the node, so a pin that names another one makes the pod builder refuse to build with `Resolved=False` (added in slice 3, from the schema) | Sections 6, 10       |
 
 Considered and rejected:
 
-| Candidate | Rejected because |
-| --- | --- |
-| A multi-step wizard | The host dialog has no stepper idiom and the three shipped dialogs prove a sectioned scroll; steps would add state for no protection. Revisit only if the screenshot pass says the form is illegible |
-| Exposing `filesystems`, `vhostUserDevices`, sriov interfaces, topology, scheduler, service annotations | Niche, webhook-rule-heavy, and reachable via the YAML editor Freelens already has; the footer names them so the absence is a pointer, not a wall |
-| Exposing the `migration` block | Its defaults are right until the operator has read SPEC-0012's recon; a half-understood `drainPolicy` select is a trap, not a feature |
-| A "Duplicate guest" prefill entry point | A fourth entry point with its own lossiness questions (upstream's drops half the spec); candidate follow-up, recorded |
-| CanI/RBAC pre-flight gating of the button | W7 unchanged |
-| Auto-selecting any class or image | The two decisions with resource consequences stay explicit; upstream's alphabetical class default is the anti-pattern |
-| Editing an existing guest through the form | The YAML editor edits; upstream cannot edit at all and this spec does not need to win that twice |
-| Capacity math against the class request | The SPEC-0012 verdict, unchanged: the controller fails and heals honestly; a second source of truth client-side is not worth its drift |
+| Candidate                                                                                              | Rejected because                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A multi-step wizard                                                                                    | The host dialog has no stepper idiom and the three shipped dialogs prove a sectioned scroll; steps would add state for no protection. Revisit only if the screenshot pass says the form is illegible |
+| Exposing `filesystems`, `vhostUserDevices`, sriov interfaces, topology, scheduler, service annotations | Niche, webhook-rule-heavy, and reachable via the YAML editor Freelens already has; the footer names them so the absence is a pointer, not a wall                                                     |
+| Exposing the `migration` block                                                                         | Its defaults are right until the operator has read SPEC-0012's recon; a half-understood `drainPolicy` select is a trap, not a feature                                                                |
+| A "Duplicate guest" prefill entry point                                                                | A fourth entry point with its own lossiness questions (upstream's drops half the spec); candidate follow-up, recorded                                                                                |
+| CanI/RBAC pre-flight gating of the button                                                              | W7 unchanged                                                                                                                                                                                         |
+| Auto-selecting any class or image                                                                      | The two decisions with resource consequences stay explicit; upstream's alphabetical class default is the anti-pattern                                                                                |
+| Editing an existing guest through the form                                                             | The YAML editor edits; upstream cannot edit at all and this spec does not need to win that twice                                                                                                     |
+| Capacity math against the class request                                                                | The SPEC-0012 verdict, unchanged: the controller fails and heals honestly; a second source of truth client-side is not worth its drift                                                               |
 
 ### Where the code lives
 
@@ -586,8 +586,8 @@ different from, the text above:
   the only signal that they are different.** They are never `isDisabled`
   - a not-Ready image is a legitimate choice whose consequence is a wait
   - and the wait is stated under the control and again in the summary,
-  in the warning style. The phase rides on every option's label, so the
-  distinction survives a user who cannot see the dimming.
+    in the warning style. The phase rides on every option's label, so the
+    distinction survives a user who cannot see the dimming.
 - **The osType degradation has its own sentence.** When an image is
   named but could not be read (the T3 text-input path), the fact reads
   "linux, assumed" and says that a Windows image would make the guest
@@ -748,7 +748,7 @@ different from, the text above:
   Claiming the machine is Linux to dodge the rule would be worse than
   saying where the rule lives.
 - **The gone-source warning distinguishes an empty guest list from an
-  unreadable one.** It fires on a name that is *missing* from the
+  unreadable one.** It fires on a name that is _missing_ from the
   namespace's guests, so the slice-1 read that swallowed its failure
   had to start recording it (`existingNamesUnverified`): an empty list
   from a refused read would otherwise accuse every snapshot in the

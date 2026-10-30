@@ -1,9 +1,9 @@
 # SPEC-0018: Port to the Freelens v2 extension API
 
-- **Status:** Approved (Roberto, 2026-10-19)
+- **Status:** Implemented (approved: Roberto, 2026-10-19)
 - **Milestone:** v2 port (see [ROADMAP.md](../development/ROADMAP.md))
 - **KubeSwift version reviewed:** `v0.13.12` (raised to `v0.18.0` by [SPEC-0019](SPEC-0019-kubeswift-v0.18.md))
-- **Freelens pin:** freelensapp/freelens@f95000fc4ec90099b53920712ed2b9a52cddfd92, `@freelensapp/extensions@2.0.0-0-nightly-2026-10-17`
+- **Freelens pin:** the release freelensapp/freelens@v2.0.0, `@freelensapp/extensions@2.0.0`. The port was written against freelensapp/freelens@f95000fc4ec90099b53920712ed2b9a52cddfd92 and `@freelensapp/extensions@2.0.0-0-nightly-2026-10-17`
 - **Tracking issues:** #130 (the migration, from the migration issue template of the `port-freelens-extension-to-v2` skill of freelensapp/freelens-example-extension) and the feature issues #131 (A, data layer), #132 (B, read-only views), #133 (C, writes), #134 (D, console and exec), #135 (E, test suites), #136 (F, KubeSwift v0.18.0, SPEC-0019)
 - **Author / date:** Roberto Bandini, with a coding agent, 2026-10-19
 

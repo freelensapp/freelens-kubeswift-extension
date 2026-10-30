@@ -24,12 +24,12 @@ ARCHITECTURE.md): types, texts and fixtures are written here.
 The changes since `v0.13.12`, in four tiers, all carried by the PR of the v2
 port.
 
-| Tier | Content | In this PR |
-| --- | --- | --- |
-| T1, compatibility | what a write or a state explanation of the extension gets wrong on v0.18.0 | yes |
-| T2, new fields | the new spec and status fields of the kinds already presented, read-only | yes |
-| T3, new kinds | read-only pages and details for the four kinds added since | yes |
-| T4, forms | the new fields offered in the creation forms | yes |
+| Tier              | Content                                                                    | In this PR |
+| ----------------- | -------------------------------------------------------------------------- | ---------- |
+| T1, compatibility | what a write or a state explanation of the extension gets wrong on v0.18.0 | yes        |
+| T2, new fields    | the new spec and status fields of the kinds already presented, read-only   | yes        |
+| T3, new kinds     | read-only pages and details for the four kinds added since                 | yes        |
+| T4, forms         | the new fields offered in the creation forms                               | yes        |
 
 Approved: T1, T2, T3 and T4 (Roberto, 2026-10-19).
 

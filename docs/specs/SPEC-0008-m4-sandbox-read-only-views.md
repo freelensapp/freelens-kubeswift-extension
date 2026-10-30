@@ -112,11 +112,11 @@ Three properties of this pair shape everything below:
 A new group **Sandboxes** (`kubeswift-sandboxes`), appended after "GPU" as the
 sixth child of the `kubeswift` root, with the two resource pages under it:
 
-| Menu id | Title | Page id |
-| --- | --- | --- |
-| `kubeswift-sandboxes` | Sandboxes | (group, `target` = `swiftsandboxes`) |
-| `swiftsandboxes` | Sandboxes | `swiftsandboxes` |
-| `swiftsandboxpools` | Sandbox Pools | `swiftsandboxpools` |
+| Menu id               | Title         | Page id                              |
+| --------------------- | ------------- | ------------------------------------ |
+| `kubeswift-sandboxes` | Sandboxes     | (group, `target` = `swiftsandboxes`) |
+| `swiftsandboxes`      | Sandboxes     | `swiftsandboxes`                     |
+| `swiftsandboxpools`   | Sandbox Pools | `swiftsandboxpools`                  |
 
 Justification. DESIGN.md section 4 names Sandbox as one of the groups future
 milestones add, and two-level grouping is the standard, so flattening these two
@@ -151,16 +151,16 @@ search).
 
 Namespaced, so the full column grammar applies:
 
-| Column | id | Source | Notes |
-| --- | --- | --- | --- |
-| Name | `name` | `metadata.name` | `WithTooltip`, no link |
-| Namespace | `namespace` | `metadata.namespace` | `NamespaceSelectBadge` |
-| Image | `image` | `spec.image` | printer column; digests are long, so truncation plus `WithTooltip` |
-| Node | `node` | `status.nodeName` | printer column; plain text here, a link in the drawer |
-| IP | `ip` | `status.network.primaryIP` | printer column; see below |
-| Condition | `condition` | classifier | `Badge` with the host's status class |
-| Status | `status` | raw message | `WithTooltip`, the controller's own words |
-| Age | `age` | `getCreationTimestamp()` | `KubeObjectAge` |
+| Column    | id          | Source                     | Notes                                                              |
+| --------- | ----------- | -------------------------- | ------------------------------------------------------------------ |
+| Name      | `name`      | `metadata.name`            | `WithTooltip`, no link                                             |
+| Namespace | `namespace` | `metadata.namespace`       | `NamespaceSelectBadge`                                             |
+| Image     | `image`     | `spec.image`               | printer column; digests are long, so truncation plus `WithTooltip` |
+| Node      | `node`      | `status.nodeName`          | printer column; plain text here, a link in the drawer              |
+| IP        | `ip`        | `status.network.primaryIP` | printer column; see below                                          |
+| Condition | `condition` | classifier                 | `Badge` with the host's status class                               |
+| Status    | `status`    | raw message                | `WithTooltip`, the controller's own words                          |
+| Age       | `age`       | `getCreationTimestamp()`   | `KubeObjectAge`                                                    |
 
 The three domain columns are exactly the CRD's printer columns minus Phase,
 which the Condition/Status pair says better; the raw phase stays in the drawer,
@@ -278,17 +278,17 @@ to dodge it and nothing is hidden with CSS.
 
 Namespaced:
 
-| Column | id | Source | Notes |
-| --- | --- | --- | --- |
-| Name | `name` | `metadata.name` | `WithTooltip`, no link |
-| Namespace | `namespace` | `metadata.namespace` | `NamespaceSelectBadge` |
-| Image | `image` | `spec.image` | printer column |
-| Min Warm | `minWarm` | `spec.minWarm` | printer column; the desired count |
-| Warm | `warm` | `status.warmReplicas` | printer column; the actual count |
-| Claimed | `claimed` | `status.claimedReplicas` | printer column |
-| Condition | `condition` | classifier | `Badge` |
-| Status | `status` | raw message | `WithTooltip` |
-| Age | `age` | `getCreationTimestamp()` | `KubeObjectAge` |
+| Column    | id          | Source                   | Notes                             |
+| --------- | ----------- | ------------------------ | --------------------------------- |
+| Name      | `name`      | `metadata.name`          | `WithTooltip`, no link            |
+| Namespace | `namespace` | `metadata.namespace`     | `NamespaceSelectBadge`            |
+| Image     | `image`     | `spec.image`             | printer column                    |
+| Min Warm  | `minWarm`   | `spec.minWarm`           | printer column; the desired count |
+| Warm      | `warm`      | `status.warmReplicas`    | printer column; the actual count  |
+| Claimed   | `claimed`   | `status.claimedReplicas` | printer column                    |
+| Condition | `condition` | classifier               | `Badge`                           |
+| Status    | `status`    | raw message              | `WithTooltip`                     |
+| Age       | `age`       | `getCreationTimestamp()` | `KubeObjectAge`                   |
 
 The domain columns are the CRD's printer columns minus Phase, in the CRD's own
 order, so the list reads like `kubectl get sboxpool`. Upstream's Explorer
@@ -296,7 +296,7 @@ projects this table differently (it drops Image and reorders to Phase / Warm /
 Claimed / Min); the divergence is deliberate. The extension's rule since M1 is
 that a list matches `kubectl`, and desired-then-actual-then-in-use (Min Warm,
 Warm, Claimed) is the reading order an operator checking a pool wants: the gap
-between the first two columns *is* the health of the pool, and putting them
+between the first two columns _is_ the health of the pool, and putting them
 side by side is what makes it scannable.
 
 `maxWarm` is not a printer column and does not become one: it is a cap that
@@ -366,26 +366,26 @@ vocabularies, plus the message selector they share.
 
 `classifySandbox`:
 
-| State | When | Class |
-| --- | --- | --- |
-| `Running` | phase `Running` | `success` |
-| `Completed` | phase `Completed` | `success` |
-| `Materializing` | phase `Materializing` | `warning` |
-| `Pending` | phase `Pending` | `warning` |
-| `Failed` | phase `Failed` | `error` |
-| `Unknown` | no phase at all | `info` |
-| the raw value | any other phase string | `info` |
+| State           | When                   | Class     |
+| --------------- | ---------------------- | --------- |
+| `Running`       | phase `Running`        | `success` |
+| `Completed`     | phase `Completed`      | `success` |
+| `Materializing` | phase `Materializing`  | `warning` |
+| `Pending`       | phase `Pending`        | `warning` |
+| `Failed`        | phase `Failed`         | `error`   |
+| `Unknown`       | no phase at all        | `info`    |
+| the raw value   | any other phase string | `info`    |
 
 `classifySandboxPool`:
 
-| State | When | Class |
-| --- | --- | --- |
-| `Ready` | phase `Ready` | `success` |
-| `Warming` | phase `Warming` | `warning` |
-| `Pending` | phase `Pending` | `warning` |
-| `Degraded` | phase `Degraded` | `error` |
-| `Unknown` | no phase at all | `info` |
-| the raw value | any other phase string | `info` |
+| State         | When                   | Class     |
+| ------------- | ---------------------- | --------- |
+| `Ready`       | phase `Ready`          | `success` |
+| `Warming`     | phase `Warming`        | `warning` |
+| `Pending`     | phase `Pending`        | `warning` |
+| `Degraded`    | phase `Degraded`       | `error`   |
+| `Unknown`     | no phase at all        | `info`    |
+| the raw value | any other phase string | `info`    |
 
 Two judgement calls, both recorded for the milestone review:
 
@@ -437,7 +437,7 @@ tests that need no host global.
 
 `status.podRef` is the launcher pod's **name** — a bare string, not the
 `ObjectReference` SwiftGuest's `status.podRef` carries — and the pod lives in
-the sandbox's own namespace. For a pool checkout it names the *claimed slot's*
+the sandbox's own namespace. For a pool checkout it names the _claimed slot's_
 pod (`<pool>-slot-<n>`), not a pod named after the sandbox, so the name is
 always read from the field and never derived.
 
@@ -491,22 +491,22 @@ otherwise; the stores behind those checks are declared through
 `useReferenceStores` with the namespaces the references live in, never through
 an ad-hoc `loadAll()` (DESIGN.md section 3, issue #38).
 
-| Drawer | Store | Namespaces | Lookups |
-| --- | --- | --- | --- |
-| SwiftSandbox | `nodesStore` | cluster-wide (omitted) | `status.nodeName`, `status.gpu.nodeName` |
-| SwiftSandbox | `podsStore` | the sandbox's own namespace | `status.podRef` |
-| SwiftSandbox | `secretsStore` | the sandbox's own namespace | `spec.imagePullSecret`, `spec.verifyKeySecretRef.name`, every `env[].valueFrom.secretKeyRef.name` |
-| SwiftSandbox | `configMapStore` | the sandbox's own namespace | every `env[].valueFrom.configMapKeyRef.name` |
-| SwiftSandbox | `pvcStore` | the sandbox's own namespace | `status.scratchDisk.pvcName`, `spec.scratchDisk.pvcRef.name` |
-| SwiftSandbox | `storageClassStore` | cluster-wide (omitted) | `spec.scratchDisk.blank.storageClassName` |
-| SwiftSandbox | SwiftSandboxPool | the sandbox's own namespace | `spec.poolRef.name` |
-| SwiftSandbox | SwiftKernel | the sandbox's own namespace | `spec.kernelProfileRef.name` |
-| SwiftSandbox | SwiftGPUProfile | the sandbox's own namespace | `spec.gpuProfileRef.name` |
-| SwiftSandbox | SwiftGPUNode | cluster-wide (omitted) | `status.gpu.nodeName` |
-| SwiftSandboxPool | `secretsStore` | the pool's own namespace | `spec.imagePullSecret`, `spec.verifyKeySecretRef.name` |
-| SwiftSandboxPool | SwiftKernel | the pool's own namespace | `spec.kernelProfileRef.name` |
-| SwiftSandboxPool | SwiftGPUProfile | the pool's own namespace | `spec.gpuProfileRef.name` |
-| SwiftSandboxPool | SwiftSandbox | the pool's own namespace | the sandboxes the section lists |
+| Drawer           | Store               | Namespaces                  | Lookups                                                                                           |
+| ---------------- | ------------------- | --------------------------- | ------------------------------------------------------------------------------------------------- |
+| SwiftSandbox     | `nodesStore`        | cluster-wide (omitted)      | `status.nodeName`, `status.gpu.nodeName`                                                          |
+| SwiftSandbox     | `podsStore`         | the sandbox's own namespace | `status.podRef`                                                                                   |
+| SwiftSandbox     | `secretsStore`      | the sandbox's own namespace | `spec.imagePullSecret`, `spec.verifyKeySecretRef.name`, every `env[].valueFrom.secretKeyRef.name` |
+| SwiftSandbox     | `configMapStore`    | the sandbox's own namespace | every `env[].valueFrom.configMapKeyRef.name`                                                      |
+| SwiftSandbox     | `pvcStore`          | the sandbox's own namespace | `status.scratchDisk.pvcName`, `spec.scratchDisk.pvcRef.name`                                      |
+| SwiftSandbox     | `storageClassStore` | cluster-wide (omitted)      | `spec.scratchDisk.blank.storageClassName`                                                         |
+| SwiftSandbox     | SwiftSandboxPool    | the sandbox's own namespace | `spec.poolRef.name`                                                                               |
+| SwiftSandbox     | SwiftKernel         | the sandbox's own namespace | `spec.kernelProfileRef.name`                                                                      |
+| SwiftSandbox     | SwiftGPUProfile     | the sandbox's own namespace | `spec.gpuProfileRef.name`                                                                         |
+| SwiftSandbox     | SwiftGPUNode        | cluster-wide (omitted)      | `status.gpu.nodeName`                                                                             |
+| SwiftSandboxPool | `secretsStore`      | the pool's own namespace    | `spec.imagePullSecret`, `spec.verifyKeySecretRef.name`                                            |
+| SwiftSandboxPool | SwiftKernel         | the pool's own namespace    | `spec.kernelProfileRef.name`                                                                      |
+| SwiftSandboxPool | SwiftGPUProfile     | the pool's own namespace    | `spec.gpuProfileRef.name`                                                                         |
+| SwiftSandboxPool | SwiftSandbox        | the pool's own namespace    | the sandboxes the section lists                                                                   |
 
 The SwiftSandbox drawer asks for more stores than any drawer in the extension
 so far. The loader is built for this (one request per store, explicit
@@ -798,7 +798,7 @@ because the model types them:
    `Common.Util.formatDuration`, not with `ReactiveDuration`.** The spec asks
    for `ReactiveDuration` and for no hand-rolled formatter; the first half is
    impossible for a terminal sandbox, because `ReactiveDuration` only ever
-   measures a timestamp against *now* and cannot express
+   measures a timestamp against _now_ and cannot express
    `terminalAt - startedAt`. `Common.Util.formatDuration` is the host's own
    formatter and is the very function `ReactiveDuration` calls internally, so
    the intent of the rule — no formatter written in this repository — holds. A
@@ -1010,7 +1010,7 @@ Per PROCESS.md's upstream drift watch, at the start of the milestone:
 - **SwiftSandbox**: `sandbox.kubeswift.io/v1alpha1`, namespaced, short name
   `sbox`, plural `swiftsandboxes`, printer columns Phase / Image / Node / IP /
   Age, `subresources: {status: {}}`. `spec.required` is `image` and `memory`
-  only (`memory` is required *and* defaulted to `512Mi`, so the API server
+  only (`memory` is required _and_ defaulted to `512Mi`, so the API server
   fills it). Defaults in the schema: `cpu: 1`, `memory: 512Mi`,
   `rootfsMode: block`, `network.mode: restricted`, `model.mountPath: /model`,
   `scratchDisk.blank.volumeMode: Block`, `gpuResourceClaim.tier: pcie`. Enums:

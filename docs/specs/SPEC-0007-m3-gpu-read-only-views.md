@@ -82,11 +82,11 @@ anything in M1/M2:
 A new group **GPU** (`kubeswift-gpu`), appended after "Migrations" as the
 fifth child of the `kubeswift` root, with the two resource pages under it:
 
-| Menu id | Title | Page id |
-| --- | --- | --- |
-| `kubeswift-gpu` | GPU | (group, `target` = `swiftgpuprofiles`) |
-| `swiftgpuprofiles` | GPU Profiles | `swiftgpuprofiles` |
-| `swiftgpunodes` | GPU Nodes | `swiftgpunodes` |
+| Menu id            | Title        | Page id                                |
+| ------------------ | ------------ | -------------------------------------- |
+| `kubeswift-gpu`    | GPU          | (group, `target` = `swiftgpuprofiles`) |
+| `swiftgpuprofiles` | GPU Profiles | `swiftgpuprofiles`                     |
+| `swiftgpunodes`    | GPU Nodes    | `swiftgpunodes`                        |
 
 Justification. DESIGN.md section 4 already names GPU as one of the groups
 future milestones add, and two-level grouping is the standard, so flattening
@@ -110,15 +110,15 @@ Nodes", never "Gpu Profiles". The kind stays technical wherever it is a kind
 
 Namespaced, so the full column grammar applies minus the state columns:
 
-| Column | id | Source | Notes |
-| --- | --- | --- | --- |
-| Name | `name` | `metadata.name` | `WithTooltip`, no link |
-| Namespace | `namespace` | `metadata.namespace` | `NamespaceSelectBadge` |
-| Count | `count` | `spec.count` | printer column; 1, 2, 4 or 8 |
-| Model | `model` | `spec.model` | printer column; empty means any model, rendered as "Any" |
-| Partition Mode | `partitionMode` | `spec.partitionMode` | printer column (upstream calls it `Mode`) |
-| Tier | `tier` | `spec.tier` | printer column |
-| Age | `age` | `getCreationTimestamp()` | `KubeObjectAge` |
+| Column         | id              | Source                   | Notes                                                    |
+| -------------- | --------------- | ------------------------ | -------------------------------------------------------- |
+| Name           | `name`          | `metadata.name`          | `WithTooltip`, no link                                   |
+| Namespace      | `namespace`     | `metadata.namespace`     | `NamespaceSelectBadge`                                   |
+| Count          | `count`         | `spec.count`             | printer column; 1, 2, 4 or 8                             |
+| Model          | `model`         | `spec.model`             | printer column; empty means any model, rendered as "Any" |
+| Partition Mode | `partitionMode` | `spec.partitionMode`     | printer column (upstream calls it `Mode`)                |
+| Tier           | `tier`          | `spec.tier`              | printer column                                           |
+| Age            | `age`           | `getCreationTimestamp()` | `KubeObjectAge`                                          |
 
 The four domain columns are exactly the CRD's printer columns, so the list
 reads like `kubectl get swiftgpuprofiles`, with two adjustments. The upstream
@@ -181,16 +181,16 @@ nothing is hidden with CSS.
 
 Cluster-scoped, so no Namespace column:
 
-| Column | id | Source | Notes |
-| --- | --- | --- | --- |
-| Name | `name` | `metadata.name` | the node's own name (see below) |
-| GPUs | `gpus` | `status.gpuCount` | printer column |
-| Free | `free` | `status.freeGPUs` | printer column |
-| Model | `model` | `status.gpuModel` | printer column |
-| VFIO | `vfio` | `status.vfioReady` | printer column, `BadgeBoolean` |
-| Condition | `condition` | classifier | `Badge` with the host's status class |
-| Status | `status` | classifier | one-line explanation, `WithTooltip` |
-| Age | `age` | `getCreationTimestamp()` | `KubeObjectAge` |
+| Column    | id          | Source                   | Notes                                |
+| --------- | ----------- | ------------------------ | ------------------------------------ |
+| Name      | `name`      | `metadata.name`          | the node's own name (see below)      |
+| GPUs      | `gpus`      | `status.gpuCount`        | printer column                       |
+| Free      | `free`      | `status.freeGPUs`        | printer column                       |
+| Model     | `model`     | `status.gpuModel`        | printer column                       |
+| VFIO      | `vfio`      | `status.vfioReady`       | printer column, `BadgeBoolean`       |
+| Condition | `condition` | classifier               | `Badge` with the host's status class |
+| Status    | `status`    | classifier               | one-line explanation, `WithTooltip`  |
+| Age       | `age`       | `getCreationTimestamp()` | `KubeObjectAge`                      |
 
 A SwiftGPUNode is named after the node it describes (the discovery DaemonSet
 creates one per node labelled for GPU work), so the Name column is also the
@@ -261,14 +261,14 @@ A pure module `src/renderer/components/gpu-status.ts`, no JSX and no colours
 inside, mapping a SwiftGPUNode to a small closed set of display states and to
 one of the host's global classes:
 
-| State | When | Class |
-| --- | --- | --- |
-| `Ready` | phase `Ready` and `vfioReady` | `success` |
-| `No VFIO` | phase `Ready`, `vfioReady` false or absent | `warning` |
-| `Discovering` | phase `Discovering` | `warning` |
-| `Error` | phase `Error` | `error` |
-| `Unknown` | no phase at all | `info` |
-| the raw value | any other phase string | `info` |
+| State         | When                                       | Class     |
+| ------------- | ------------------------------------------ | --------- |
+| `Ready`       | phase `Ready` and `vfioReady`              | `success` |
+| `No VFIO`     | phase `Ready`, `vfioReady` false or absent | `warning` |
+| `Discovering` | phase `Discovering`                        | `warning` |
+| `Error`       | phase `Error`                              | `error`   |
+| `Unknown`     | no phase at all                            | `info`    |
+| the raw value | any other phase string                     | `info`    |
 
 The last row matters: `status.phase` has no `enum` in the schema, so an
 unrecognized value is displayed opaquely rather than forced into one of the
@@ -288,14 +288,14 @@ stores behind those checks are declared through `useReferenceStores` with the
 namespaces the references live in, never through an ad-hoc `loadAll()`
 (DESIGN.md section 3, issue #38).
 
-| Drawer | Store | Namespaces | Lookups |
-| --- | --- | --- | --- |
-| SwiftGPUNode | `nodesStore` | cluster-wide (omitted) | the object's own name |
-| SwiftGPUNode | SwiftGuest | every distinct namespace parsed out of `gpus[].allocatedTo` and `fabricManager.partitions[].allocatedTo` | the parsed name/namespace pairs |
-| SwiftGPUProfile | SwiftGuest | the profile's own namespace | the guests the section lists |
-| SwiftGuest (existing) | SwiftGPUProfile | the guest's own namespace | `spec.gpuProfileRef.name` |
-| SwiftGuest (existing) | SwiftGPUNode | cluster-wide (omitted) | `status.gpu.nodeName` |
-| SwiftGuestPool (existing) | SwiftGPUProfile | the pool's own namespace | `spec.template.spec.gpuProfileRef.name` |
+| Drawer                    | Store           | Namespaces                                                                                               | Lookups                                 |
+| ------------------------- | --------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| SwiftGPUNode              | `nodesStore`    | cluster-wide (omitted)                                                                                   | the object's own name                   |
+| SwiftGPUNode              | SwiftGuest      | every distinct namespace parsed out of `gpus[].allocatedTo` and `fabricManager.partitions[].allocatedTo` | the parsed name/namespace pairs         |
+| SwiftGPUProfile           | SwiftGuest      | the profile's own namespace                                                                              | the guests the section lists            |
+| SwiftGuest (existing)     | SwiftGPUProfile | the guest's own namespace                                                                                | `spec.gpuProfileRef.name`               |
+| SwiftGuest (existing)     | SwiftGPUNode    | cluster-wide (omitted)                                                                                   | `status.gpu.nodeName`                   |
+| SwiftGuestPool (existing) | SwiftGPUProfile | the pool's own namespace                                                                                 | `spec.template.spec.gpuProfileRef.name` |
 
 A `lookup=miss` is expected here more often than anywhere else in the
 extension and is not a defect: a GPU can stay recorded as allocated to a guest
@@ -546,8 +546,8 @@ Settled while implementing, none of it changing what the spec asks for:
   and their readbacks land through the existing entry format unchanged. What
   did have to change is `apply_fixtures()`, which now runs the `__NODE_NAME__`
   substitution over the fixture manifests as well (`metadata.name` cannot be
-  patched afterwards), and the substitution now also applies to the *target
-  name* of an `E2E_STATUS_PATCHES` entry, since the ready node's object is
+  patched afterwards), and the substitution now also applies to the _target
+  name_ of an `E2E_STATUS_PATCHES` entry, since the ready node's object is
   named after the cluster's node. The node name is read once into
   `E2E_NODE_NAME` and shared by all three steps.
 - **The fixture pair covers the two branches the spec asked for in one go**:

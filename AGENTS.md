@@ -43,13 +43,14 @@ pnpm type:check                # All of the programs below, in this order
 pnpm type:check:sources        # main and renderer, each with src/common/
 pnpm type:check:tests          # Tests and test support
 pnpm type:check:tooling        # Vite and Vitest configs, build plugins
+pnpm type:check:integration    # Integration tests
 pnpm type:check:environments   # Environment tests
 
 # Linting & formatting
-pnpm biome:check          # TypeScript/TSX, JS, JSON, CSS, HTML (biome)
+pnpm biome:check          # TypeScript/TSX, JS, JSON, CSS, SCSS, HTML, YAML, Markdown (biome)
 pnpm biome:fix            # Auto-fix the formats above
-pnpm trunk:check          # Markdown, YAML, TOML, SCSS, workflows, and Biome again (changed files)
-pnpm trunk:fix            # Auto-fix Markdown, YAML, SCSS, etc.
+pnpm trunk:check          # TOML, shell, workflows, yamllint, and Biome again (changed files)
+pnpm trunk:fix            # Auto-fix TOML, shell, and the Biome formats
 pnpm lint:check           # Alias for biome:check
 pnpm lint:fix             # Alias for biome:fix
 pnpm knip:check           # Unused files, unused and unlisted dependencies (knip)
@@ -594,7 +595,12 @@ migration are one pull request. The commit is by `github-actions[bot]`, which
 `gitIgnoredAuthors` in `.renovaterc.json` lists, so that Renovate does not take
 it for a manual edit and stop updating the branch.
 
-Biome does not read SCSS; Trunk formats it with Prettier.
+Biome formats SCSS, YAML and Markdown too, as in Freelens, so Trunk runs no
+Prettier, markdownlint or yamlfmt; yamllint still checks YAML. The Kubernetes
+manifests of `e2e/fixtures/` indent their sequences, as Biome does, so Biome
+formats them as well. `biome.jsonc` leaves out `pnpm-lock.yaml` and
+`pnpm-workspace.yaml`, which pnpm writes, and `.trunk/`, whose `trunk.yaml`
+`trunk upgrade` rewrites.
 
 ### Knip
 
@@ -661,17 +667,16 @@ Freelens started with `pnpm dev` from a freelensapp/freelens checkout, which
 they attach to with Playwright's `chromium.connectOverCDP`, as in
 freelensapp/freelens-example-extension; `docs/development/TESTING.md`
 describes them, the lab they need and how to run them locally. The workflow
-builds the extension, starts the kind lab with `pnpm e2e:cluster:up`, copies its
-kubeconfig to `~/.kube/config`, which the fresh profile of Freelens dev syncs,
+builds the extension, starts the kind lab with `pnpm e2e:cluster:up`, seeds a
+fresh profile of Freelens dev whose only synced file is the lab kubeconfig,
 starts `pnpm dev` under `xvfb-run` and runs both suites once: the E2E suite
 writes to its cluster, so a second run would need the cluster and Freelens
 started again.
 
 ## Code Style
 
-- **Biome** formats **TypeScript/TSX, JS, JSON, CSS, HTML**: double quotes, semicolons, trailing commas, 2-space indent, 120 char line width — use `pnpm biome:fix`
-- **SCSS has no formatter**: biome 2.5.2 dropped scss support (it skips the files during its walk and rejects them as explicit targets), so keep `*.module.scss` tidy by hand, following the style of the existing modules
-- **Trunk** formats **Markdown, YAML**, and other formats not covered by biome — use `pnpm trunk:fix`
+- **Biome** formats **TypeScript/TSX, JS, JSON, CSS, SCSS, HTML, YAML, Markdown**: double quotes, semicolons, trailing commas, 2-space indent, 120 char line width — use `pnpm biome:fix`
+- **Trunk** formats **TOML and shell scripts**, and runs the linters for formats not covered by Biome (yamllint, actionlint, shellcheck) — use `pnpm trunk:fix`
 - Import order (enforced by biome organizeImports): built-in modules → `@freelensapp/**` → packages → relative paths
 - React 19 with the automatic JSX runtime (`jsx: react-jsx`): no `React` import for JSX, `React.JSX.Element` for an element type
 - **No emoji** in Markdown files (`.md`), comments, or any source code
@@ -740,8 +745,8 @@ Code in `src/common/` is shared between both processes.
 2. **Follow existing patterns** — grep for similar implementations before creating new ones
 3. **Test changes** before committing
 4. **Run validation before committing:** `pnpm lint:fix && pnpm type:check && pnpm test:unit`
-5. **For TypeScript/TSX, JS, JSON, CSS, HTML files:** run `pnpm biome:fix` (or `biome check` directly if `biome` is installed locally)
-6. **For Markdown, YAML, and other formats:** run `pnpm trunk:fix` (or `trunk check` directly if `trunk` is installed locally)
+5. **For TypeScript/TSX, JS, JSON, CSS, SCSS, HTML, YAML and Markdown files:** run `pnpm biome:fix` (or `biome check` directly if `biome` is installed locally)
+6. **For other formats:** run `pnpm trunk:fix` (or `trunk check` directly if `trunk` is installed locally)
 7. **Full build** when in doubt about cached state: `pnpm clean:all && pnpm build`
 8. **Do not use Anthropic Fable for coding tasks** — Fable may be used only for planning,
    analysis, and thinking through problems. When writing or editing code,
@@ -765,19 +770,17 @@ devDependency, does the same, as the integration tests do. `browser.close()`
 of such a browser closes only the connection; the app belongs to Freelens and
 keeps running.
 
-Freelens dev lists every context of the developer's own kubeconfig,
-production clusters included, one click away from an agent that drives the
-UI. The folder it syncs by default is `~/.kube` of the user that runs it,
-taken from the system's user database (`os.userInfo().homedir`), not from
-`HOME`. `FREELENS_INTEGRATION_TESTING_DIR`, which the app accepts only under
-the system's temporary directory, moves the user data and Freelens's own home
-directory, but not that folder. To keep a session to the test cluster, start
-Freelens with such a directory and, in "Kubeconfig Syncs" of the Kubernetes
-preferences of that fresh profile, replace the synced `~/.kube` with the
-kubeconfig of the test cluster alone; or run Freelens as a user whose home
-holds only that kubeconfig. For this repository that kubeconfig is
-`.e2e/kubeconfig` (the E2E lab) or `.demo/kubeconfig` (the demo lab), and
-`docs/development/TESTING.md` has the procedure.
+A profile of Freelens dev syncs no kubeconfig until one is added in
+"Kubeconfig Syncs" of the Kubernetes preferences, so a fresh one lists none of
+the developer's clusters; `KUBECONFIG` does not change that. The developer's
+own `FreelensDev` profile syncs whatever was added there, such as `~/.kube`,
+whose contexts, production clusters included, are one click away from an
+agent that drives the UI. For the checks, start Freelens with
+`pnpm e2e:freelens`: it seeds a fresh profile, in a
+`FREELENS_INTEGRATION_TESTING_DIR` under the system's temporary directory,
+whose only synced files are `.e2e/kubeconfig` (the E2E lab) and
+`.demo/kubeconfig` (the demo lab). `docs/development/TESTING.md` has the
+procedure.
 
 ### Installing the checkout
 
@@ -786,8 +789,9 @@ holds only that kubeconfig. For this repository that kubeconfig is
    `dist/`.
 2. On the Extensions page, enter the checkout's directory and press
    "Install". Freelens then asks whether to load the extension in place;
-   confirm that too. The table lists the extension as "in place, unverified"
-   and enabled.
+   confirm that too. The table lists the extension as enabled, with
+   "development" in the version column and `Loaded from <directory>` in its
+   title.
 3. A rebuild, by `pnpm build` or by `pnpm dev` of the extension, reloads it
    once in the root frame and once in each cluster frame.
 
@@ -857,6 +861,7 @@ When reviewing code and proposing fixes:
    ```
 
    You can generate this from the terminal with:
+
    ```bash
    git diff -u -- path/to/file
    ```
@@ -888,9 +893,9 @@ When reviewing code and proposing fixes:
    - Use GitHub's `suggestion` block for small targeted fixes so the PR
      author can accept the change with a single click:
 
-     ````suggestion
+     ```suggestion
      <same unified-diff format as shown above>
-     ````
+     ```
 
    - For larger multi-file changes, use `diff -u` blocks in a regular
      comment instead, with the proposed commit subject shown first

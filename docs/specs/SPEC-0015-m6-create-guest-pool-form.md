@@ -194,21 +194,21 @@ is a refusal rather than a warning because the form is reading its own
 two fields, not guessing at a cluster.
 
 **D3. The three overwrites are stated where they happen, and the
-overwritten controls are dropped.** *Ports*: with a pool Service
+overwritten controls are dropped.** _Ports_: with a pool Service
 configured, the template's ports control is not rendered and the payload
 carries no `network.ports`; the pool's service ports becoming every
 replica's, with `expose` cleared, is stated in its place. Sending ports
 the controller will replace is the same dishonesty as re-sending a schema
-default. *Bridge*: with a bridge-bound template the Service section is
+default. _Bridge_: with a bridge-bound template the Service section is
 dropped instead, with what upstream does - the pool **admitted**, the
 Service garbage-collected, port injection skipped, a `ServiceReady=False`
 condition reported; the CRD description asserts admission refuses it, and
-that describes a webhook that does not exist. *Clone target node*: a
+that describes a webhook that does not exist. _Clone target node_: a
 derived preview, not an input, and **G10's rule is lifted**, since
 keeping the guest form's block would block on a field the controller
 supplies; the preview carries the round-robin's ordering and the fact
-that **zero schedulable workers aborts the whole reconcile**. *Topology
-constraints*: nothing to drop, SPEC-0013 having routed them to the
+that **zero schedulable workers aborts the whole reconcile**. _Topology
+constraints_: nothing to drop, SPEC-0013 having routed them to the
 footer; the discard is stated on the spread control.
 
 **D4. The summary tells the truth per replica.** Replica names
@@ -237,7 +237,7 @@ meet pool semantics. Each is a stated rule, not an assumption.
   existing PVC is likewise one claim shared by N replicas**, so a
   `ReadWriteOnce` one lets exactly one replica schedule: above one
   replica the row warns and names the claim templates as the alternative
-  (*derivation note*: the recon states this mechanism for `filesystems`,
+  (_derivation note_: the recon states this mechanism for `filesystems`,
   and this is the same one). A claim template whose name collides with a
   template data disk's produces a duplicate-name spec that only the
   disabled guest webhook catches: refused across both.
@@ -273,36 +273,36 @@ a drawer with no rollout state, conditions or replicas.
 
 Adopted:
 
-| # | Improvement | Where |
-| --- | --- | --- |
-| P1 | The whole template authorable - the operator surface in the form, the tail routed to the YAML editor - against upstream's 6 of 70, and by embedding the shipped form so the two can never drift | Scope, section 3 |
-| P2 | `store.create`, so a name clash is `AlreadyExists` instead of a forced overwrite that also rolls the existing fleet | Outcome |
-| P3 | The node pin's collapse-onto-one-node consequence named at the field and in the summary | D1 |
-| P4 | A template MAC refused above one replica - the L2 collision nothing else rejects | D2 |
-| P5 | The ports the controller would replace neither offered nor sent, with the replacement stated; the Service section dropped on a bridge-bound template, with what actually happens instead of the CRD's false admission claim | D3 |
-| P6 | The clone target node rendered as derived and G10's block lifted - the mirror image of the guest form, where the same field is required because nothing else supplies it | D3 |
-| P7 | Replica names, real PVC names and the per-replica multiplication in the summary | D4 |
-| P8 | `volumeClaimTemplates` reachable at all, with `metadata.name` required (the schema does not require it, and an empty one yields an invalid PVC name and a reconcile that errors forever with nothing explaining it) and the true name order shown | Per-replica storage |
-| P9 | The summary says deleting the pool deletes the per-replica claims and their data - the guide says the opposite, and following the guide destroys data | D4 |
-| P10 | The rollout deadlock made inexpressible: `maxUnavailable: 0` with `maxSurge: 0` refused with its reason, because it is schema-legal, uncoupled by any rule, and reported by no condition | Rollout |
-| P11 | `replicas` and `runPolicy` sent explicitly, the second with the pool's own reason: the live guest's policy decides whether a Failed replica is replaced or parked forever | Sections 2, 3 |
-| P12 | The Service's port-name-above-one rule enforced (enforced for a standalone guest, nowhere for a pool, where it becomes the controller failing to create the Service on every reconcile); `headless` made inexpressible against NodePort and LoadBalancer, which it silently overrides; `expose` not offered, because the controller accepts it and drops it | Service |
-| P13 | Pickers scoped, readiness-aware, and degrading to a text input with an unverified marker rather than to an empty dropdown that means three different things | Section 3 |
-| P14 | The replica-name collision against existing guests warned about with the indices named - a failure that otherwise appears as a pool that simply never fans out | Design |
+| #   | Improvement                                                                                                                                                                                                                                                                                                                                                 | Where               |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| P1  | The whole template authorable - the operator surface in the form, the tail routed to the YAML editor - against upstream's 6 of 70, and by embedding the shipped form so the two can never drift                                                                                                                                                             | Scope, section 3    |
+| P2  | `store.create`, so a name clash is `AlreadyExists` instead of a forced overwrite that also rolls the existing fleet                                                                                                                                                                                                                                         | Outcome             |
+| P3  | The node pin's collapse-onto-one-node consequence named at the field and in the summary                                                                                                                                                                                                                                                                     | D1                  |
+| P4  | A template MAC refused above one replica - the L2 collision nothing else rejects                                                                                                                                                                                                                                                                            | D2                  |
+| P5  | The ports the controller would replace neither offered nor sent, with the replacement stated; the Service section dropped on a bridge-bound template, with what actually happens instead of the CRD's false admission claim                                                                                                                                 | D3                  |
+| P6  | The clone target node rendered as derived and G10's block lifted - the mirror image of the guest form, where the same field is required because nothing else supplies it                                                                                                                                                                                    | D3                  |
+| P7  | Replica names, real PVC names and the per-replica multiplication in the summary                                                                                                                                                                                                                                                                             | D4                  |
+| P8  | `volumeClaimTemplates` reachable at all, with `metadata.name` required (the schema does not require it, and an empty one yields an invalid PVC name and a reconcile that errors forever with nothing explaining it) and the true name order shown                                                                                                           | Per-replica storage |
+| P9  | The summary says deleting the pool deletes the per-replica claims and their data - the guide says the opposite, and following the guide destroys data                                                                                                                                                                                                       | D4                  |
+| P10 | The rollout deadlock made inexpressible: `maxUnavailable: 0` with `maxSurge: 0` refused with its reason, because it is schema-legal, uncoupled by any rule, and reported by no condition                                                                                                                                                                    | Rollout             |
+| P11 | `replicas` and `runPolicy` sent explicitly, the second with the pool's own reason: the live guest's policy decides whether a Failed replica is replaced or parked forever                                                                                                                                                                                   | Sections 2, 3       |
+| P12 | The Service's port-name-above-one rule enforced (enforced for a standalone guest, nowhere for a pool, where it becomes the controller failing to create the Service on every reconcile); `headless` made inexpressible against NodePort and LoadBalancer, which it silently overrides; `expose` not offered, because the controller accepts it and drops it | Service             |
+| P13 | Pickers scoped, readiness-aware, and degrading to a text input with an unverified marker rather than to an empty dropdown that means three different things                                                                                                                                                                                                 | Section 3           |
+| P14 | The replica-name collision against existing guests warned about with the indices named - a failure that otherwise appears as a pool that simply never fans out                                                                                                                                                                                              | Design              |
 
 Considered and rejected:
 
-| Candidate | Rejected because |
-| --- | --- |
-| Editing an existing pool through the form | The YAML editor edits, losslessly, which upstream's own edit path does not manage; this spec does not need to win that twice |
-| Per-replica overrides of any kind | No mechanism exists at any layer - no index token, no downward API, and the controller never patches a guest at all - so offering one would be inventing behaviour, the limit W11 puts on this exercise |
-| Capacity math against `replicas` x the class request | The SPEC-0012 and SPEC-0013 verdict unchanged: the controller parks over-subscribed replicas in Pending honestly, and a second source of truth client-side is not worth its drift |
-| A scale control, stepper or Scale dialog | Its own M6 row; SPEC-0008 already recorded the `scale` subresource as M6 territory. This form decides the initial count, not the later ones |
-| Pool-level `topologySpreadConstraints` | 11 leaves at depth 6 of a core Kubernetes type; `spreadPolicy` covers what an operator reaches for, the footer routes the rest, and the fact that explicit constraints take precedence over the policy is stated rather than hidden |
-| `service.annotations`, `service.loadBalancerClass` | YAML territory. Annotations have overlay semantics - removing a key from the spec does not remove it from the Service - which the form would have to explain in full to be honest about |
-| A rollout or readiness preview | `Available` is `ready > 0`, `Progressing` never consults `updatedReplicas`, and `availableReplicas` is a copy of `readyReplicas`; predicting from those would repeat the error upstream's own documentation makes |
-| CanI / RBAC pre-flight gating of the button | W7 unchanged. Worth recording that upstream does pre-flight, and that its own curated capability catalog never grants `create` on `swiftguestpools` - so on a cluster set up through upstream's UI, its gate hides the button for this very kind |
-| SPEC-0013's own rejections, repeated here | Auto-selecting a class, image or namespace, and a "duplicate this pool" prefill: the same arguments, now with a template to be lossy about |
+| Candidate                                            | Rejected because                                                                                                                                                                                                                                 |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Editing an existing pool through the form            | The YAML editor edits, losslessly, which upstream's own edit path does not manage; this spec does not need to win that twice                                                                                                                     |
+| Per-replica overrides of any kind                    | No mechanism exists at any layer - no index token, no downward API, and the controller never patches a guest at all - so offering one would be inventing behaviour, the limit W11 puts on this exercise                                          |
+| Capacity math against `replicas` x the class request | The SPEC-0012 and SPEC-0013 verdict unchanged: the controller parks over-subscribed replicas in Pending honestly, and a second source of truth client-side is not worth its drift                                                                |
+| A scale control, stepper or Scale dialog             | Its own M6 row; SPEC-0008 already recorded the `scale` subresource as M6 territory. This form decides the initial count, not the later ones                                                                                                      |
+| Pool-level `topologySpreadConstraints`               | 11 leaves at depth 6 of a core Kubernetes type; `spreadPolicy` covers what an operator reaches for, the footer routes the rest, and the fact that explicit constraints take precedence over the policy is stated rather than hidden              |
+| `service.annotations`, `service.loadBalancerClass`   | YAML territory. Annotations have overlay semantics - removing a key from the spec does not remove it from the Service - which the form would have to explain in full to be honest about                                                          |
+| A rollout or readiness preview                       | `Available` is `ready > 0`, `Progressing` never consults `updatedReplicas`, and `availableReplicas` is a copy of `readyReplicas`; predicting from those would repeat the error upstream's own documentation makes                                |
+| CanI / RBAC pre-flight gating of the button          | W7 unchanged. Worth recording that upstream does pre-flight, and that its own curated capability catalog never grants `create` on `swiftguestpools` - so on a cluster set up through upstream's UI, its gate hides the button for this very kind |
+| SPEC-0013's own rejections, repeated here            | Auto-selecting a class, image or namespace, and a "duplicate this pool" prefill: the same arguments, now with a template to be lossy about                                                                                                       |
 
 ### Where the code lives
 
@@ -396,23 +396,23 @@ its three conditions met each time.
 - **E2E** (`integration/__tests__/kubeswift-e2e.tests.ts`), writing for real. No
   controller runs there, so a created pool fans out into nothing, which
   is what makes the readback a proof of what the form sent.
-  1. *"creates a pool and reads back its template key-exact"*: replicas
+  1. _"creates a pool and reads back its template key-exact"_: replicas
      3, an image-boot template with class, seed profile and run policy,
      one claim template, a ClusterIP Service. The readback asserts
      `spec.replicas`, the service ports, the claim template, the stamped
      defaults - and that `spec.template.spec`'s key set is **exactly**
      the key set the standalone Create Guest case asserts, the
      composition property proved against the API server itself.
-  2. *"refuses a MAC on a pool of more than one, and offers it again at
-     one replica"*: the blocking sentence names the row and the count.
-  3. *"warns that a pinned pool puts every replica on one node, and
-     submits anyway"*: the warning at the pin and in the summary, with
+  2. _"refuses a MAC on a pool of more than one, and offers it again at
+     one replica"_: the blocking sentence names the row and the count.
+  3. _"warns that a pinned pool puts every replica on one node, and
+     submits anyway"_: the warning at the pin and in the summary, with
      `nodeName` unchanged in the readback.
-  4. *"drops the template's ports when the pool has a Service"*: the
+  4. _"drops the template's ports when the pool has a Service"_: the
      readback carries no `network.ports` and the pool's own ports.
-  5. *"refuses a rollout that can never progress"*: `0`/`0`, the reason,
+  5. _"refuses a rollout that can never progress"_: `0`/`0`, the reason,
      and the submit released when either moves.
-  6. *"warns that a guest already holds a replica name"*: the indices
+  6. _"warns that a guest already holds a replica name"_: the indices
      named, the submit not blocked.
 - **Fixtures**: one new file, `205-swiftguestpool-create.yaml`,
   carrying a SwiftGuest at a replica name for case 6 and a claim-template
